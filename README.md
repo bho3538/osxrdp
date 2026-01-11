@@ -12,7 +12,7 @@ https://github.com/user-attachments/assets/f3fed35e-5f5f-4d34-93af-8239fe6fcaaf
 |------|---|
 |Smooth Remote Control (H.264)|✅|
 |Remote control for non logoned macOS user|❌|
-|Session Resizing & Virtual Resoulution|❌|
+|Session Resizing & Virtual native resoulution|❌|
 |Audio|❌|
 |Clipboard|❌|
 |File transfer|❌|
