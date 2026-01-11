@@ -4,14 +4,15 @@
 ## Overview
 osxrdp is an unofficial module of xrdp to support rdp server in macOS.
 
-https://github.com/user-attachments/assets/2e37d6b9-64dd-4a82-affb-4c60d19c1a96
+https://github.com/user-attachments/assets/f3fed35e-5f5f-4d34-93af-8239fe6fcaaf
+<h6><a href="https://youtu.be/fqtFD4xAFJo">See Full Version Video</a></h6>
 
 ## Features
 |Features|Status|
 |------|---|
 |Smooth Remote Control (H.264)|✅|
 |Remote control for non logoned macOS user|❌|
-|Session Resizing|❌|
+|Session Resizing & Virtual Resoulution|❌|
 |Audio|❌|
 |Clipboard|❌|
 |File transfer|❌|
