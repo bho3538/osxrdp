@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Workspace
+   version = "1.0">
+   <FileRef
+      location = "group:OSXRDPUninstaller/OSXRDPUninstaller.xcodeproj">
+   </FileRef>
+   <FileRef
+      location = "group:osxup/osxup.xcodeproj">
+   </FileRef>
+   <FileRef
+      location = "group:ServerApp/OSXRDP.xcodeproj">
+   </FileRef>
+   <FileRef
+      location = "group:ScreenMirrorLib/ScreenMirrorLib.xcodeproj">
+   </FileRef>
+</Workspace>

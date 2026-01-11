@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>osxrdp installer</title>
+
+    <options hostArchitectures="x86_64,arm64" customize="never" require-scripts="false"/>
+
+    <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
+
+    <installation-check script="installationCheck()"/>
+    <script>
+    function installationCheck() {
+ 
+        var minOSVersion = '14.0';
+        
+        if (system.compareVersions(system.version.ProductVersion, minOSVersion) &lt; 0) {
+            my.result.title = 'Incompatible macOS Version';
+            my.result.message = 'This program require macOS ' + minOSVersion + ' or higher version.';
+            my.result.type = 'Fatal';
+            return false;
+        }
+        return true;
+    }
+    </script>
+
+    <choices-outline>
+        <line choice="default"/>
+    </choices-outline>
+
+    <choice id="default" title="osxrdp">
+        <pkg-ref id="com.byungho.osxrdp.setup"/>
+    </choice>
+
+    <pkg-ref id="com.byungho.osxrdp.setup" version="1.0.0" onConclusion="none">osxrdp_component.pkg</pkg-ref>
+
+</installer-gui-script>

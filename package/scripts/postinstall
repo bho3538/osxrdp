@@ -1,0 +1,9 @@
+#!/bin/bash
+
+# generate key
+/Applications/osxrdp/OSXRDP.app/Contents/MacOS/xrdp-keygen xrdp auto
+
+# start service
+launchctl bootstrap system /Library/LaunchDaemons/com.byungho.osxrdp.plist
+launchctl enable system/com.byungho.osxrdp
+launchctl kickstart -k system/com.byungho.osxrdp
