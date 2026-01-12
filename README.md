@@ -3,9 +3,9 @@
 
 ## Overview
 osxrdp is an unofficial module of xrdp to support rdp server in macOS.
+<img width="1282" height="832" alt="OSXRDP" src="https://github.com/user-attachments/assets/539b2870-b5c6-4d16-90b0-ad6d2799951a" />
 
-https://github.com/user-attachments/assets/f3fed35e-5f5f-4d34-93af-8239fe6fcaaf
-<h6><a href="https://youtu.be/fqtFD4xAFJo">See Full Version Video</a></h6>
+<h6><a href="https://youtu.be/fqtFD4xAFJo">Video</a></h6>
 
 ## Features
 |Features|Status|
