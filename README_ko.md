@@ -1,9 +1,10 @@
 # osxrdp - macOS 용 xrdp
 ## 개요
 osxrdp 는 macOS에서 rdp 서버를 사용할 수 있게 해주는 xrdp의 비공식 모듈입니다.
+<img width="1282" height="832" alt="OSXRDP" src="https://github.com/user-attachments/assets/0980b2b5-f50c-4fa6-88ba-c4c8eaa29ec5" />
 
-https://github.com/user-attachments/assets/f3fed35e-5f5f-4d34-93af-8239fe6fcaaf
-<h6><a href="https://youtu.be/fqtFD4xAFJo">풀 버전 영상</a></h6>
+
+<h6><a href="https://youtu.be/fqtFD4xAFJo">영상</a></h6>
 
 ## 기능
 |기능|상태|
@@ -25,5 +26,5 @@ https://github.com/user-attachments/assets/f3fed35e-5f5f-4d34-93af-8239fe6fcaaf
 * osxrdp 는 아직 알파 버전 상태입니다. 오동작할 수 있으며, 상업적 용도로 사용하기 부적절합니다.
   
 ## 지원 OS
-macOS 14 이상\
-Apple Silicon 및 Intel 맥 (아직 테스트되지 않음)을 지원합니다.
+macOS 12.4 이상\
+Apple Silicon 및 Intel 맥을 지원합니다.
