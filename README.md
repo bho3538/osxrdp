@@ -27,5 +27,5 @@ https://github.com/user-attachments/assets/f3fed35e-5f5f-4d34-93af-8239fe6fcaaf
 * osxrdp is still in alpha version. It may contain numerous bugs and is not suitable for production use.
   
 ## Supported OS
-macOS 14 or higher version.\
-Support Apple Silicon & Intel (untested) mac.
+macOS 12.4 or higher version.\
+Support Apple Silicon & Intel mac.
