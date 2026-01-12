@@ -3,6 +3,9 @@
 # generate key
 /Applications/osxrdp/OSXRDP.app/Contents/MacOS/xrdp-keygen xrdp auto
 
+# create log file
+touch /var/log/xrdp.log
+
 # start service
 launchctl bootstrap system /Library/LaunchDaemons/com.byungho.osxrdp.plist
 launchctl enable system/com.byungho.osxrdp

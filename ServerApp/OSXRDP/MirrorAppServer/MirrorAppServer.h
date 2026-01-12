@@ -58,6 +58,9 @@ private:
     static int OnClientConnected(xipc_t* t, xipc_t* client);
     static int OnClientDisconnected(xipc_t* t, xipc_t* client);
     static int OnMessageReceived(xipc_t* t, xipc_t* client, void* data, int len);
+    
+    // 기타
+    ScreenRecorder* CreateScreenRecorder();
 };
 
 #endif /* MirrorAppServer_hpp */

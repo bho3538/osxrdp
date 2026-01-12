@@ -188,7 +188,8 @@ int MirrorAppServer::OnClientConnected(xipc_t* t, xipc_t* client) {
     }
     
     struct MirrorAppClientCtx* ctx = (struct MirrorAppClientCtx*)malloc(sizeof(struct MirrorAppClientCtx));
-    ctx->ScreenRecorder = new ScreenRecorder();
+    
+    ctx->ScreenRecorder = _this->CreateScreenRecorder();
     
     client->user_data = (void*)ctx;
     
@@ -273,4 +274,13 @@ bool MirrorAppServer::IsState(State s) {
     bool same = (_state == s);
     pthread_mutex_unlock(&_stateLock);
     return same;
+}
+
+ScreenRecorder* MirrorAppServer::CreateScreenRecorder() {
+    if (@available(macOS 14.0,*)) {
+        return new ScreenRecorder(false);
+    }
+    else {
+        return new ScreenRecorder(true);
+    }
 }

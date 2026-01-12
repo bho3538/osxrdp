@@ -1,19 +1,22 @@
+
 #import <Foundation/Foundation.h>
 #import <ScreenCaptureKit/ScreenCaptureKit.h>
+#import <CoreGraphics/CoreGraphics.h>
+#import <CoreVideo/CoreVideo.h>
+#import <CoreMedia/CoreMedia.h>
+#import <IOSurface/IOSurfaceRef.h>
 
-NS_ASSUME_NONNULL_BEGIN
-
-typedef void (*on_record_data)(void* sampleBuffer, void* imgBuffer, void* userData);
+typedef void (*on_record_data_fb)(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData);
 typedef void (*on_record_cmd)(int cmd, void* userData);
 
-@interface ScreenRecorderImpl : NSObject<SCStreamOutput, SCStreamDelegate>
+@interface ScreenRecorderFallbackImpl : NSObject
 
 - (void)initializeWithDisplay:(SCDisplay*)display
             RecordWidth:(int)width
             RecordHeight:(int)height
             RecordFramerate:(int)framerate
             RecordFormat:(int)recordFormat
-            RecordDataCallback:(on_record_data)recordCb
+            RecordDataCallback:(on_record_data_fb)recordCb
             RecordDataCallbackUserData:(void*)userData
             RecordCmdCallback:(on_record_cmd)recordCmdCb
             RecordCmdCallbackUserData:(void*)userData2;
@@ -23,5 +26,3 @@ typedef void (*on_record_cmd)(int cmd, void* userData);
 - (BOOL)stop;
 
 @end
-
-NS_ASSUME_NONNULL_END

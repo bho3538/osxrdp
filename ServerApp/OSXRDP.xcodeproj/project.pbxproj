@@ -10,7 +10,6 @@
 		39738CFB2F10BFB6004D50EF /* xrdp-keygen in CopyFiles */ = {isa = PBXBuildFile; fileRef = 39738CFA2F10BFAC004D50EF /* xrdp-keygen */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		9B4A9EA52ED5968900260492 /* libScreenMirrorLib.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 9B4A9EA42ED5968900260492 /* libScreenMirrorLib.a */; };
 		9B6302022F0D01BE00451117 /* ServiceManagement.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9B6302012F0D01BE00451117 /* ServiceManagement.framework */; };
-		9B8470762F0DECB4001E143F /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9B8470752F0DECB4001E143F /* Accelerate.framework */; };
 		9B84707B2F0E1F44001E143F /* xrdp in CopyFiles */ = {isa = PBXBuildFile; fileRef = 9B8470792F0E1F13001E143F /* xrdp */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -50,7 +49,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				9B8470762F0DECB4001E143F /* Accelerate.framework in Frameworks */,
 				9B4A9EA52ED5968900260492 /* libScreenMirrorLib.a in Frameworks */,
 				9B6302022F0D01BE00451117 /* ServiceManagement.framework in Frameworks */,
 			);
@@ -292,7 +290,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 33X7M69J4B;
 				ENABLE_APP_SANDBOX = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -305,7 +303,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.byungho.osxrdp.mainapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -326,7 +324,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = 33X7M69J4B;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -346,7 +344,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.byungho.osxrdp.mainapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";

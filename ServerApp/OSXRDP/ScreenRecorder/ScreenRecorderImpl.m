@@ -40,36 +40,6 @@
             RecordCmdCallbackUserData:(void*)userData2 {
     if (display == nil) return;
     
-    // macOS 과거 버전에서는 (12 버전에서 확인) screencapturekit 에 버그가 있는것 같음.
-    // 이를 우회하기 위해 내 앱 (osxrdp)의 창은 캡쳐하지 않도록 더미로 넘기기
-    // todo : 내 창을 찾지 못한 경우 1x1 투명 더미 창을 만들어야 하나??
-    // https://federicoterzi.com/blog/screencapturekit-failing-to-capture-the-entire-display/
-    /*
-    __block SCWindow* selfWindow = nil;
-    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-    [SCShareableContent getShareableContentWithCompletionHandler:^(SCShareableContent * _Nullable content, NSError * _Nullable error) {
-        
-        pid_t myPid = getpid();
-        NSUInteger windowCnt = content.windows.count;
-        
-        for (NSUInteger i = 0; i< windowCnt; i++) {
-            if ([self getPidFromWindowId:content.windows[i].windowID] == myPid) {
-                selfWindow = content.windows[i];
-                break;
-            }
-        }
-        dispatch_semaphore_signal(semaphore);
-    }];
-    dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
-    
-    NSLog(@"[ScreenRecorderImpl::start] selfWindow status : %d\n", selfWindow != nil ? 1 : 0);
-
-    NSArray<SCWindow*>* excluding = (selfWindow != nil) ? @[ selfWindow ] : @[];
-    NSArray<SCRunningApplication*>* excludingApp = @[];
-    
-    _recordFilter = [[SCContentFilter alloc] initWithDisplay:display excludingApplications:excludingApp exceptingWindows:excluding];
-     */
-    
     _recordFilter = [[SCContentFilter alloc] initWithDisplay:display excludingWindows:@[]];
     if (_recordFilter == nil) return;
     
@@ -78,6 +48,8 @@
     _recordConfig.width = width;
     _recordConfig.height = height;
     _recordConfig.queueDepth = 3;
+    // 이 값이 없으면 물빠진 색감이 나옴
+    _recordConfig.colorSpaceName = kCGColorSpaceSRGB;
     
     if (recordFormat == OSXRDP_RECORDFORMAT_NV12) {
         _recordConfig.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
@@ -87,8 +59,7 @@
     }
     
     _recordConfig.showsCursor = NO;
-    
-    // todo : 이것이 없는 구형 os 는 어떻게 확인하지..?
+    // 이것이 없는 구형 os 는 어떻게 확인하지..? --> 구형 os 는 screenrecorderfallback 을 사용하도록 함.
     if (@available(macOS 14.0,*)) {
         _recordConfig.preservesAspectRatio = NO;
     }
@@ -194,33 +165,6 @@
 - (void)stream:(SCStream *)stream didStopWithError:(NSError *)error {
     // 녹화 정지 요청
     _recordCmdCb(1, _recordCmdCbUserData);
-}
-
-- (pid_t)getPidFromWindowId:(CGWindowID)windowId {
-    CFArrayRef windowInfoArray = CGWindowListCopyWindowInfo(
-        kCGWindowListOptionIncludingWindow,
-        windowId
-    );
-    
-    if (windowInfoArray == NULL) {
-        return -1;
-    }
-
-    pid_t pid = -1;
-
-    NSArray* info = CFBridgingRelease(windowInfoArray);
-    for (NSDictionary* w in info) {
-        NSNumber* winNum = w[(id)kCGWindowNumber];
-        if (winNum && winNum.unsignedIntValue == windowId) {
-            NSNumber* ownerPID = w[(id)kCGWindowOwnerPID];
-            if (ownerPID) {
-                pid = (pid_t)ownerPID.intValue;
-            }
-            break;
-        }
-    }
-
-    return pid;
 }
 
 @end

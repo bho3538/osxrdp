@@ -22,6 +22,7 @@
 @property (strong) PermissionSettingsWindow* permSettingsWindow;
 @property (strong) IBOutlet NSTextField* aboutLinkLabel;
 @property (strong) IBOutlet NSButton* startRemoteConnectionBtn;
+@property (strong) IBOutlet NSTextField* startupLabel;
 @property (strong) IBOutlet NSSwitch* startupSwitch;
 
 @end
@@ -55,9 +56,16 @@
     [self.aboutLinkLabel addGestureRecognizer:click];
     
     // start on login status
-    if (StartupManager::IsStartupEnabled() == true) {
-        [self.startupSwitch setState:NSControlStateValueOn];
+    if (StartupManager::IsMacOS13OrHigher() == true) {
+        if (StartupManager::IsStartupEnabled() == true) {
+            [self.startupSwitch setState:NSControlStateValueOn];
+        }
     }
+    else {
+        self.startupLabel.hidden = YES;
+        self.startupSwitch.hidden = YES;
+    }
+
     
     // prepare osxrdp server
     [self startRemoteConnectionServer:YES];
