@@ -25,6 +25,11 @@ osxrdp is an unofficial module of xrdp to support rdp server in macOS.
 * On first boot, you must access the physical computer and unlock it directly.\
   This is a limitation of FileVault and cannot be resolved.
 * osxrdp is still in alpha version. It may contain numerous bugs and is not suitable for production use.
+
+## Known Issuses
+* The host computer must have at least one physical monitor connected to it.
+* Since virtual resolution is not yet supported, the image quality may be degraded if the resolution of the host computer's monitor is different.
+* The mouse cursor does not change shape according to the situation.
   
 ## Supported OS
 macOS 12.4 or higher version.\
