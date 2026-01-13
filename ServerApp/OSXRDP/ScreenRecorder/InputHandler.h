@@ -20,8 +20,8 @@ private:
     int _recordDisplayWidth;
     int _recordDisplayHeight;
     
-    int _mousePosX;
-    int _mousePosY;
+    int _lastMousePosX;
+    int _lastMousePosY;
     
     float _scaleX;
     float _scaleY;
@@ -34,7 +34,7 @@ private:
     
     CGEventSourceRef _eventRef;
     
-    void HandleMouseDoubleClick(CGEventRef ev, bool mouseDown);
+    void HandleMouseDoubleClick(CGEventRef ev, bool mouseDown, int mouseX, int mouseY);
     
     static int CalcPos(int clientPos, float scale);
     

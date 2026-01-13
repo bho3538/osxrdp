@@ -106,8 +106,8 @@ InputHandler::InputHandler() :
     _scaleX(0.0f),
     _scaleY(0.0f),
     _inMouseDown(0),
-    _mousePosX(0),
-    _mousePosY(0),
+    _lastMousePosX(0),
+    _lastMousePosY(0),
     _eventRef(0),
     _keyboardModifierFlags(0),
     _mouseClickCnt(0),
@@ -154,7 +154,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         case XRDP_MOUSE_LBTNDOWN: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventLeftMouseDown, point, kCGMouseButtonLeft);
             
-            HandleMouseDoubleClick(ev, true);
+            HandleMouseDoubleClick(ev, true, clientX, clientY);
             
             _inMouseDown = 1;
             break;
@@ -162,7 +162,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         case XRDP_MOUSE_LBTNUP: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventLeftMouseUp, point, kCGMouseButtonLeft);
             
-            HandleMouseDoubleClick(ev, false);
+            HandleMouseDoubleClick(ev, false, clientX, clientY);
             
             _inMouseDown = 0;
             break;
@@ -170,7 +170,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         case XRDP_MOUSE_RBTNDOWN: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventRightMouseDown, point, kCGMouseButtonRight);
             
-            HandleMouseDoubleClick(ev, true);
+            HandleMouseDoubleClick(ev, true, clientX, clientY);
             
             _inMouseDown = 1;
             break;
@@ -178,7 +178,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         case XRDP_MOUSE_RBTNUP: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventRightMouseUp, point, kCGMouseButtonRight);
             
-            HandleMouseDoubleClick(ev, false);
+            HandleMouseDoubleClick(ev, false, clientX, clientY);
             
             _inMouseDown = 0;
             break;
@@ -259,15 +259,24 @@ void InputHandler::HandleKeyboardInputEvent(xstream_t* cmd) {
     CFRelease(ev);
 }
 
-void InputHandler::HandleMouseDoubleClick(CGEventRef ev, bool mouseDown) {
+void InputHandler::HandleMouseDoubleClick(CGEventRef ev, bool mouseDown, int mouseX, int mouseY) {
     if (mouseDown) {
         long long currentTime = GetCurrentEventTime();
         if (currentTime - _lastMouseClickTime < 500) {
-            _mouseClickCnt++;
+            int gap = abs(mouseX - _lastMousePosX) + abs(mouseY - _lastMousePosY);
+            if (gap < 5) {
+                _mouseClickCnt++;
+            }
+            else {
+                _mouseClickCnt = 1;
+            }
         }
         else {
             _mouseClickCnt = 1;
         }
+        
+        _lastMousePosX = mouseX;
+        _lastMousePosY = mouseY;
         
         _lastMouseClickTime = currentTime;
     }
