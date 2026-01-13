@@ -27,7 +27,7 @@ private:
     int _gfxFlags;
     
     // Input handler (mouse, keyboard)
-    InputHandler* _inputHandler;
+    InputHandler _inputHandler;
     
     bool CreateRecordShm(int width, int height, int framerate);
     void DestroyRecordShm();

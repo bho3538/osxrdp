@@ -16,6 +16,7 @@ static volatile int g_fullredraw = 1;
 
 ScreenRecorder::ScreenRecorder(bool useLegacyRecorder) :
     _impl(NULL),
+    _implFallback(NULL),
     _recordShm(NULL),
     _encodingSession(NULL)
 {
@@ -67,8 +68,7 @@ bool ScreenRecorder::StartRecord(xstream_t* cmd) {
         return false;
     }
     
-    _inputHandler = new InputHandler();
-    _inputHandler->UpdateDisplayRes((int)display.width, (int)display.height, width, height);
+    _inputHandler.UpdateDisplayRes((int)display.width, (int)display.height, width, height);
 
     if (CreateRecordShm(width, height, framerate) == false) {
         return false;
@@ -184,9 +184,6 @@ void ScreenRecorder::Stop() {
     
     // 공유 메모리 정리
     DestroyRecordShm();
-    
-    delete _inputHandler;
-    _inputHandler = NULL;
 }
 
 void ScreenRecorder::HandleCommand(xipc_t* client, xstream_t* cmd) {
@@ -221,11 +218,11 @@ void ScreenRecorder::HandleCommand(xipc_t* client, xstream_t* cmd) {
             break;
         }
         case OSXRDP_PACKETTYPE_MOUSEEVT: {
-            _inputHandler->HandleMousseInputEvent(cmd);
+            _inputHandler.HandleMousseInputEvent(cmd);
             break;
         }
         case OSXRDP_PACKETTYPE_KEYBOARDEVT: {
-            _inputHandler->HandleKeyboardInputEvent(cmd);
+            _inputHandler.HandleKeyboardInputEvent(cmd);
             break;
         }
     }

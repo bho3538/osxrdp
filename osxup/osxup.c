@@ -155,6 +155,9 @@ static int
 lib_mod_event(struct mod *mod, int msg, long param1, long param2,
               long param3, long param4)
 {
+    // 화면이 돌아갈때만 처리?
+    if (mod->runPaint == 0) return 0;
+    
     switch (msg) {
         case XRDP_KEYBOARD_UP:
         case XRDP_KEYBOARD_DOWN: {
@@ -271,7 +274,8 @@ static int
 lib_mod_suppress_output(struct mod *amod, int suppress,
                         int left, int top, int right, int bottom)
 {
-
+    if (suppress) amod->runPaint = 0;
+    else amod->runPaint = 1;
     return 0;
 }
 
