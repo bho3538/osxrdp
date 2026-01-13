@@ -30,6 +30,7 @@ osxrdp is an unofficial module of xrdp to support rdp server in macOS.
 * The host computer must have at least one physical monitor connected to it.
 * Since virtual resolution is not yet supported, the image quality may be degraded if the resolution of the host computer's monitor is different.
 * The mouse cursor does not change shape according to the situation.
+* Using mstsc, if you minimize the mstsc window and then reopen it, the image quality deteriorates slightly. I'm not sure why this is happening.
   
 ## Supported OS
 macOS 12.4 or higher version.\
