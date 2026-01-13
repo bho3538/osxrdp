@@ -21,12 +21,12 @@
    <img width="593" height="274" alt="" src="https://github.com/user-attachments/assets/a385fdee-a133-4a96-bff6-77266ed4e670" />
 
 ## Other
+* You must disable sleep mode and turn off monitor feature for continuous remote access.
 
 * If you cannot connect from an external computer using an RDP client,\
   check whether the `3389/tcp` port is blocked by the firewall.\
   Using Terminal, check whether the xrdp and osxrdp processes are running. \
   <img width="799" height="84" alt="" src="https://github.com/user-attachments/assets/fc97648e-0ff0-43f8-a0ae-4f9337ab386c" />
-
 
 * When attempting to connect, the following message appears:\
   (“OSXRDP agent does not running. Please check main agent is running.”)\
