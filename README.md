@@ -22,8 +22,7 @@ osxrdp is an unofficial module of xrdp to support rdp server in macOS.
 <h6><a href="Manual.md">Link</a></h6>
 
 ## Limitation
-* On first boot, you must access the physical computer and unlock it directly.\
-  This is a limitation of FileVault and cannot be resolved.
+* The macOS user you want to remotely control must be logged on. I haven't yet figured out how to create a new session and log on a specific user.
 * osxrdp is still in alpha version. It may contain numerous bugs and is not suitable for production use.
 
 ## Known Issuses
