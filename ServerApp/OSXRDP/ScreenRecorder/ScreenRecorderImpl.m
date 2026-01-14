@@ -48,21 +48,25 @@
     _recordConfig.width = width;
     _recordConfig.height = height;
     _recordConfig.queueDepth = 3;
+    
     // 이 값이 없으면 물빠진 색감이 나옴
     _recordConfig.colorSpaceName = kCGColorSpaceSRGB;
     
     if (recordFormat == OSXRDP_RECORDFORMAT_NV12) {
+        // h264 사용 시
         _recordConfig.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
     }
     else {
+        // bitmap 사용 시
         _recordConfig.pixelFormat = kCVPixelFormatType_32BGRA;
     }
     
     _recordConfig.showsCursor = NO;
-    // 이것이 없는 구형 os 는 어떻게 확인하지..? --> 구형 os 는 screenrecorderfallback 을 사용하도록 함.
+    // 구형 os 는 screenrecorderfallback 을 사용하도록 함.
     if (@available(macOS 14.0,*)) {
         _recordConfig.preservesAspectRatio = NO;
     }
+    
     _recordConfig.minimumFrameInterval = CMTimeMake(1, framerate);
     
     // 녹화 큐 설정
@@ -72,51 +76,50 @@
     _recordCb = recordCb;
     _recordCbUserData = userData;
     
+    // 녹화 이벤트 콜백 (갑작스러운 녹화 정지 이벤트를 받기 위해)
     _recordCmdCb = recordCmdCb;
     _recordCmdCbUserData = userData2;
 }
 
 - (BOOL)start {
-    
     if (_recordFilter == nil) {
         NSLog(@"[ScreenRecorderImpl::start] recordFilter is NULL\n");
         
-        return FALSE;
+        return NO;
     }
     
     if (_recordConfig == nil) {
         NSLog(@"[ScreenRecorderImpl::start] recordConfig is NULL\n");
         
-        return FALSE;
+        return NO;
     }
     
     if (_recordQue == nil) {
         NSLog(@"[ScreenRecorderImpl::start] recordQue is NULL\n");
         
-        return FALSE;
+        return NO;
     }
     
     _recordStream = [[SCStream alloc] initWithFilter:_recordFilter configuration:_recordConfig delegate:self];
     
     NSError* err = nil;
     [_recordStream addStreamOutput:self type:SCStreamOutputTypeScreen sampleHandlerQueue:_recordQue error:&err];
-    
     if (err != nil) {
         NSLog(@"[ScreenRecorderImpl::start] addStreamOutput failed. %ld\n", err.code);
         
-        return FALSE;
+        return NO;
     }
     
     [_recordStream startCaptureWithCompletionHandler:nil];
-    
     NSLog(@"[ScreenRecorderImpl::start] Start Record\n");
 
-    return TRUE;
+    return YES;
 }
 
 - (BOOL)stop {
     if (_recordStream == nil) return YES;
     
+    // 녹화 정지 요청 후 완전히 종료될때까지 대기
     __block NSError* stopError = nil;
     dispatch_semaphore_t sema = dispatch_semaphore_create(0);
     [_recordStream stopCaptureWithCompletionHandler:^(NSError* _Nullable err) {
@@ -124,9 +127,9 @@
         
         dispatch_semaphore_signal(sema);
     }];
-    
     dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
     
+    // 아직 녹화가 정지되지 않음. (이 경우 상위의 ScreenRecorder 내부의 공유 메모리를 절대 해제하면 안됨. 녹화 콜백이 다시 발생하여 크래시 발생할 수 있음)
     if (stopError != nil) {
         NSLog(@"[ScreenRecorderImpl::stop] Stop Record failed. %ld\n", stopError.code);
         
@@ -143,19 +146,18 @@
         
         return YES;
     }
-    
 }
 
 - (void)stream:(SCStream *)stream didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer ofType:(SCStreamOutputType)type {
     
-    // 1. ImageBuffer 추출 (CVPixelBufferRef와 동일)
+    // ImageBuffer 추출 (CVPixelBufferRef와 동일)
     CVImageBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
     if (pixelBuffer == NULL) {
         return;
     }
 
     CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
-        
+    
     // 콜백 호출 (osxup 로 화면 데이터 전송)
     _recordCb(sampleBuffer, pixelBuffer, _recordCbUserData);
 

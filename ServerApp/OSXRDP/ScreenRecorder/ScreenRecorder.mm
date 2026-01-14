@@ -9,6 +9,8 @@
 
 
 #define _GET_DISPLAY_USING_INDEX(idx) (__bridge_transfer SCDisplay*)GetDisplay((idx))
+#define _GET_DISPLAY_USING_ID(id) (__bridge_transfer SCDisplay*)GetDisplayById((id))
+
 #define _ALIGN_DOWN_EVEN(v)   ((v) & ~1)
 #define _ALIGN_UP_EVEN(v)     (((v) + 1) & ~1)
 
@@ -42,11 +44,15 @@ ScreenRecorder::~ScreenRecorder() {
         CFRelease(_implFallback);
         _implFallback = NULL;
     }
+    
+    // 가상 모니터 파괴
+    _virtualMonitor.Destroy();
 }
 
 bool ScreenRecorder::StartRecord(xstream_t* cmd) {
     // parse cmd
     int monitorIndex = xstream_readInt32(cmd);
+    (void)monitorIndex; // unused yet
     int width = xstream_readInt32(cmd);
     int height = xstream_readInt32(cmd);
     int framerate = xstream_readInt32(cmd);
@@ -62,12 +68,31 @@ bool ScreenRecorder::StartRecord(xstream_t* cmd) {
     if (width <= 0 || height <= 0) {
         return false;
     }
-
-    SCDisplay* display = _GET_DISPLAY_USING_INDEX(monitorIndex);
+    
+    SCDisplay* display = nil;
+#if 1
+    int monId = _virtualMonitor.Create(width, height);
+    if (monId == -1) {
+        display = _GET_DISPLAY_USING_INDEX(0);
+        if (display == nil){
+            return false;
+        }
+    }
+    else {
+        display = _GET_DISPLAY_USING_ID(monId);
+        if (display == nil){
+            return false;
+        }
+        
+        _virtualMonitor.DisableOtherMonitors();
+    }
+#else
+    display = _GET_DISPLAY_USING_INDEX(0);
     if (display == nil){
         return false;
     }
-    
+#endif
+
     _inputHandler.UpdateDisplayRes((int)display.width, (int)display.height, width, height);
 
     if (CreateRecordShm(width, height, framerate) == false) {
@@ -182,6 +207,8 @@ void ScreenRecorder::Stop() {
         }
     }
     
+    _virtualMonitor.Destroy();
+    
     // 공유 메모리 정리
     DestroyRecordShm();
 }
@@ -238,12 +265,31 @@ void ScreenRecorder::SendDisconnectMsgToClient() {
     xipc_send_data(_client, &msg, sizeof(msg));
 }
 
-void* ScreenRecorder::GetDisplay(int monitorIndex) {
+void* ScreenRecorder::GetDisplay(int unused) {
     __block SCDisplay* found = nil;
     
     dispatch_semaphore_t sema = dispatch_semaphore_create(0);
     [SCShareableContent getShareableContentWithCompletionHandler:^(SCShareableContent * _Nullable content, NSError * _Nullable error) {
         found = content.displays.firstObject;
+        dispatch_semaphore_signal(sema);
+    }];
+
+    dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
+
+    return (__bridge_retained void*)found;
+}
+
+void* ScreenRecorder::GetDisplayById(int monitorId) {
+    __block SCDisplay* found = nil;
+    
+    dispatch_semaphore_t sema = dispatch_semaphore_create(0);
+    [SCShareableContent getShareableContentWithCompletionHandler:^(SCShareableContent * _Nullable content, NSError * _Nullable error) {
+        for (SCDisplay* item in content.displays) {
+            if (item.displayID == monitorId) {
+                found = item;
+                break;
+            }
+        }
         dispatch_semaphore_signal(sema);
     }];
 
@@ -326,23 +372,42 @@ void ScreenRecorder::HandleNV12DirtyArea(void* sampleBuffer, void* imgBuffer, sc
 
     size_t packedImgSize = (width * height) + (width * (height / 2));
 
+    const size_t rowBytes = width;
+
     // 공유 메모리 헤더 작성 (크기 정보)
     memcpy(screenrecord_data, &packedImgSize, sizeof(size_t));
-
-    // 데이터 쓰기 시작 위치
     uint8_t* dstData = (uint8_t*)(screenrecord_data + sizeof(size_t));
 
-    // copy y plain
-    for (size_t row = 0; row < height; row++) {
-        memcpy(dstData + (row * width), ySrcBase + (row * yStride), width);
+    if (yStride == rowBytes) {
+        // 패딩이 없으면 한 번에 복사
+        memcpy(dstData, ySrcBase, rowBytes * height);
+    }
+    else {
+        // 패딩이 있으면 한 줄씩 복사
+        uint8_t* src = ySrcBase;
+        uint8_t* dst = dstData;
+        for (size_t row = 0; row < height; ++row) {
+            memcpy(dst, src, rowBytes);
+            src += yStride;
+            dst += rowBytes;
+        }
     }
 
-    // copy uv plain
-    size_t yDataSize = width * height;
-    uint8_t* dstUV = dstData + yDataSize;
+    uint8_t* dstUV = dstData + (width * height); // Y 데이터 끝 바로 다음
+    const size_t uvHeight = height / 2;
 
-    for (size_t row = 0; row < height / 2; row++) {
-        memcpy(dstUV + (row * width), uvSrcBase + (row * uvStride), width);
+    if (uvStride == rowBytes) {
+        // 패딩이 없으면 한 번에 복사
+        memcpy(dstUV, uvSrcBase, rowBytes * uvHeight);
+    }
+    else {
+        uint8_t* src = uvSrcBase;
+        uint8_t* dst = dstUV;
+        for (size_t row = 0; row < uvHeight; ++row) {
+            memcpy(dst, src, rowBytes);
+            src += uvStride;
+            dst += rowBytes;
+        }
     }
         
     current_frame->dirtyCount = 0;
@@ -392,17 +457,24 @@ void ScreenRecorder::HandleBGRA32DirtyArea(void* sampleBuffer, void* imgBuffer, 
     size_t bytesPerRow = CVPixelBufferGetBytesPerRow(imageBuffer);
     size_t width = CVPixelBufferGetWidth(imageBuffer);
     size_t height = CVPixelBufferGetHeight(imageBuffer);
-    size_t imgSize = bytesPerRow * height;
     
-    void* rawImageBuffer = CVPixelBufferGetBaseAddress(imageBuffer);
-    if (rawImageBuffer == NULL || imgSize == 0) {
+    uint8_t* rawImageBuffer = (uint8_t*)CVPixelBufferGetBaseAddress(imageBuffer);
+    if (rawImageBuffer == NULL || width == 0 || height == 0) {
         return;
     }
     
+    size_t rowSize = width * 4;
+    size_t imgSize = rowSize * height;
+
     // 1프레임의 이미지를 공유 메모리에 복사
     memcpy(screenrecord_data, &imgSize, sizeof(size_t));
-    memcpy(screenrecord_data + sizeof(size_t), rawImageBuffer, imgSize);
     
+    // 이미지 복사 (패딩을 제거하면서)
+    uint8_t* dest = (uint8_t*)screenrecord_data + sizeof(size_t);
+    for (size_t y = 0; y < height; ++y) {
+        memcpy(dest + y * rowSize, rawImageBuffer + (y * bytesPerRow), rowSize);
+    }
+        
     current_frame->dirtyCount = 0;
     
     if (g_fullredraw == 1) {
@@ -485,23 +557,42 @@ void ScreenRecorder::HandleFallbackNV12DirtyArea(void* pixelBuffer, screenrecord
 
     size_t packedImgSize = (width * height) + (width * (height / 2));
 
+    const size_t rowBytes = width;
+
     // 공유 메모리 헤더 작성 (크기 정보)
     memcpy(screenrecord_data, &packedImgSize, sizeof(size_t));
-
-    // 데이터 쓰기 시작 위치
     uint8_t* dstData = (uint8_t*)(screenrecord_data + sizeof(size_t));
 
-    // copy y plain
-    for (size_t row = 0; row < height; row++) {
-        memcpy(dstData + (row * width), ySrcBase + (row * yStride), width);
+    if (yStride == rowBytes) {
+        // 패딩이 없으면 한 번에 복사
+        memcpy(dstData, ySrcBase, rowBytes * height);
+    }
+    else {
+        // 패딩이 있으면 한 줄씩 복사
+        uint8_t* src = ySrcBase;
+        uint8_t* dst = dstData;
+        for (size_t row = 0; row < height; ++row) {
+            memcpy(dst, src, rowBytes);
+            src += yStride;
+            dst += rowBytes;
+        }
     }
 
-    // copy uv plain
-    size_t yDataSize = width * height;
-    uint8_t* dstUV = dstData + yDataSize;
+    uint8_t* dstUV = dstData + (width * height); // Y 데이터 끝 바로 다음
+    const size_t uvHeight = height / 2;
 
-    for (size_t row = 0; row < height / 2; row++) {
-        memcpy(dstUV + (row * width), uvSrcBase + (row * uvStride), width);
+    if (uvStride == rowBytes) {
+        // 패딩이 없으면 한 번에 복사
+        memcpy(dstUV, uvSrcBase, rowBytes * uvHeight);
+    }
+    else {
+        uint8_t* src = uvSrcBase;
+        uint8_t* dst = dstUV;
+        for (size_t row = 0; row < uvHeight; ++row) {
+            memcpy(dst, src, rowBytes);
+            src += uvStride;
+            dst += rowBytes;
+        }
     }
         
     current_frame->dirtyCount = 0;
@@ -561,16 +652,23 @@ void ScreenRecorder::HandleFallbackBGRA32DirtyArea(void* pixelBuffer, screenreco
     size_t bytesPerRow = CVPixelBufferGetBytesPerRow(imageBuffer);
     size_t width = CVPixelBufferGetWidth(imageBuffer);
     size_t height = CVPixelBufferGetHeight(imageBuffer);
-    size_t imgSize = bytesPerRow * height;
     
-    void* rawImageBuffer = CVPixelBufferGetBaseAddress(imageBuffer);
-    if (rawImageBuffer == NULL || imgSize == 0) {
+    uint8_t* rawImageBuffer = (uint8_t*)CVPixelBufferGetBaseAddress(imageBuffer);
+    if (rawImageBuffer == NULL || width == 0 || height == 0) {
         return;
     }
     
+    size_t rowSize = width * 4;
+    size_t imgSize = rowSize * height;
+
     // 1프레임의 이미지를 공유 메모리에 복사
     memcpy(screenrecord_data, &imgSize, sizeof(size_t));
-    memcpy(screenrecord_data + sizeof(size_t), rawImageBuffer, imgSize);
+    
+    // 이미지 복사 (패딩을 제거하면서)
+    uint8_t* dest = (uint8_t*)screenrecord_data + sizeof(size_t);
+    for (size_t y = 0; y < height; ++y) {
+        memcpy(dest + y * rowSize, rawImageBuffer + (y * bytesPerRow), rowSize);
+    }
     
     current_frame->dirtyCount = 0;
     
@@ -599,15 +697,10 @@ void ScreenRecorder::ProcessDirtyArea(CGRect* rect, int limX, int limY) {
     const CGFloat orgH = rect->size.height;
 
     // padding 추가 (이것이 없을 경우 화면 해상도가 1:1 이 아닌 경우 창의 끝부분 잔상이 남는 경우가 있음)
-    int x0 = (int)floor(orgX) - 2;
-    int y0 = (int)floor(orgY) - 2;
-    int x1 = (int)ceil(orgX + orgW) + 2;
-    int y1 = (int)ceil(orgY + orgH) + 2;
-
-    x0 = MAX(0, x0);
-    y0 = MAX(0, y0);
-    x1 = MIN(limX, x1);
-    y1 = MIN(limY, y1);
+    int x0 = (int)orgX - 2;
+    int y0 = (int)orgY - 2;
+    int x1 = (int)(orgX + orgW + 2.99f);
+    int y1 = (int)(orgY + orgH + 2.99f);
 
     // 4:2:0 정렬
     x0 = _ALIGN_DOWN_EVEN(x0);

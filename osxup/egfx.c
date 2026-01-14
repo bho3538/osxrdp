@@ -115,9 +115,9 @@ void osxup_end_frame(struct mod* mod, unsigned int frame_id) {
 }
 
 void osxup_draw_frame(struct mod* mod, unsigned int frame_id, screenrecord_frame_t* frameInfo, char* bitmapData, int bitmapDataLen) {
+    xstream_t* cmd = mod->paint_egfx_cmd;
     
-    xstream_t* cmd = xstream_create(4096);
-    if (cmd == NULL) return;
+    xstream_resetPos(cmd);
     
     // header
     xstream_writeInt16(cmd, 0x1); // cmdId
@@ -176,8 +176,6 @@ void osxup_draw_frame(struct mod* mod, unsigned int frame_id, screenrecord_frame
     *(int*)((char*)cmd->data_start + sizeof(int)) = dataLen;
 
     _osxup_send_egfx_cmd_with_data(mod, (char*)cmd->data_start, dataLen, bitmapData, bitmapDataLen);
-    
-    xstream_free(cmd);
 }
 
 void _osxup_send_egfx_cmd(struct mod* mod, char* cmd, int cmd_bytes) {

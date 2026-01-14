@@ -183,6 +183,9 @@ struct mod
     struct timespec lastMouseMove;
     
     struct xrdp_client_info client_info;
+    
+    // paint egfx cmd memory
+    xstream_t* paint_egfx_cmd;
 };
 
 #endif /* osxup_h */

@@ -16,6 +16,7 @@ typedef struct xstream {
 xstream_t* xstream_create(int initialSize);
 xstream_t* xstream_create_for_read(void* data, int dataSize);
 void xstream_free(xstream_t* stream);
+void xstream_resetPos(xstream_t* stream);
 
 const void* xstream_get_raw_buffer(xstream_t* stream, int* bufferLen);
 

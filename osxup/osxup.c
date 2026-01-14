@@ -56,6 +56,10 @@ lib_ipc_onmessage(xipc_t* t, xipc_t* client, void* data, int len) {
                     mod->screenShm = xshm_open(shm_name);
                     if (mod->screenShm && mod->screenShm->mem) {
                         osxup_create_surface(mod);
+                        
+                        // prepare egfx cmd buffer
+                        mod->paint_egfx_cmd = xstream_create(4096);
+                        
                         // start paint thread
                         mod->runPaint = 1;
                     }
@@ -155,7 +159,7 @@ static int
 lib_mod_event(struct mod *mod, int msg, long param1, long param2,
               long param3, long param4)
 {
-    // 화면이 돌아갈때만 처리?
+    // 화면이 돌아갈때만 처리
     if (mod->runPaint == 0) return 0;
     
     switch (msg) {
@@ -359,6 +363,11 @@ mod_exit(void* handle)
         
         // ipc 스레드가 완전히 정지할때까지 대기
         pthread_join(mod->ipcThread, NULL);
+    }
+    
+    // egfx 명령 버퍼 해제
+    if (mod->paint_egfx_cmd) {
+        xstream_free(mod->paint_egfx_cmd);
     }
     
     // 해제

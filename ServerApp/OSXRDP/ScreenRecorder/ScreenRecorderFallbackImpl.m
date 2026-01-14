@@ -45,10 +45,10 @@
     _recordConfig = @{
         (__bridge NSString*)kCGDisplayStreamShowCursor : @NO,
         (__bridge NSString*)kCGDisplayStreamQueueDepth : @3,
-        (__bridge NSString*)kCGDisplayStreamMinimumFrameTime : @0.0167, // 60fps
+        (__bridge NSString*)kCGDisplayStreamMinimumFrameTime : @0.0167,     // 60fps
         (__bridge NSString*)kCGDisplayStreamDestinationRect : (__bridge_transfer NSDictionary*)destRectDict,
-        (__bridge NSString*)kCGDisplayStreamPreserveAspectRatio : @NO,
-        (__bridge NSString*)kCGDisplayStreamColorSpace : (__bridge id)sRGB,
+        (__bridge NSString*)kCGDisplayStreamPreserveAspectRatio : @NO,      // 비율 무시하고 녹화 (늘리기)
+        (__bridge NSString*)kCGDisplayStreamColorSpace : (__bridge id)sRGB, // 이 설정이 없으면 물빠진 색감이 나옴
     };
     
     CGColorSpaceRelease(sRGB);
@@ -58,21 +58,24 @@
                                                      IOSurfaceRef frameSurface,
                                                      CGDisplayStreamUpdateRef updateRef) {
         if (status == kCGDisplayStreamFrameStatusFrameComplete && frameSurface != NULL) {
+            // 녹화 콜백
             [self processFrame:frameSurface displayTime:displayTime update:updateRef];
         }
         else if (status == kCGDisplayStreamFrameStatusStopped) {
+            // 녹화 상태 콜백
             [self processStreamStopped];
         }
     };
     
     _recordQue = dispatch_queue_create("osxrdp.fallback_record", DISPATCH_QUEUE_SERIAL);
     
-    int format = kCVPixelFormatType_32BGRA;
+    int format = kCVPixelFormatType_32BGRA; // 일반 bitmap
     if (recordFormat == OSXRDP_RECORDFORMAT_NV12) {
-        format = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
+        format = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange; // h264
     }
     
     _displayStream = CGDisplayStreamCreateWithDispatchQueue([display displayID], width, height, format, (__bridge CFDictionaryRef)_recordConfig, _recordQue, handler);
+    
     _recordCb = recordCb;
     _recordCbUserData = userData;
     _recordCmdCb = recordCmdCb;
@@ -129,14 +132,16 @@
         return;
     }
     
-    // get dirty area
+    // dirty 영역을 조회
     size_t dirtyRectsCnt= 0;
     const CGRect* dirtyRects = CGDisplayStreamUpdateGetRects(updateRef, kCGDisplayStreamUpdateDirtyRects, &dirtyRectsCnt);
     CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
     
+    // 녹화 콜백 전달
     _recordCb(pixelBuffer, dirtyRects, (int)dirtyRectsCnt, _recordCbUserData);
     
     CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+    
     CVPixelBufferRelease(pixelBuffer);
 }
 
