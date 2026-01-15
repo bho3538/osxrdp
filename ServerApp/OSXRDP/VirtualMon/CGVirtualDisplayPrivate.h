@@ -9,6 +9,13 @@
 
 #import <Cocoa/Cocoa.h>
 #import <CoreGraphics/CoreGraphics.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
+extern CGError CGSConfigureDisplayEnabled(CGDisplayConfigRef cfg, CGDirectDisplayID displayId, bool enabled);
+#ifdef __cplusplus
+}
+#endif
 
 NS_ASSUME_NONNULL_BEGIN
 

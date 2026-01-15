@@ -21,6 +21,10 @@ public:
     
 private:
     __strong CGVirtualDisplay* _virtualDisplay;
+    int _width;
+    int _height;
+    
+    void SetResolution(CGDisplayConfigRef cfg, int width, int height);
 };
 
 #endif /* VirtualMonitor_h */

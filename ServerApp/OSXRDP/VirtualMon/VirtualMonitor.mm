@@ -1,7 +1,9 @@
 #include "VirtualMonitor.h"
 
 VirtualMonitor::VirtualMonitor() :
-    _virtualDisplay(nil)
+    _virtualDisplay(nil),
+    _width(0),
+    _height(0)
 {}
 
 VirtualMonitor::~VirtualMonitor() {
@@ -9,7 +11,6 @@ VirtualMonitor::~VirtualMonitor() {
 }
 
 int VirtualMonitor::Create(int width, int height) {
-    
     // 이미 가상 디스플레이가 있는 경우 뽀개고 다시 만들기
     if (_virtualDisplay != nil) {
         Destroy();
@@ -25,8 +26,8 @@ int VirtualMonitor::Create(int width, int height) {
     desc.maxPixelsWide = width;
     desc.maxPixelsHigh = height;
     desc.sizeInMillimeters = CGSize(width, height);
-    desc.productID = 0x4321;
-    desc.vendorID = 0x1234;
+    desc.productID = 0x4326;
+    desc.vendorID = 0x1222;
     desc.serialNum = 0x0001;
     
     CGVirtualDisplayMode* mode = [[CGVirtualDisplayMode alloc] initWithWidth:width height:height refreshRate:60];
@@ -34,8 +35,27 @@ int VirtualMonitor::Create(int width, int height) {
     
     CGVirtualDisplaySettings* settings = [[CGVirtualDisplaySettings alloc] init];
     if (settings == nil) return -1;
-    settings.hiDPI = 0;
-    settings.modes = @[mode];
+    settings.hiDPI = 1;
+    
+    // 이와 같이 구성을 채우지 않으면 macOS 가 이를 모니터가 아닌 다른 무언가로 인식하여 대화상자를 띄우는것 같음 (airplay 수신기?)
+    // 따라서 기본 구성을 진짜 모니터처럼 넣고 xrdp 해상도를 마지막에 넣는다.
+    settings.modes = @[
+        [[CGVirtualDisplayMode alloc] initWithWidth:3840 height:2160 refreshRate:60],
+        [[CGVirtualDisplayMode alloc] initWithWidth:2560 height:1440 refreshRate:60],
+        [[CGVirtualDisplayMode alloc] initWithWidth:1920 height:1080 refreshRate:60],
+        [[CGVirtualDisplayMode alloc] initWithWidth:1600 height:900 refreshRate:60],
+        [[CGVirtualDisplayMode alloc] initWithWidth:1366 height:768 refreshRate:60],
+        [[CGVirtualDisplayMode alloc] initWithWidth:1280 height:720 refreshRate:60],
+        [[CGVirtualDisplayMode alloc] initWithWidth:2560 height:1600 refreshRate:60],
+        [[CGVirtualDisplayMode alloc] initWithWidth:1920 height:1200 refreshRate:60],
+        [[CGVirtualDisplayMode alloc] initWithWidth:1680 height:1050 refreshRate:60],
+        [[CGVirtualDisplayMode alloc] initWithWidth:1440 height:900 refreshRate:60],
+        [[CGVirtualDisplayMode alloc] initWithWidth:1280 height:800 refreshRate:60],
+        mode
+    ];
+    
+    _width = width;
+    _height = height;
     
     _virtualDisplay = [[CGVirtualDisplay alloc] initWithDescriptor:desc];
     if (_virtualDisplay == nil) return -1;
@@ -48,6 +68,8 @@ int VirtualMonitor::Create(int width, int height) {
 void VirtualMonitor::Destroy() {
     // nil 로 설정하면 알아서 뽀개짐
     _virtualDisplay = nil;
+    _width = 0;
+    _height = 0;
 }
 
 bool VirtualMonitor::DisableOtherMonitors() {
@@ -83,12 +105,18 @@ bool VirtualMonitor::DisableOtherMonitors() {
     
     for (uint32_t i = 0; i < displayCnt; i++) {
         if (displayIds[i] == _virtualDisplay.displayID) {
-            continue;;
+            continue;
         }
-        
-        // 가상 디스플레이를 미러링하도록 구성
-        CGConfigureDisplayMirrorOfDisplay(cfg, displayIds[i], _virtualDisplay.displayID);
+        else {
+            // 가상 디스플레이를 미러링하도록 구성
+            CGConfigureDisplayMirrorOfDisplay(cfg, displayIds[i], _virtualDisplay.displayID);
+            //CGSConfigureDisplayEnabled(cfg, displayIds[i], false);
+        }
     }
+    
+    // 가상 디스플레이의 해상도 설정
+    // macOS 12 에서 미러링 구성 전 해상도를 바꾸면 설정이 풀리는 증상이 발생하여 이곳으로 옮김
+    SetResolution(cfg, _width, _height);
     
     // 설정 저장
     CGCompleteDisplayConfiguration(cfg, kCGConfigureForAppOnly);
@@ -96,4 +124,38 @@ bool VirtualMonitor::DisableOtherMonitors() {
     free(displayIds);
     
     return true;
+}
+
+void VirtualMonitor::SetResolution(CGDisplayConfigRef cfg, int width, int height) {
+    if (cfg == NULL) return;
+    
+    CGDisplayModeRef bestMode = NULL;
+        
+    CFArrayRef modes = CGDisplayCopyAllDisplayModes(_virtualDisplay.displayID, NULL);
+    if (modes == NULL) {
+        return;
+    }
+    
+    CFIndex cnt = CFArrayGetCount(modes);
+    for (CFIndex i = 0; i < cnt; i++) {
+        CGDisplayModeRef mode = (CGDisplayModeRef)CFArrayGetValueAtIndex(modes, i);
+        
+        size_t modeWidth = CGDisplayModeGetWidth(mode);
+        size_t modeHeight = CGDisplayModeGetHeight(mode);
+        
+        if (modeWidth == width && modeHeight == height) {
+            bestMode = mode;
+            break;
+        }
+    }
+    
+    if (bestMode == NULL) {
+        CFRelease(modes);
+        
+        return;
+    }
+    
+    CGConfigureDisplayWithDisplayMode(cfg, _virtualDisplay.displayID, bestMode, NULL);
+    
+    CFRelease(modes);
 }
