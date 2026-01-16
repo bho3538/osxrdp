@@ -69,6 +69,9 @@ bool ScreenRecorder::StartRecord(xstream_t* cmd) {
         return false;
     }
     
+    width &= ~0x1;
+    height &= ~0x1;
+
     SCDisplay* display = nil;
 #if 1
     int monId = _virtualMonitor.Create(width, height);

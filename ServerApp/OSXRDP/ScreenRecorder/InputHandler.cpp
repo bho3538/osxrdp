@@ -183,12 +183,20 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
             _inMouseDown = 0;
             break;
         }
+        case XRDP_MOUSE_MBTNDOWN: {
+            ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseDown, point, (CGMouseButton)2);
+            break;
+        }
+        case XRDP_MOUSE_MBTNUP: {
+            ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseUp, point, (CGMouseButton)2);
+            break;
+        }
         case XRDP_MOUSE_WHEELUP : {
-            ev = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitPixel, 1, 35, 0);
+            ev = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitLine, 1, 3, 0);
             break;
         }
         case XRDP_MOUSE_WHEELDOWN : {
-            ev = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitPixel, 1, -35, 0);
+            ev = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitLine, 1, -3, 0);
             break;
         }
         case XRDP_MOUSE_BBTNUP: {
@@ -246,7 +254,6 @@ void InputHandler::HandleKeyboardInputEvent(xstream_t* cmd) {
         case XRDP_KEYBOARD_UP: {
             ev = CGEventCreateKeyboardEvent(_eventRef, keyCode, false);
             UpdateKeyboardModifierState(keyCode, false);
-
             break;
         }
         default:

@@ -3,7 +3,9 @@
 VirtualMonitor::VirtualMonitor() :
     _virtualDisplay(nil),
     _width(0),
-    _height(0)
+    _height(0),
+    _disabledDisplayIds(NULL),
+    _disabledDisplayIdsCnt(0)
 {}
 
 VirtualMonitor::~VirtualMonitor() {
@@ -32,6 +34,9 @@ int VirtualMonitor::Create(int width, int height) {
     
     CGVirtualDisplayMode* mode = [[CGVirtualDisplayMode alloc] initWithWidth:width height:height refreshRate:60];
     if (mode == nil) return -1;
+    
+    //CGVirtualDisplayMode* retinaMode = [[CGVirtualDisplayMode alloc] initWithWidth:width * 2 height:height * 2 refreshRate:60];
+    //if (mode == nil) return -1;
     
     CGVirtualDisplaySettings* settings = [[CGVirtualDisplaySettings alloc] init];
     if (settings == nil) return -1;
@@ -70,6 +75,34 @@ void VirtualMonitor::Destroy() {
     _virtualDisplay = nil;
     _width = 0;
     _height = 0;
+    
+    // 비활성화한 디스플레이 롤백
+    RestoreOtherMonitors();
+}
+
+void VirtualMonitor::RestoreOtherMonitors() {
+    if (_disabledDisplayIdsCnt == 0 || _disabledDisplayIds == NULL) {
+        return;
+    }
+    
+    CGDisplayConfigRef cfg = NULL;
+    CGBeginDisplayConfiguration(&cfg);
+    
+    if (cfg == NULL) {
+        return;
+    }
+    
+    // 다시 켜기
+    for (uint32_t i = 0; i < _disabledDisplayIdsCnt; i++) {
+        CGSConfigureDisplayEnabled(cfg, _disabledDisplayIds[i], true);
+    }
+    
+    free(_disabledDisplayIds);
+    _disabledDisplayIds = NULL;
+    _disabledDisplayIdsCnt = 0;
+    
+    // 설정 저장
+    CGCompleteDisplayConfiguration(cfg, kCGConfigureForAppOnly);
 }
 
 bool VirtualMonitor::DisableOtherMonitors() {
@@ -94,6 +127,13 @@ bool VirtualMonitor::DisableOtherMonitors() {
         return false;
     }
     
+    _disabledDisplayIds = (uint32_t*)malloc(sizeof(uint32_t) * displayCnt);
+    if (_disabledDisplayIds == NULL) {
+        free(displayIds);
+        
+        return false;
+    }
+    
     CGDisplayConfigRef cfg = NULL;
     CGBeginDisplayConfiguration(&cfg);
     
@@ -103,20 +143,22 @@ bool VirtualMonitor::DisableOtherMonitors() {
         return false;
     }
     
+    // 가상 디스플레이의 해상도 설정
+    SetResolution(cfg, _width, _height);
+    
     for (uint32_t i = 0; i < displayCnt; i++) {
         if (displayIds[i] == _virtualDisplay.displayID) {
             continue;
         }
         else {
-            // 가상 디스플레이를 미러링하도록 구성
-            CGConfigureDisplayMirrorOfDisplay(cfg, displayIds[i], _virtualDisplay.displayID);
-            //CGSConfigureDisplayEnabled(cfg, displayIds[i], false);
+            // 가상 디스플레이를 끄도록 구성
+            CGSConfigureDisplayEnabled(cfg, displayIds[i], false);
+            
+            // 나중에 복원할 수 있도록 id 를 저장
+            _disabledDisplayIds[_disabledDisplayIdsCnt] = displayIds[i];
+            _disabledDisplayIdsCnt++;
         }
     }
-    
-    // 가상 디스플레이의 해상도 설정
-    // macOS 12 에서 미러링 구성 전 해상도를 바꾸면 설정이 풀리는 증상이 발생하여 이곳으로 옮김
-    SetResolution(cfg, _width, _height);
     
     // 설정 저장
     CGCompleteDisplayConfiguration(cfg, kCGConfigureForAppOnly);

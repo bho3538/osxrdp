@@ -35,9 +35,9 @@ int osxup_send_stop_cmd(xipc_t* ipc) {
     return 0;
 }
 
-int osxup_send_input(xipc_t* ipc, int inputType, short x, short y) {
-    xstream_t* stream = xstream_create(32);
-
+int osxup_send_input(xstream_t* stream, xipc_t* ipc, int inputType, short x, short y) {
+    xstream_resetPos(stream);
+    
     xstream_writeInt32(stream, OSXRDP_CMDTYPE_SCREEN);
     xstream_writeInt32(stream, OSXRDP_PACKETTYPE_MOUSEEVT);
     xstream_writeInt32(stream, inputType);
@@ -46,13 +46,12 @@ int osxup_send_input(xipc_t* ipc, int inputType, short x, short y) {
 
     _osxup_send_cmd(ipc, stream);
 
-    xstream_free(stream);
     
     return 0;
 }
 
-int osxup_send_keyboard_input(xipc_t* ipc, int inputType, int keycode, int flags) {
-    xstream_t* stream = xstream_create(32);
+int osxup_send_keyboard_input(xstream_t* stream, xipc_t* ipc, int inputType, int keycode, int flags) {
+    xstream_resetPos(stream);
 
     xstream_writeInt32(stream, OSXRDP_CMDTYPE_SCREEN);
     xstream_writeInt32(stream, OSXRDP_PACKETTYPE_KEYBOARDEVT);
@@ -61,8 +60,6 @@ int osxup_send_keyboard_input(xipc_t* ipc, int inputType, int keycode, int flags
     xstream_writeInt32(stream, flags);
 
     _osxup_send_cmd(ipc, stream);
-
-    xstream_free(stream);
     
     return 0;
 }

@@ -16,6 +16,9 @@ void set_nonBlocking(int fd)
 {
     int flags = fcntl(fd, F_GETFL, 0);
     fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    
+    int one = 1;
+    setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one));
 }
 
 void remove_at_clients_list(xipc_t* server, xipc_t* client)
@@ -125,6 +128,16 @@ void xipc_destroy(xipc_t* ipc)
             
             free(tmp->data);
             free(tmp);
+        }
+    }
+    
+    if (ipc->isServer == 1 && ipc->closed == 1 && ipc->on_client_disconnected)
+    {
+        xipc_t* client = ipc->next;
+        while (client != NULL) {
+            ipc->on_client_disconnected(ipc, client);
+            
+            client = client->next;
         }
     }
     

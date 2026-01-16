@@ -115,7 +115,7 @@ void osxup_end_frame(struct mod* mod, unsigned int frame_id) {
 }
 
 void osxup_draw_frame(struct mod* mod, unsigned int frame_id, screenrecord_frame_t* frameInfo, char* bitmapData, int bitmapDataLen) {
-    xstream_t* cmd = mod->paint_egfx_cmd;
+    xstream_t* cmd = mod->msgs.paint_msg;
     
     xstream_resetPos(cmd);
     

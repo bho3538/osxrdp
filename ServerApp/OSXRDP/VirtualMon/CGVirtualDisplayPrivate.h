@@ -12,7 +12,9 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-extern CGError CGSConfigureDisplayEnabled(CGDisplayConfigRef cfg, CGDirectDisplayID displayId, bool enabled);
+
+    extern CGError CGSConfigureDisplayEnabled(CGDisplayConfigRef cfg, CGDirectDisplayID displayId, bool enabled);
+
 #ifdef __cplusplus
 }
 #endif

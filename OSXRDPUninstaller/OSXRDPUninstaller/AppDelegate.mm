@@ -33,6 +33,12 @@
 - (IBAction)onYesBtnClicked:(id)sender {
     UninstallManager manager;
     if(manager.Elevate() == false) {
+        NSAlert *alert = [[NSAlert alloc] init];
+        [alert setMessageText:@"OSXRDP Uninstaller"];
+        [alert setInformativeText:@"Elevated privileges required."];
+        [alert addButtonWithTitle:@"OK"];
+        [alert runModal];
+        
         return;
     }
     
