@@ -21,6 +21,19 @@
 2. Yes 를 클릭하여 삭제를 진행합니다. \
    <img width="593" height="274" alt="" src="https://github.com/user-attachments/assets/23f023e8-26c6-4c63-9221-edfc97ff4b9d" />
 
+## 가상 모니터 사용
+osxrdp 1.3 버전부터 가상 모니터 기능을 지원합니다. 이 기능은 원격 제어 해상도를 호스트 컴퓨터의 모니터 해상도와 관계없이 클라이언트 크기와 동일하게 설정해 줍니다.\
+가상 모니터 기능을 사용할 경우 클라이언트 해상도에 맞추어 호스트 컴퓨터의 화면이 제공됩니다. 따라서 우수한 화질로 호스트 컴퓨터를 제어할 수 있습니다.\
+가상 모니터 기능을 사용할 경우 원격 세션이 접속중일 때 호스트 컴퓨터의 모니터가 비활성화됩니다. (ARD의 고성능 모드와 동일합니다.)\
+<img width="1280" height="720" alt="osxrdp_virtdisp" src="https://github.com/user-attachments/assets/2f1559e9-07cb-4ddd-a998-4294a3b8f86d" />
+
+가상 모니터 기능은 초기 접속 화면에서 'Session' 타입을 선택하여 활성화 할 수 있습니다.
+<img width="800" height="500" alt="osxrdp_virtdis_sel" src="https://github.com/user-attachments/assets/ab953d4b-31de-4cab-bf7c-eeabd4bd1601" />
+* osxup :
+  가상 모니터를 활성화하여 원격 제어를 시작합니다.
+* osxup (no virtual display) :
+  가상 모니터를 사용하지 않고 원격 제어를 시작합니다. 가상모니터 사용 시 문제가 발생한 경우 사용하십시오.
+
 ## 기타
 * 지속적인 원격 접속을 위해 시스템 설정에서 '잠자기 (절전 모드)' 및 '모니터 끄기 기능'을 비활성화 하십시오. (물리 모니터의 전원은 off 해도 상관없습니다)
 
