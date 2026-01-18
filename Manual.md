@@ -20,6 +20,24 @@
 2. Click **Yes** to proceed with uninstallation. \
    <img width="593" height="274" alt="" src="https://github.com/user-attachments/assets/a385fdee-a133-4a96-bff6-77266ed4e670" />
 
+## Using a Virtual Monitor
+
+Starting from **osxrdp 1.3**, osxrdp supports the **Virtual Monitor** feature.\
+This feature sets the remote-control resolution to match the client window size, regardless of the host computer’s physical monitor resolution.\
+When using the Virtual Monitor feature, the host computer’s screen is provided according to the client’s resolution, allowing you to control the host computer with excellent image quality.\
+When the Virtual Monitor feature is enabled, the host computer’s monitor will be disabled while the remote session is connected (similar to ARD’s High Performance mode).
+
+<img width="1280" height="720" alt="osxrdp_virtdisp" src="https://github.com/user-attachments/assets/2f1559e9-07cb-4ddd-a998-4294a3b8f86d" />
+
+You can enable the Virtual Monitor feature by selecting the Session type on the initial connection screen.  
+
+<img width="800" height="500" alt="osxrdp_virtdis_sel" src="https://github.com/user-attachments/assets/ab953d4b-31de-4cab-bf7c-eeabd4bd1601" />
+
+- **osxup**:  
+  Starts remote control with the Virtual Monitor enabled.
+- **osxup (no virtual display)**:  
+  Starts remote control without using the Virtual Monitor. Use this option if you have issues when using the Virtual Monitor.
+
 ## Other
 * You must disable sleep mode and turn off monitor feature for continuous remote access.
 
