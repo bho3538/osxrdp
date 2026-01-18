@@ -7,6 +7,7 @@
 #include "xshm.h"
 #include "osxrdp/screenrecordshm.h"
 #include "InputHandler.h"
+#include "../VirtualMon/VirtualMonitor.h"
 
 class ScreenRecorder {
     
@@ -29,12 +30,16 @@ private:
     // Input handler (mouse, keyboard)
     InputHandler _inputHandler;
     
+    VirtualMonitor _virtualMonitor;
+    
     bool CreateRecordShm(int width, int height, int framerate);
     void DestroyRecordShm();
     
     bool StartRecord(xstream_t* cmd);
     
-    static void* GetDisplay(int monitorIndex);
+    static void* GetDisplay(int unused);
+    static void* GetDisplayById(int unused);
+
     
     // 녹화 데이터 처리기
     static void HandleBGRA32RecordData(void* sampleBuffer, void* imgBuffer, void* userData);
@@ -49,8 +54,7 @@ private:
     static void HandleFallbackNV12RecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData);
     static void HandleFallbackNV12DirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data);
     
-    static void ProcessDirtyArea(CGRect* rect, int limitX, int limitY);
-    
+    inline static void ProcessDirtyArea(const CGRect* rect, int limitX, int limitY, struct RECT* dst);
     
     static void HandleRecordCommand(int cmd, void* userData);
 };

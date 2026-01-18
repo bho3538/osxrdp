@@ -19,6 +19,7 @@ xcuserdata/
 ## App packaging
 *.pkg
 *.app
+*.dylib
 
 ## etc
 *.DS_Store

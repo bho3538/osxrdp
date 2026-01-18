@@ -13,6 +13,12 @@
 
 #define MAX_PATH 260
 
+struct cmd_msgs {
+    xstream_t* paint_msg;
+    xstream_t* mouse_msg;
+    xstream_t* keyboard_msg;
+};
+
 struct mod
 {
     int size; /* size of this struct */
@@ -169,6 +175,7 @@ struct mod
     // custom data
     char username[MAX_PATH];
     char password[MAX_PATH];
+    int usevirtualmon;
     
     int width;
     int height;
@@ -183,6 +190,10 @@ struct mod
     struct timespec lastMouseMove;
     
     struct xrdp_client_info client_info;
+    
+    // paint egfx cmd memory
+    //xstream_t* paint_egfx_cmd;
+    struct cmd_msgs msgs;
 };
 
 #endif /* osxup_h */

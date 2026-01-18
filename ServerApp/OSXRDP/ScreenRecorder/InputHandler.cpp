@@ -111,7 +111,8 @@ InputHandler::InputHandler() :
     _eventRef(0),
     _keyboardModifierFlags(0),
     _mouseClickCnt(0),
-    _lastMouseClickTime(0)
+    _lastMouseClickTime(0),
+    _lastWheelMoveLargeTime(0)
 {
     _eventRef = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
 }
@@ -183,12 +184,22 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
             _inMouseDown = 0;
             break;
         }
+        case XRDP_MOUSE_MBTNDOWN: {
+            ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseDown, point, (CGMouseButton)2);
+            break;
+        }
+        case XRDP_MOUSE_MBTNUP: {
+            ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseUp, point, (CGMouseButton)2);
+            break;
+        }
         case XRDP_MOUSE_WHEELUP : {
-            ev = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitPixel, 1, 35, 0);
+            int amount = GetMouseWheelMoveAmount();
+            ev = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitPixel, 1, amount, 0);
             break;
         }
         case XRDP_MOUSE_WHEELDOWN : {
-            ev = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitPixel, 1, -35, 0);
+            int amount = GetMouseWheelMoveAmount() * -1;
+            ev = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitPixel, 1, amount, 0);
             break;
         }
         case XRDP_MOUSE_BBTNUP: {
@@ -246,7 +257,6 @@ void InputHandler::HandleKeyboardInputEvent(xstream_t* cmd) {
         case XRDP_KEYBOARD_UP: {
             ev = CGEventCreateKeyboardEvent(_eventRef, keyCode, false);
             UpdateKeyboardModifierState(keyCode, false);
-
             break;
         }
         default:
@@ -298,6 +308,21 @@ long long InputHandler::GetCurrentEventTime() {
     struct timeval te;
     gettimeofday(&te, NULL);
     return te.tv_sec * 1000LL + te.tv_usec / 1000;
+}
+
+int InputHandler::GetMouseWheelMoveAmount() {
+    long long currentTime = GetCurrentEventTime();
+    long long gap = currentTime - _lastWheelMoveLargeTime;
+    
+    int scrollAmount = 150;
+    if (gap < 50) {
+        scrollAmount = 5;
+    }
+    else {
+        _lastWheelMoveLargeTime = currentTime;
+    }
+    
+    return scrollAmount;
 }
 
 CGKeyCode InputHandler::MapExtendedKey(int scancode) {

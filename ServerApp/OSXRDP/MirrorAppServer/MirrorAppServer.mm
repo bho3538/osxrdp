@@ -153,19 +153,7 @@ void MirrorAppServer::SignalIoThreadToStop() {
         return;
     }
     
-    // 리스닝 소켓을 닫아 poll이 EBADF로 실패하도록 유도
-    // 주의: 여기서 xipc_destroy를 호출하지 않음(루프가 사용하는 메모리를 파괴하면 안 됨)
-    if (_cmdPipe->fd > 0) {
-        close(_cmdPipe->fd);
-        _cmdPipe->fd = -1;
-    }
-    
-    // wakeup 파이프에 바이트를 써서 즉시 poll을 깨우기
-    // write는 non-blocking으로 설정되어 있음
-    if (_cmdPipe->wakeup_pipe[1] > 0) {
-        const char c = 'S';
-        write(_cmdPipe->wakeup_pipe[1], &c, sizeof(char));
-    }
+    xipc_end_loop(_cmdPipe);
 }
 
 void* MirrorAppServer::IoThreadEntry(void* arg) {
@@ -202,11 +190,17 @@ int MirrorAppServer::OnClientDisconnected(xipc_t* t, xipc_t* client) {
     MirrorAppServer* _this = (MirrorAppServer*)t->user_data;
     _this->_client = NULL;
 
-    if (client->user_data == NULL) return 0;
+    if (client->user_data == NULL)
+        return 0;
     
     struct MirrorAppClientCtx* ctx = (struct MirrorAppClientCtx*)client->user_data;
+    if (ctx == NULL)
+        return 0;
+    
+    ctx->ScreenRecorder->Stop();
     delete ctx->ScreenRecorder;
     free(ctx);
+    
     client->user_data = NULL;
 
     return 0;
@@ -277,6 +271,8 @@ bool MirrorAppServer::IsState(State s) {
 }
 
 ScreenRecorder* MirrorAppServer::CreateScreenRecorder() {
+    // ScreenCaptureKit 은 macOS 12.3 이상부터 사용할 수 있지만, 버그가 있어 사실상 macOS 14 이상부터 사용할 수 있음. (필터링 버그)
+    // 따라서 구형 os 에서는 레거시 API 를 사용하여 화면을 녹화하도록 구성. (성능 차이는 크게 나지 않는것 같음)
     if (@available(macOS 14.0,*)) {
         return new ScreenRecorder(false);
     }

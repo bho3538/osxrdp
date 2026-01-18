@@ -115,9 +115,9 @@ void osxup_end_frame(struct mod* mod, unsigned int frame_id) {
 }
 
 void osxup_draw_frame(struct mod* mod, unsigned int frame_id, screenrecord_frame_t* frameInfo, char* bitmapData, int bitmapDataLen) {
+    xstream_t* cmd = mod->msgs.paint_msg;
     
-    xstream_t* cmd = xstream_create(4096);
-    if (cmd == NULL) return;
+    xstream_resetPos(cmd);
     
     // header
     xstream_writeInt16(cmd, 0x1); // cmdId
@@ -130,44 +130,37 @@ void osxup_draw_frame(struct mod* mod, unsigned int frame_id, screenrecord_frame
     xstream_writeInt8(cmd, 0x20); // pixel_format (BGRA)
     xstream_writeInt32(cmd, 0); // flags?
     
+    char* rects_start_ptr = cmd->data_current;
+    
     // rects
     if (frameInfo->dirtyCount > 0) {
         xstream_writeInt16(cmd, frameInfo->dirtyCount); // num_rects
+        
         for (int i = 0; i < frameInfo->dirtyCount; i++) {
-            xstream_writeInt16(cmd, frameInfo->dirtys[i].origin.x);
-            xstream_writeInt16(cmd, frameInfo->dirtys[i].origin.y);
-            xstream_writeInt16(cmd, frameInfo->dirtys[i].size.width);
-            xstream_writeInt16(cmd, frameInfo->dirtys[i].size.height);
+            xstream_writeInt16(cmd, frameInfo->dirtys[i].x);
+            xstream_writeInt16(cmd, frameInfo->dirtys[i].y);
+            xstream_writeInt16(cmd, frameInfo->dirtys[i].width);
+            xstream_writeInt16(cmd, frameInfo->dirtys[i].height);
         }
     }
     else {
         xstream_writeInt16(cmd, 1); // num_rects
 
-        xstream_writeInt16(cmd, 0);
-        xstream_writeInt16(cmd, 0);
+        //xstream_writeInt16(cmd, 0);
+        //xstream_writeInt16(cmd, 0);
+        xstream_writeInt32(cmd, 0);
         xstream_writeInt16(cmd, mod->width);
         xstream_writeInt16(cmd, mod->height);
     }
     
-    if (frameInfo->dirtyCount > 0) {
-        xstream_writeInt16(cmd, frameInfo->dirtyCount); // num_rects
-        for (int i = 0; i < frameInfo->dirtyCount; i++) {
-            xstream_writeInt16(cmd, frameInfo->dirtys[i].origin.x);
-            xstream_writeInt16(cmd, frameInfo->dirtys[i].origin.y);
-            xstream_writeInt16(cmd, frameInfo->dirtys[i].size.width);
-            xstream_writeInt16(cmd, frameInfo->dirtys[i].size.height);
-        }
-    }
-    else {
-        xstream_writeInt16(cmd, 1); // num_rects
-        xstream_writeInt16(cmd, 0);
-        xstream_writeInt16(cmd, 0);
-        xstream_writeInt16(cmd, mod->width);
-        xstream_writeInt16(cmd, mod->height);
-    }
+    // 한번 더 복사 (그대로)
+    int rects_data_len = (int)((char*)cmd->data_current - rects_start_ptr);
+    memcpy(cmd->data_current, rects_start_ptr, rects_data_len);
+    cmd->data_current += rects_data_len;
     
-    xstream_writeInt16(cmd, 0);
-    xstream_writeInt16(cmd, 0);
+    //xstream_writeInt16(cmd, 0);
+    //xstream_writeInt16(cmd, 0);
+    xstream_writeInt32(cmd, 0);
     xstream_writeInt16(cmd, mod->width);
     xstream_writeInt16(cmd, mod->height);
     
@@ -176,8 +169,6 @@ void osxup_draw_frame(struct mod* mod, unsigned int frame_id, screenrecord_frame
     *(int*)((char*)cmd->data_start + sizeof(int)) = dataLen;
 
     _osxup_send_egfx_cmd_with_data(mod, (char*)cmd->data_start, dataLen, bitmapData, bitmapDataLen);
-    
-    xstream_free(cmd);
 }
 
 void _osxup_send_egfx_cmd(struct mod* mod, char* cmd, int cmd_bytes) {

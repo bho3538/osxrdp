@@ -15,6 +15,20 @@
 #include "egfx.h"
 #include "utils.h"
 
+static void
+lib_init_msgs(struct mod* mod) {
+    mod->msgs.paint_msg = xstream_create(4096);
+    mod->msgs.mouse_msg = xstream_create(32);
+    mod->msgs.keyboard_msg = xstream_create(32);
+}
+
+static void
+lib_release_msgs(struct mod* mod) {
+    xstream_free(mod->msgs.paint_msg);
+    xstream_free(mod->msgs.mouse_msg);
+    xstream_free(mod->msgs.keyboard_msg);
+}
+
 static void*
 lib_ipc_thread(void* args) {
     
@@ -56,6 +70,7 @@ lib_ipc_onmessage(xipc_t* t, xipc_t* client, void* data, int len) {
                     mod->screenShm = xshm_open(shm_name);
                     if (mod->screenShm && mod->screenShm->mem) {
                         osxup_create_surface(mod);
+
                         // start paint thread
                         mod->runPaint = 1;
                     }
@@ -88,6 +103,13 @@ lib_mod_start(struct mod *mod, int w, int h, int bpp)
     mod->width = w;
     mod->height = h;
     mod->bpp = bpp;
+    
+    // 홀수 해상도일 경우 nv12 인코딩에서 문제가 발생...
+    mod->width &= ~0x1;
+    mod->height &= ~0x1;
+    
+    lib_init_msgs(mod);
+    
     return 0;
 }
 
@@ -144,7 +166,7 @@ lib_mod_connect(struct mod *mod, int fd)
     pthread_create(&mod->ipcThread, NULL, lib_ipc_thread, (void*)mod);
     
     // send record command to agent
-    osxup_send_start_cmd(mod->cmdIpc, mod->width, mod->height, recordFormat);
+    osxup_send_start_cmd(mod->cmdIpc, mod->width, mod->height, recordFormat, mod->usevirtualmon);
 
     return 0;
 }
@@ -155,13 +177,13 @@ static int
 lib_mod_event(struct mod *mod, int msg, long param1, long param2,
               long param3, long param4)
 {
-    // 화면이 돌아갈때만 처리?
+    // 화면이 돌아갈때만 처리
     if (mod->runPaint == 0) return 0;
     
     switch (msg) {
         case XRDP_KEYBOARD_UP:
         case XRDP_KEYBOARD_DOWN: {
-            osxup_send_keyboard_input(mod->cmdIpc, msg, (int)param3, (int)param4);
+            osxup_send_keyboard_input(mod->msgs.keyboard_msg, mod->cmdIpc, msg, (int)param3, (int)param4);
             break;
         }
             
@@ -181,7 +203,7 @@ lib_mod_event(struct mod *mod, int msg, long param1, long param2,
             short x = (short)param1;
             short y = (short)param2;
             
-            osxup_send_input(mod->cmdIpc, msg, x, y);
+            osxup_send_input(mod->msgs.mouse_msg, mod->cmdIpc, msg, x, y);
             
             break;
         }
@@ -215,17 +237,22 @@ lib_mod_end(struct mod *mod)
 static int
 lib_mod_set_param(struct mod *mod, const char *name, const char *value)
 {
-    if (strcasecmp(name, "username") == 0)
-    {
+    if (strcasecmp(name, "username") == 0) {
         strncpy(mod->username, value, MAX_PATH - 1);
     }
-    else if (strcasecmp(name, "password") == 0)
-    {
+    else if (strcasecmp(name, "password") == 0) {
         strncpy(mod->password, value, MAX_PATH - 1);
     }
-    else if (strcasecmp(name, "client_info") == 0)
-    {
+    else if (strcasecmp(name, "client_info") == 0) {
         memcpy(&(mod->client_info), value, sizeof(mod->client_info));
+    }
+    else if (strcasecmp(name, "virtualmon") == 0) {
+        if (strcasecmp(value, "yes") == 0) {
+            mod->usevirtualmon = 1;
+        }
+        else {
+            mod->usevirtualmon = 0;
+        }
     }
 
     return 0;
@@ -359,7 +386,11 @@ mod_exit(void* handle)
         
         // ipc 스레드가 완전히 정지할때까지 대기
         pthread_join(mod->ipcThread, NULL);
+        
+        xipc_destroy(mod->cmdIpc);
     }
+    
+    lib_release_msgs(mod);
     
     // 해제
     free(mod);

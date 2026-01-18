@@ -55,6 +55,14 @@ xstream_t* xstream_create_for_read(void* data, int dataSize) {
     return stream;
 }
 
+void xstream_resetPos(xstream_t* stream) {
+    if (stream == NULL) {
+        return;
+    }
+    
+    stream->data_current = stream->data_start;
+}
+
 void xstream_free(xstream_t* stream) {
     if (stream == NULL) return;
     
