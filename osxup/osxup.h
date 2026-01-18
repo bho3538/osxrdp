@@ -175,6 +175,7 @@ struct mod
     // custom data
     char username[MAX_PATH];
     char password[MAX_PATH];
+    int usevirtualmon;
     
     int width;
     int height;

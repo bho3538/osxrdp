@@ -4,7 +4,7 @@
 
 void _osxup_send_cmd(xipc_t* ipc, xstream_t* stream);
 
-int osxup_send_start_cmd(xipc_t* ipc, int width, int height, int recordFormat) {
+int osxup_send_start_cmd(xipc_t* ipc, int width, int height, int recordFormat, int useVirtualmon) {
     xstream_t* stream = xstream_create(64);
 
     xstream_writeInt32(stream, OSXRDP_CMDTYPE_SCREEN);
@@ -14,6 +14,7 @@ int osxup_send_start_cmd(xipc_t* ipc, int width, int height, int recordFormat) {
     xstream_writeInt32(stream, height);         // height
     xstream_writeInt32(stream, 60);             // fps
     xstream_writeInt32(stream, recordFormat);   // recordFormat (BGRA32, NV12)
+    xstream_writeInt32(stream, useVirtualmon);  // use virtual monitor (0, 1)
 
     _osxup_send_cmd(ipc, stream);
 

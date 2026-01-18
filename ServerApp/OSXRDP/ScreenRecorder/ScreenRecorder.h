@@ -54,7 +54,7 @@ private:
     static void HandleFallbackNV12RecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData);
     static void HandleFallbackNV12DirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data);
     
-    static void ProcessDirtyArea(CGRect* rect, int limitX, int limitY);
+    inline static void ProcessDirtyArea(const CGRect* rect, int limitX, int limitY, struct RECT* dst);
     
     static void HandleRecordCommand(int cmd, void* userData);
 };

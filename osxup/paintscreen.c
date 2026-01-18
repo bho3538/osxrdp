@@ -42,10 +42,10 @@ void osxup_paint(struct mod* mod) {
             
             // dirty area 정보를 담기
             for (int i = 0; i < frameInfo->dirtyCount; i++) {
-                dirtys[i].x = (short)frameInfo->dirtys[i].origin.x;
-                dirtys[i].y = (short)frameInfo->dirtys[i].origin.y;
-                dirtys[i].cx = (short)frameInfo->dirtys[i].size.width;
-                dirtys[i].cy = (short)frameInfo->dirtys[i].size.height;
+                dirtys[i].x = (short)frameInfo->dirtys[i].x;
+                dirtys[i].y = (short)frameInfo->dirtys[i].y;
+                dirtys[i].cx = (short)frameInfo->dirtys[i].width;
+                dirtys[i].cy = (short)frameInfo->dirtys[i].height;
             }
             
             mod->server_paint_rects(mod, frameInfo->dirtyCount, (short*)dirtys, frameInfo->dirtyCount, (short*)dirtys, imgData, mod->width, mod->height, 0 ,frame_id);

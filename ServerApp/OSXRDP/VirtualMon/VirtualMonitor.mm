@@ -28,9 +28,9 @@ int VirtualMonitor::Create(int width, int height) {
     desc.maxPixelsWide = width;
     desc.maxPixelsHigh = height;
     desc.sizeInMillimeters = CGSize(width, height);
-    desc.productID = 0x4326;
-    desc.vendorID = 0x1222;
-    desc.serialNum = 0x0001;
+    desc.productID = 0x5969;
+    desc.vendorID = 0x1207;
+    desc.serialNum = 0x0007;
     
     CGVirtualDisplayMode* mode = [[CGVirtualDisplayMode alloc] initWithWidth:width height:height refreshRate:60];
     if (mode == nil) return -1;

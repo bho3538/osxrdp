@@ -7,12 +7,19 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include "xshm.h"
 
-#define FRAME_SLOTS             3
+#define FRAME_SLOTS             4
 #define MAX_DIRTY_COUNT         128
+
+struct RECT {
+    short x;
+    short y;
+    short width;
+    short height;
+};
 
 typedef struct screenrecord_frame {
     int dirtyCount;  // <--- 이것이 0일 경우 full redraw
-    CGRect dirtys[MAX_DIRTY_COUNT];
+    struct RECT dirtys[MAX_DIRTY_COUNT];
 } screenrecord_frame_t;
 
 typedef struct screenrecord_shm {

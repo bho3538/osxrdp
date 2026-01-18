@@ -47,7 +47,7 @@
     _recordConfig = [[SCStreamConfiguration alloc] init];
     _recordConfig.width = width;
     _recordConfig.height = height;
-    _recordConfig.queueDepth = 3;
+    _recordConfig.queueDepth = 4;
     
     // 이 값이 없으면 물빠진 색감이 나옴
     _recordConfig.colorSpaceName = kCGColorSpaceSRGB;

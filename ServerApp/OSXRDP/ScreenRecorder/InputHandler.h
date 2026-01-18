@@ -29,12 +29,14 @@ private:
     int _inMouseDown;
     int _mouseClickCnt;
     long long _lastMouseClickTime;
+    long long _lastWheelMoveLargeTime;
     
     CGEventFlags _keyboardModifierFlags;
     
     CGEventSourceRef _eventRef;
     
     void HandleMouseDoubleClick(CGEventRef ev, bool mouseDown, int mouseX, int mouseY);
+    int GetMouseWheelMoveAmount();
     
     static int CalcPos(int clientPos, float scale);
     

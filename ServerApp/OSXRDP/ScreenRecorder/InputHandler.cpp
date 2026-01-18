@@ -111,7 +111,8 @@ InputHandler::InputHandler() :
     _eventRef(0),
     _keyboardModifierFlags(0),
     _mouseClickCnt(0),
-    _lastMouseClickTime(0)
+    _lastMouseClickTime(0),
+    _lastWheelMoveLargeTime(0)
 {
     _eventRef = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
 }
@@ -192,11 +193,13 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
             break;
         }
         case XRDP_MOUSE_WHEELUP : {
-            ev = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitLine, 1, 3, 0);
+            int amount = GetMouseWheelMoveAmount();
+            ev = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitPixel, 1, amount, 0);
             break;
         }
         case XRDP_MOUSE_WHEELDOWN : {
-            ev = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitLine, 1, -3, 0);
+            int amount = GetMouseWheelMoveAmount() * -1;
+            ev = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitPixel, 1, amount, 0);
             break;
         }
         case XRDP_MOUSE_BBTNUP: {
@@ -305,6 +308,21 @@ long long InputHandler::GetCurrentEventTime() {
     struct timeval te;
     gettimeofday(&te, NULL);
     return te.tv_sec * 1000LL + te.tv_usec / 1000;
+}
+
+int InputHandler::GetMouseWheelMoveAmount() {
+    long long currentTime = GetCurrentEventTime();
+    long long gap = currentTime - _lastWheelMoveLargeTime;
+    
+    int scrollAmount = 150;
+    if (gap < 50) {
+        scrollAmount = 5;
+    }
+    else {
+        _lastWheelMoveLargeTime = currentTime;
+    }
+    
+    return scrollAmount;
 }
 
 CGKeyCode InputHandler::MapExtendedKey(int scancode) {

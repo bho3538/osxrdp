@@ -14,8 +14,6 @@
 #define _ALIGN_DOWN_EVEN(v)   ((v) & ~1)
 #define _ALIGN_UP_EVEN(v)     (((v) + 1) & ~1)
 
-static volatile int g_fullredraw = 1;
-
 ScreenRecorder::ScreenRecorder(bool useLegacyRecorder) :
     _impl(NULL),
     _implFallback(NULL),
@@ -57,6 +55,7 @@ bool ScreenRecorder::StartRecord(xstream_t* cmd) {
     int height = xstream_readInt32(cmd);
     int framerate = xstream_readInt32(cmd);
     int recordFormat = xstream_readInt32(cmd);
+    int useVirtualMon = xstream_readInt32(cmd);
     
     if (framerate > 60) {
         framerate = 60;
@@ -73,28 +72,30 @@ bool ScreenRecorder::StartRecord(xstream_t* cmd) {
     height &= ~0x1;
 
     SCDisplay* display = nil;
-#if 1
-    int monId = _virtualMonitor.Create(width, height);
-    if (monId == -1) {
+    if (useVirtualMon != 0) {
+        int monId = _virtualMonitor.Create(width, height);
+        if (monId == -1) {
+            display = _GET_DISPLAY_USING_INDEX(0);
+            if (display == nil){
+                return false;
+            }
+        }
+        else {
+            display = _GET_DISPLAY_USING_ID(monId);
+            if (display == nil){
+                return false;
+            }
+            
+            _virtualMonitor.DisableOtherMonitors();
+        }
+    }
+    else {
         display = _GET_DISPLAY_USING_INDEX(0);
         if (display == nil){
             return false;
         }
     }
-    else {
-        display = _GET_DISPLAY_USING_ID(monId);
-        if (display == nil){
-            return false;
-        }
-        
-        _virtualMonitor.DisableOtherMonitors();
-    }
-#else
-    display = _GET_DISPLAY_USING_INDEX(0);
-    if (display == nil){
-        return false;
-    }
-#endif
+
 
     _inputHandler.UpdateDisplayRes((int)display.width, (int)display.height, width, height);
 
@@ -313,7 +314,6 @@ void ScreenRecorder::HandleNV12RecordData(void* sampleBuffer, void* imgBuffer, v
     
     // 아직 소비하지 못한 데이터가 너무 많은 경우 버리기 (drop)
     if (writePos - readPos >= FRAME_SLOTS) {
-        g_fullredraw = 1;
         return;
     }
         
@@ -341,7 +341,6 @@ void ScreenRecorder::HandleBGRA32RecordData(void* sampleBuffer, void* imgBuffer,
     
     // 아직 소비하지 못한 데이터가 너무 많은 경우 버리기 (drop)
     if (writePos - readPos >= FRAME_SLOTS) {
-        g_fullredraw = 1;
         return;
     }
         
@@ -415,11 +414,6 @@ void ScreenRecorder::HandleNV12DirtyArea(void* sampleBuffer, void* imgBuffer, sc
         
     current_frame->dirtyCount = 0;
     
-    if (g_fullredraw == 1) {
-        g_fullredraw = 0;
-        return;
-    }
-    
     // dirty info 들을 복사 시도 (있는 경우)
     CFArrayRef arr = CMSampleBufferGetSampleAttachmentsArray(buffer, false);
     if (arr == NULL || CFArrayGetCount(arr) == 0) {
@@ -442,11 +436,12 @@ void ScreenRecorder::HandleNV12DirtyArea(void* sampleBuffer, void* imgBuffer, sc
         return;
     }
     
+    CGRect tmp;
     for (int i = 0; i < current_frame->dirtyCount; i++) {
         CFTypeRef element = CFArrayGetValueAtIndex(dirtyArr, i);
-        CGRectMakeWithDictionaryRepresentation((CFDictionaryRef)element, &current_frame->dirtys[i]);
+        CGRectMakeWithDictionaryRepresentation((CFDictionaryRef)element, &tmp);
 
-        ProcessDirtyArea(&(current_frame->dirtys[i]), (int)width, (int)height);
+        ProcessDirtyArea(&tmp, (int)width, (int)height, &(current_frame->dirtys[i]));
     }
 }
 
@@ -480,11 +475,6 @@ void ScreenRecorder::HandleBGRA32DirtyArea(void* sampleBuffer, void* imgBuffer, 
         
     current_frame->dirtyCount = 0;
     
-    if (g_fullredraw == 1) {
-        g_fullredraw = 0;
-        return;
-    }
-    
     // dirty info 들을 복사 시도 (있는 경우)
     CFArrayRef arr = CMSampleBufferGetSampleAttachmentsArray(buffer, false);
     if (arr == NULL || CFArrayGetCount(arr) == 0) {
@@ -507,11 +497,13 @@ void ScreenRecorder::HandleBGRA32DirtyArea(void* sampleBuffer, void* imgBuffer, 
         return;
     }
     
+    CGRect tmp;
+    
     for (int i = 0; i < current_frame->dirtyCount; i++) {
         CFTypeRef element = CFArrayGetValueAtIndex(dirtyArr, i);
-        CGRectMakeWithDictionaryRepresentation((CFDictionaryRef)element, &current_frame->dirtys[i]);
+        CGRectMakeWithDictionaryRepresentation((CFDictionaryRef)element, &tmp);
 
-        ProcessDirtyArea(&(current_frame->dirtys[i]), (int)width, (int)height);
+        ProcessDirtyArea(&tmp, (int)width, (int)height, &(current_frame->dirtys[i]));
     }
 }
 
@@ -527,7 +519,6 @@ void ScreenRecorder::HandleFallbackNV12RecordData(void* pixelBuffer, const CGRec
     
     // 아직 소비하지 못한 데이터가 너무 많은 경우 버리기 (drop)
     if (writePos - readPos >= FRAME_SLOTS) {
-        g_fullredraw = 1;
         return;
     }
         
@@ -599,11 +590,6 @@ void ScreenRecorder::HandleFallbackNV12DirtyArea(void* pixelBuffer, screenrecord
     }
         
     current_frame->dirtyCount = 0;
-    
-    if (g_fullredraw == 1) {
-        g_fullredraw = 0;
-        return;
-    }
 
     current_frame->dirtyCount = dirtyRectsCnt;
     if (current_frame->dirtyCount < 0 || current_frame->dirtyCount > MAX_DIRTY_COUNT) {
@@ -611,10 +597,11 @@ void ScreenRecorder::HandleFallbackNV12DirtyArea(void* pixelBuffer, screenrecord
         return;
     }
     
+    CGRect tmp;
     for (int i = 0; i < current_frame->dirtyCount; i++) {
-        memcpy(&(current_frame->dirtys[i]), &dirtyRects[i], sizeof(CGRect));
+        memcpy(&tmp, &dirtyRects[i], sizeof(CGRect));
 
-        ProcessDirtyArea(&(current_frame->dirtys[i]), (int)width, (int)height);
+        ProcessDirtyArea(&tmp, (int)width, (int)height, &(current_frame->dirtys[i]));
     }
 }
 
@@ -630,7 +617,6 @@ void ScreenRecorder::HandleFallbackBGRA32RecordData(void* pixelBuffer, const CGR
     
     // 아직 소비하지 못한 데이터가 너무 많은 경우 버리기 (drop)
     if (writePos - readPos >= FRAME_SLOTS) {
-        g_fullredraw = 1;
         return;
     }
         
@@ -674,11 +660,6 @@ void ScreenRecorder::HandleFallbackBGRA32DirtyArea(void* pixelBuffer, screenreco
     }
     
     current_frame->dirtyCount = 0;
-    
-    if (g_fullredraw == 1) {
-        g_fullredraw = 0;
-        return;
-    }
 
     current_frame->dirtyCount = dirtyRectsCnt;
     if (current_frame->dirtyCount < 0 || current_frame->dirtyCount > MAX_DIRTY_COUNT) {
@@ -686,24 +667,24 @@ void ScreenRecorder::HandleFallbackBGRA32DirtyArea(void* pixelBuffer, screenreco
         return;
     }
     
+    CGRect tmp;
     for (int i = 0; i < current_frame->dirtyCount; i++) {
-        memcpy(&(current_frame->dirtys[i]), &dirtyRects[i], sizeof(CGRect));
-        ProcessDirtyArea(&(current_frame->dirtys[i]), (int)width, (int)height);
+        memcpy(&tmp, &dirtyRects[i], sizeof(CGRect));
+        ProcessDirtyArea(&tmp, (int)width, (int)height, &(current_frame->dirtys[i]));
     }
-    
 }
 
-void ScreenRecorder::ProcessDirtyArea(CGRect* rect, int limX, int limY) {
-    const CGFloat orgX = rect->origin.x;
-    const CGFloat orgY = rect->origin.y;
-    const CGFloat orgW = rect->size.width;
-    const CGFloat orgH = rect->size.height;
+inline void ScreenRecorder::ProcessDirtyArea(const CGRect* rect, int limX, int limY, struct RECT* dst) {
+    const short orgX = rect->origin.x;
+    const short orgY = rect->origin.y;
+    const short orgW = rect->size.width;
+    const short orgH = rect->size.height;
 
     // padding 추가 (이것이 없을 경우 화면 해상도가 1:1 이 아닌 경우 창의 끝부분 잔상이 남는 경우가 있음)
-    int x0 = (int)orgX - 2;
-    int y0 = (int)orgY - 2;
-    int x1 = (int)(orgX + orgW + 2.99f);
-    int y1 = (int)(orgY + orgH + 2.99f);
+    int x0 = (int)orgX - 1;
+    int y0 = (int)orgY - 1;
+    int x1 = (int)(orgX + orgW + 2);
+    int y1 = (int)(orgY + orgH + 2);
 
     // 4:2:0 정렬
     x0 = _ALIGN_DOWN_EVEN(x0);
@@ -727,10 +708,10 @@ void ScreenRecorder::ProcessDirtyArea(CGRect* rect, int limX, int limY) {
         y0 = _ALIGN_DOWN_EVEN(MAX(0, y1 - 2));
     }
 
-    rect->origin.x = (CGFloat)x0;
-    rect->origin.y = (CGFloat)y0;
-    rect->size.width  = (CGFloat)(x1 - x0);
-    rect->size.height = (CGFloat)(y1 - y0);
+    dst->x = x0;
+    dst->y = y0;
+    dst->width  = x1 - x0;
+    dst->height = y1 - y0;
 }
 
 
