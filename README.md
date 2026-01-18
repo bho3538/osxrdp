@@ -11,8 +11,9 @@ osxrdp is an unofficial module of xrdp to support rdp server in macOS.
 |Features|Status|
 |------|---|
 |Smooth Remote Control (H.264)|✅|
+|Virtual monitor (for dynamic resolution)|✅|
 |Remote control for non logoned macOS user|❌|
-|Session Resizing & Virtual native resoulution|❌|
+|Session Resizing|❌|
 |Audio|❌|
 |Clipboard|❌|
 |File transfer|❌|
@@ -26,8 +27,6 @@ osxrdp is an unofficial module of xrdp to support rdp server in macOS.
 * osxrdp is still in alpha version. It may contain numerous bugs and is not suitable for production use.
 
 ## Known Issuses
-* The host computer must have at least one physical monitor connected to it.
-* Since virtual resolution is not yet supported, the image quality may be degraded if the resolution of the host computer's monitor is different.
 * The mouse cursor does not change shape according to the situation.
 * Using mstsc, if you minimize the mstsc window and then reopen it, the image quality deteriorates slightly. I'm not sure why this is happening.
   
