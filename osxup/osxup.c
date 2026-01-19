@@ -158,8 +158,14 @@ lib_mod_connect(struct mod *mod, int fd)
     
     // connect to main agent
     if (xipc_connect_server(mod->cmdIpc, server_path) != 0) {
-        mod->server_msg(mod, "OSXRDP agent does not running. Please check main agent is running.", 0);
-        return 1;
+        if (get_object_name("root", "/tmp/osxrdp", server_path, 512) == 0) return 1;
+        
+        if (xipc_connect_server(mod->cmdIpc, server_path) != 0) {
+            mod->server_msg(mod, "OSXRDP agent does not running. Please check main agent is running.", 0);
+            return 1;
+        }
+        
+        strcpy(mod->username, "root");
     }
     
     // run loop
@@ -277,7 +283,8 @@ lib_mod_get_wait_objs(struct mod *mod, void *read_objs, int *rcount,
 static int
 lib_mod_check_wait_objs(struct mod *mod)
 {
-    if (mod->requestStop != 0) return 1;
+    if (mod->requestStop != 0)
+        return 1;
     if (mod->runPaint == 0) return 0;
     
     osxup_paint(mod);

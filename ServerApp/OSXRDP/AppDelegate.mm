@@ -30,6 +30,15 @@
 @implementation AppDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
+    
+    extern int g_Lockscreen;
+    if (g_Lockscreen == 1) {
+        _server = new MirrorAppServer();
+        _server->Start();
+        
+        return;
+    }
+    
     // Insert code here to initialize your application
     [NSApp setActivationPolicy: NSApplicationActivationPolicyAccessory];
     

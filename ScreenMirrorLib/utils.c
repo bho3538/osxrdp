@@ -29,3 +29,7 @@ int get_object_name(const char* username, const char* prefix, char* buffer, int 
     
     return sprintf(buffer, "%s_%s", prefix, username);
 }
+
+int is_root_process(void) {
+    return getuid() == 0 ? 1 : 0;
+}
