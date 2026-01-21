@@ -15,6 +15,9 @@
 #include "egfx.h"
 #include "utils.h"
 
+void
+lib_cleanup_internals(struct mod* mod);
+
 static void
 lib_init_msgs(struct mod* mod) {
     mod->msgs.paint_msg = xstream_create(4096);
@@ -24,9 +27,20 @@ lib_init_msgs(struct mod* mod) {
 
 static void
 lib_release_msgs(struct mod* mod) {
-    xstream_free(mod->msgs.paint_msg);
-    xstream_free(mod->msgs.mouse_msg);
-    xstream_free(mod->msgs.keyboard_msg);
+    if (mod->msgs.paint_msg != NULL) {
+        xstream_free(mod->msgs.paint_msg);
+        mod->msgs.paint_msg = NULL;
+    }
+    
+    if (mod->msgs.mouse_msg != NULL) {
+        xstream_free(mod->msgs.mouse_msg);
+        mod->msgs.mouse_msg = NULL;
+    }
+    
+    if (mod->msgs.keyboard_msg != NULL) {
+        xstream_free(mod->msgs.keyboard_msg);
+        mod->msgs.keyboard_msg = NULL;
+    }
 }
 
 static void*
@@ -113,6 +127,37 @@ lib_mod_start(struct mod *mod, int w, int h, int bpp)
     return 0;
 }
 
+static int
+lib_mod_switch_to_lockscreen(struct mod *mod)
+{
+    char server_path[512];
+    
+    if (get_object_name("root", "/tmp/osxrdp", server_path, 512) == 0)
+        return 1;
+    
+    int switched = 0;
+    int connected = 0;
+    
+    for (int i = 0; i < 10; i++) {
+        if (xipc_connect_server(mod->cmdIpc, server_path) == 0) {
+            connected = 1;
+            strcpy(mod->username, "root");
+            
+            break;
+        }
+        
+        if (switched == 0) {
+            // 잠금 화면으로 유도
+            osxup_switch_lockscreen();
+            switched = 1;
+        }
+        
+        sleep(1);
+    }
+
+    return connected;
+}
+
 /******************************************************************************/
 /* return error */
 static int
@@ -143,7 +188,8 @@ lib_mod_connect(struct mod *mod, int fd)
     }
     
     if (recordFormat == -1) {
-        mod->server_msg(mod, "RFX with gfx currently does not supported. Please use another rdp client.", 0);
+        mod->server_msg(mod, "RFX with gfx currently does not supported.", 0);
+        mod->server_msg(mod, "Please use another client.", 0);
         return 1;
     }
     
@@ -158,7 +204,18 @@ lib_mod_connect(struct mod *mod, int fd)
     
     // connect to main agent
     if (xipc_connect_server(mod->cmdIpc, server_path) != 0) {
+    
+        // 접속하려는 사용자가 로그인된 사용자가 아님.
+        // 잠금화면 모드로 전환 및 로그인 후 재접속 유도
+        /*
+        if (lib_mod_switch_to_lockscreen(mod) != 1) {
+            mod->server_msg(mod, "Failed to connect agent.", 0);
+            
+            return 1;
+        }
+         */
         mod->server_msg(mod, "OSXRDP agent does not running. Please check main agent is running.", 0);
+        
         return 1;
     }
     
@@ -228,7 +285,6 @@ lib_mod_signal(struct mod *mod)
 static int
 lib_mod_end(struct mod *mod)
 {
-
     return 0;
 }
 
@@ -264,6 +320,8 @@ static int
 lib_mod_get_wait_objs(struct mod *mod, void *read_objs, int *rcount,
                       void *write_objs, int *wcount, int *timeout)
 {
+    if (mod->requestStop != 0) return 0;
+    
     long* r = (long*)read_objs;
     r[(*rcount)++] = mod->cmdIpc->fd;
     
@@ -277,7 +335,12 @@ lib_mod_get_wait_objs(struct mod *mod, void *read_objs, int *rcount,
 static int
 lib_mod_check_wait_objs(struct mod *mod)
 {
-    if (mod->requestStop != 0) return 1;
+    if (mod->requestStop != 0) {
+        lib_cleanup_internals(mod);
+        
+        return 1;
+    }
+        
     if (mod->runPaint == 0) return 0;
     
     osxup_paint(mod);
@@ -333,6 +396,40 @@ lib_send_server_monitor_full_invalidate(struct mod *mod, int width, int height)
     return 0;
 }
 
+void
+lib_cleanup_internals(struct mod* mod)
+{
+    // paint 스레드 정지
+    mod->runPaint = 0;
+    
+    // ipc 정지
+    if (mod->cmdIpc != NULL) {
+        // 정지 신호를 전송
+        osxup_send_stop_cmd(mod->cmdIpc);
+        
+        sleep(1);
+        
+        // ipc 정리
+        xipc_end_loop(mod->cmdIpc);
+        
+        // ipc 스레드가 완전히 정지할때까지 대기
+        pthread_join(mod->ipcThread, NULL);
+        
+        xipc_destroy(mod->cmdIpc);
+        
+        mod->cmdIpc = NULL;
+        mod->ipcThread = NULL;
+    }
+    
+    // 공유 메모리 해제 (실제 해제는 agent에서만 진행)
+    if (mod->screenShm != NULL) {
+        xshm_close(mod->screenShm);
+        mod->screenShm = NULL;
+    }
+    
+    lib_release_msgs(mod);
+}
+
 /******************************************************************************/
 void* EXPORT_CC
 mod_init(void)
@@ -371,26 +468,7 @@ mod_exit(void* handle)
         return 0;
     }
     
-    // paint 스레드 정지
-    mod->runPaint = 0;
-    
-    // ipc 정지
-    if (mod->cmdIpc != NULL) {
-        // 정지 신호를 전송
-        osxup_send_stop_cmd(mod->cmdIpc);
-        
-        sleep(1);
-        
-        // ipc 정리
-        xipc_end_loop(mod->cmdIpc);
-        
-        // ipc 스레드가 완전히 정지할때까지 대기
-        pthread_join(mod->ipcThread, NULL);
-        
-        xipc_destroy(mod->cmdIpc);
-    }
-    
-    lib_release_msgs(mod);
+    lib_cleanup_internals(mod);
     
     // 해제
     free(mod);

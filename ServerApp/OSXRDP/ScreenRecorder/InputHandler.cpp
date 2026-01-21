@@ -132,6 +132,8 @@ void InputHandler::UpdateDisplayRes(int originalDisplayWidth, int originalDispla
     
     _scaleX = (float)_originalDisplayWidth / _recordDisplayWidth;
     _scaleY = (float)_originalDisplayHeight / _recordDisplayHeight;
+    
+    printf("UpdateDisplayResolution origin: %d %d , record: %d %d , scale: %f %f\n", _originalDisplayWidth, _originalDisplayHeight, _recordDisplayWidth, _recordDisplayHeight, _scaleX, _scaleY);
 }
 
 void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
@@ -316,7 +318,7 @@ int InputHandler::GetMouseWheelMoveAmount() {
     
     int scrollAmount = 150;
     if (gap < 50) {
-        scrollAmount = 5;
+        scrollAmount = 15;
     }
     else {
         _lastWheelMoveLargeTime = currentTime;

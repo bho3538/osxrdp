@@ -27,7 +27,7 @@ void MirrorAppServer::Start() {
     }
     
     // 필수 권한이 있는지 확인
-    if (PermissionCheckUtils::HasAllPermissionToStartRemoteConnection() == false) {
+    if (is_root_process() == 0 && PermissionCheckUtils::HasAllPermissionToStartRemoteConnection() == false) {
         return;
     }
     
@@ -274,7 +274,12 @@ ScreenRecorder* MirrorAppServer::CreateScreenRecorder() {
     // ScreenCaptureKit 은 macOS 12.3 이상부터 사용할 수 있지만, 버그가 있어 사실상 macOS 14 이상부터 사용할 수 있음. (필터링 버그)
     // 따라서 구형 os 에서는 레거시 API 를 사용하여 화면을 녹화하도록 구성. (성능 차이는 크게 나지 않는것 같음)
     if (@available(macOS 14.0,*)) {
-        return new ScreenRecorder(false);
+        if (is_root_process() == 1) {
+            return new ScreenRecorder(true);
+        }
+        else {
+            return new ScreenRecorder(false);
+        }
     }
     else {
         return new ScreenRecorder(true);
