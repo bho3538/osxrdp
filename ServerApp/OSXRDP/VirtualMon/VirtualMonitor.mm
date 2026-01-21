@@ -143,9 +143,6 @@ bool VirtualMonitor::DisableOtherMonitors() {
         return false;
     }
     
-    // 가상 디스플레이의 해상도 설정
-    SetResolution(cfg, _width, _height);
-    
     for (uint32_t i = 0; i < displayCnt; i++) {
         if (displayIds[i] == _virtualDisplay.displayID) {
             continue;
@@ -162,15 +159,16 @@ bool VirtualMonitor::DisableOtherMonitors() {
     
     // 설정 저장
     CGCompleteDisplayConfiguration(cfg, kCGConfigureForAppOnly);
-    
+
     free(displayIds);
+    
+    // 가상 디스플레이의 해상도 설정
+    SetResolution(_width, _height);
     
     return true;
 }
 
-void VirtualMonitor::SetResolution(CGDisplayConfigRef cfg, int width, int height) {
-    if (cfg == NULL) return;
-    
+void VirtualMonitor::SetResolution(int width, int height) {
     CGDisplayModeRef bestMode = NULL;
         
     CFArrayRef modes = CGDisplayCopyAllDisplayModes(_virtualDisplay.displayID, NULL);
@@ -186,18 +184,24 @@ void VirtualMonitor::SetResolution(CGDisplayConfigRef cfg, int width, int height
         size_t modeHeight = CGDisplayModeGetHeight(mode);
         
         if (modeWidth == width && modeHeight == height) {
+            printf("found bestmode\n");
             bestMode = mode;
             break;
         }
     }
     
     if (bestMode == NULL) {
+        printf("bestmode is null\n");
+        
         CFRelease(modes);
         
         return;
     }
     
-    CGConfigureDisplayWithDisplayMode(cfg, _virtualDisplay.displayID, bestMode, NULL);
+    CGError err = CGDisplaySetDisplayMode(_virtualDisplay.displayID, bestMode, NULL);
+    if (err != kCGErrorSuccess) {
+        printf("Configure Resolution Failed. %d \n", err);
+    }
     
     CFRelease(modes);
 }

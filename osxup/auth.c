@@ -4,6 +4,9 @@
 #include <memory.h>
 #include <stdlib.h>
 #include <security/pam_appl.h>
+#include <CoreGraphics/CoreGraphics.h>
+
+extern int CGSCreateLoginSession(int* outSessionId);
 
 int _pam_conv_handler(int num_msg, const struct pam_message **msg, struct pam_response **resp, void *appdata_ptr);
 int _verify_mac_user(const char *username, const char *password);
@@ -63,4 +66,12 @@ int _verify_mac_user(const char *username, const char *password) {
     pam_end(pamh, retval);
 
     return (retval == PAM_SUCCESS) ? 0 : 1;
+}
+
+int osxup_switch_lockscreen(void) {
+    int sessionId = 0;
+    
+    CGSCreateLoginSession(&sessionId);
+    
+    return sessionId;
 }

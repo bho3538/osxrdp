@@ -57,6 +57,11 @@ bool ScreenRecorder::StartRecord(xstream_t* cmd) {
     int recordFormat = xstream_readInt32(cmd);
     int useVirtualMon = xstream_readInt32(cmd);
     
+    // 잠금화면의 경우 virtual monitor 를 지원하지 않음.
+    if (is_root_process() != 0) {
+        useVirtualMon = 0;
+    }
+    
     if (framerate > 60) {
         framerate = 60;
     }
@@ -88,16 +93,20 @@ bool ScreenRecorder::StartRecord(xstream_t* cmd) {
             
             _virtualMonitor.DisableOtherMonitors();
         }
+        
+        // macOS 12 에서 가상 디스플레이의 width, height 가 1로 오는 증상이 발생...
+        // 가상 디스플레이는 클라이언트의 해상도를 따라가므로 동일하게 설정
+        //_inputHandler.UpdateDisplayRes((int)display.width, (int)display.height, width, height);
+        _inputHandler.UpdateDisplayRes(width, height, width, height);
     }
     else {
         display = _GET_DISPLAY_USING_INDEX(0);
         if (display == nil){
             return false;
         }
+        
+        _inputHandler.UpdateDisplayRes((int)display.width, (int)display.height, width, height);
     }
-
-
-    _inputHandler.UpdateDisplayRes((int)display.width, (int)display.height, width, height);
 
     if (CreateRecordShm(width, height, framerate) == false) {
         return false;
@@ -264,6 +273,10 @@ void ScreenRecorder::SendDisconnectMsgToClient() {
         int cmdType;
         int packetType;
     };
+    
+    // 가상 모니터를 먼저 파괴 (todo : 정확한 정리 타이밍을 다시 정하기)
+    // 2개 이상의 클라이언트가 겹치면 충돌나서 원본 물리 화면이 안나오는 경우가 발생.
+    _virtualMonitor.Destroy();
     
     struct stop_msg msg = { OSXRDP_CMDTYPE_MSGFROMAGENT, OSXRDP_PACKETTYPE_TERMINATE };
     xipc_send_data(_client, &msg, sizeof(msg));

@@ -9,7 +9,7 @@ APP_NAME="OSXRDP.app"
 UNINS_APP_NAME="OSXRDPUninstaller.app"
 INSTALL_FOLDER_NAME="osxrdp"
 PKG_ID="com.byungho.osxrdp.setup"
-VERSION="1.3.0"
+VERSION="1.4.0"
 
 # 파일명 설정
 COMPONENT_PKG="osxrdp_component.pkg"

@@ -27,9 +27,9 @@ void MirrorAppServer::Start() {
     }
     
     // 필수 권한이 있는지 확인
-    //if (PermissionCheckUtils::HasAllPermissionToStartRemoteConnection() == false) {
-    //    return;
-    //}
+    if (is_root_process() == 0 && PermissionCheckUtils::HasAllPermissionToStartRemoteConnection() == false) {
+        return;
+    }
     
     // 시작중으로 설정
     SetState(State_Starting);

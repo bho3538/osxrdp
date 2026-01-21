@@ -30,6 +30,7 @@
 @implementation AppDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
+    [NSApp setActivationPolicy: NSApplicationActivationPolicyAccessory];
     
     extern int g_Lockscreen;
     if (g_Lockscreen == 1) {
@@ -38,9 +39,6 @@
         
         return;
     }
-    
-    // Insert code here to initialize your application
-    [NSApp setActivationPolicy: NSApplicationActivationPolicyAccessory];
     
     // initialize UI code
     // create tray menu
