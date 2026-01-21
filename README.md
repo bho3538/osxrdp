@@ -33,3 +33,7 @@ osxrdp is an unofficial module of xrdp to support rdp server in macOS.
 ## Supported OS
 macOS 12.4 or higher version.\
 Support Apple Silicon & Intel mac.
+
+## Etc
+osxrdp is compatible with original xrdp v0.10.4 version. (no modificated)
+
