@@ -2,6 +2,9 @@
 <Workspace
    version = "1.0">
    <FileRef
+      location = "group:osxrdp_sessionmanager/osxrdp_sessionmanager.xcodeproj">
+   </FileRef>
+   <FileRef
       location = "group:OSXRDPUninstaller/OSXRDPUninstaller.xcodeproj">
    </FileRef>
    <FileRef

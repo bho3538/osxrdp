@@ -34,6 +34,8 @@ typedef struct xipc {
     int in_len;
     int expected_len;
     
+    char* server_name;
+    
     pthread_mutex_t lock;
     xipc_msg_t* out_msgs;
     xipc_data_callback on_data;

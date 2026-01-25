@@ -163,7 +163,7 @@ bool ScreenRecorder::CreateRecordShm(int width, int height, int framerate) {
     int rawDataSize = width * height * 5;
     
     char shm_name[512];
-    if (get_object_name_by_username("/osxrdpshm", shm_name, 512) == 0) {
+    if (get_object_name_by_sessionid("/osxrdpshm", shm_name, 512) == 0) {
         return false;
     }
     

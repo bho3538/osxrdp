@@ -52,5 +52,15 @@
 #endif
 
 
+// for sessionmanager
+#ifndef OSXRDP_SESSIONMANAGER_PACKETTYPE
+#define OSXRDP_SESSIONMANAGER_PACKETTYPE
+
+#define OSXRDP_SESSMAN_REQUEST_SESSION 1
+#define OSXRDP_SESSMAN_REPLY_SESSION 2
+
+#endif
+
+
 
 #endif /* packet_h */

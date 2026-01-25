@@ -9,7 +9,7 @@ APP_NAME="OSXRDP.app"
 UNINS_APP_NAME="OSXRDPUninstaller.app"
 INSTALL_FOLDER_NAME="osxrdp"
 PKG_ID="com.byungho.osxrdp.setup"
-VERSION="1.4.0"
+VERSION="1.5.0"
 
 # 파일명 설정
 COMPONENT_PKG="osxrdp_component.pkg"
@@ -68,6 +68,9 @@ else
 fi
 # 기타 파일 복사
 cp "$SOURCE_DIR/com.byungho.osxrdp.plist" "$PAYLOAD_DIR/Library/LaunchDaemons/"
+cp "$SOURCE_DIR/com.byungho.osxrdp.sessionmanager.plist" "$PAYLOAD_DIR/Library/LaunchDaemons/"
+cp "$SOURCE_DIR/com.byungho.osxrdp.lockscreen.plist" "$PAYLOAD_DIR/Library/LaunchAgents/"
+
 if [ -d "$SOURCE_DIR/config" ]; then
     cp -R "$SOURCE_DIR/config/"* "$PAYLOAD_DIR/etc/xrdp/"
 fi

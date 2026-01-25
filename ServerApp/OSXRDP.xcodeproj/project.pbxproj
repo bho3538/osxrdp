@@ -97,6 +97,7 @@
 				9B4A9E6C2ED5955E00260492 /* Frameworks */,
 				9B4A9E6D2ED5955E00260492 /* Resources */,
 				9B84707A2F0E1F35001E143F /* CopyFiles */,
+				395BE9B82F262BB9009DFB30 /* ShellScript */,
 			);
 			buildRules = (
 			);
@@ -154,6 +155,26 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		395BE9B82F262BB9009DFB30 /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\nTOOL_NAME=\"osxrdp_sessionmanager\"\n\nSOURCE_PATH=\"${BUILT_PRODUCTS_DIR}/${TOOL_NAME}\"\n\nDEST_PATH=\"${CODESIGNING_FOLDER_PATH}/Contents/MacOS/\"\n\nmkdir -p \"$DEST_PATH\"\n\necho \"Copying $TOOL_NAME to app bundle...\"\ncp -fv \"$SOURCE_PATH\" \"$DEST_PATH\"\n\nchmod +x \"${DEST_PATH}/${TOOL_NAME}\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		9B4A9E6B2ED5955E00260492 /* Sources */ = {
@@ -290,9 +311,10 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = 33X7M69J4B;
 				ENABLE_APP_SANDBOX = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = OSXRDP;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -303,7 +325,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
-				MARKETING_VERSION = 1.4;
+				MARKETING_VERSION = 1.5;
 				OTHER_LDFLAGS = (
 					"-sectcreate",
 					__CGPreLoginApp,
@@ -330,7 +352,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = 33X7M69J4B;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -340,6 +362,7 @@
 				ENABLE_RESOURCE_ACCESS_CONTACTS = NO;
 				ENABLE_RESOURCE_ACCESS_LOCATION = NO;
 				ENABLE_RESOURCE_ACCESS_PHOTO_LIBRARY = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = OSXRDP;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
@@ -350,7 +373,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
-				MARKETING_VERSION = 1.4;
+				MARKETING_VERSION = 1.5;
 				OTHER_LDFLAGS = (
 					"-sectcreate",
 					__CGPreLoginApp,

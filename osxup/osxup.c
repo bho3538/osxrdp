@@ -15,8 +15,104 @@
 #include "egfx.h"
 #include "utils.h"
 
+// tmp. (아직 가상 데스크탑을 하나의 연결에만 사용할 수 있음)
+static struct mod* g_previousConnection = NULL;
+
+void
+lib_disconnect_client(struct mod* mod);
+
 void
 lib_cleanup_internals(struct mod* mod);
+
+// agent ipc 통신 스레드
+void*
+lib_ipc_thread(void* args);
+
+// agent 와의 메시지 처리
+int
+lib_ipc_onmessage(xipc_t* t, xipc_t* client, void* data, int len);
+
+// 세션 관리자 ipc 통신 스레드
+void*
+lib_sessionipc_thread(void* args);
+
+// 세션 관리자와의 메시지 처리
+int
+lib_sessionipc_onmessage(xipc_t* t, xipc_t* client, void* data, int len);
+
+// agent 에 연결
+int
+lib_connect_agent(struct mod* mod) {
+    char server_path[512];
+    
+    if (mod->sessionInfo.isLogined == 0) {
+        if (get_object_name(mod->sessionInfo.sessionId, "/tmp/osxrdplock", server_path, 512) == 0) {
+            return 1;
+        }
+    }
+    else {
+        if (get_object_name(mod->sessionInfo.sessionId, "/tmp/osxrdp", server_path, 512) == 0) {
+            return 1;
+        }
+    }
+    
+
+    sleep(3); // todo
+    
+    mod->cmdIpc = xipc_ctx_create(lib_ipc_onmessage, mod);
+    if (xipc_connect_server(mod->cmdIpc, server_path) != 0) {
+        mod->server_msg(mod, "OSXRDP agent does not running.", 0);
+        return 1;
+    }
+    
+    // run loop
+    pthread_create(&mod->ipcThread, NULL, lib_ipc_thread, (void*)mod);
+    
+    // 녹화 데이터 요청
+    osxup_send_start_cmd(mod->cmdIpc, mod->width, mod->height, mod->recordFormat, mod->usevirtualmon);
+    
+    return 0;
+}
+
+// 세션 관리자와 연결
+int
+lib_connect_sessionmanager(struct mod* mod) {
+    mod->sessionIpc = xipc_ctx_create(lib_sessionipc_onmessage, mod);
+    if (mod->sessionIpc == NULL) {
+        return 1;
+    }
+
+    // connect to session manager
+    if (xipc_connect_server(mod->sessionIpc, "/tmp/osxrdpsessionmanager") != 0) {
+        mod->server_msg(mod, "OSXRDP session manager does not running.", 0);
+        
+        return 1;
+    }
+    
+    // run loop
+    pthread_create(&mod->sessionIpcThread, NULL, lib_sessionipc_thread, (void*)mod);
+
+    // 세션 정보 요청
+    osxup_send_sessionrequest(mod->sessionIpc, mod->username);
+
+    return 0;
+}
+
+int
+lib_rerequest_session(struct mod* mod) {
+    
+    // 이전의 agent 와 연결 해제
+    if (mod->cmdIpc) {
+        xipc_end_loop(mod->cmdIpc);
+        xipc_destroy(mod->cmdIpc);
+        mod->cmdIpc = NULL;
+    }
+    
+    osxup_send_sessionrequest(mod->sessionIpc, mod->username);
+    
+    return 0;
+}
+
 
 static void
 lib_init_msgs(struct mod* mod) {
@@ -43,7 +139,21 @@ lib_release_msgs(struct mod* mod) {
     }
 }
 
-static void*
+void*
+lib_sessionipc_thread(void* args) {
+    struct mod* mod = (struct mod*)args;
+    if (mod == NULL)
+        return 0;
+    
+    // blocking
+    xipc_loop(mod->sessionIpc);
+
+    lib_disconnect_client(mod);
+    
+    return NULL;
+}
+
+void*
 lib_ipc_thread(void* args) {
     
     struct mod* mod = (struct mod*)args;
@@ -52,13 +162,49 @@ lib_ipc_thread(void* args) {
     
     // blocking
     xipc_loop(mod->cmdIpc);
-        
-    mod->requestStop = 1;
     
+    if (mod->sessionInfo.isLogined) {
+        lib_disconnect_client(mod);
+    }
+    else {
+        lib_rerequest_session(mod);
+    }
+
     return NULL;
 }
 
-static int
+int
+lib_sessionipc_onmessage(xipc_t* t, xipc_t* client, void* data, int len) {
+    if (t == NULL)
+        return 0;
+    
+    struct mod* mod = (struct mod*)t->user_data;
+    if (mod == NULL)
+        return 0;
+    
+    xstream_t* stream = xstream_create_for_read(data, len);
+
+    int cmdType = xstream_readInt32(stream);
+    switch (cmdType) {
+        case OSXRDP_SESSMAN_REPLY_SESSION: {
+            mod->sessionInfo.sessionId = xstream_readInt32(stream);
+            mod->sessionInfo.isLogined = xstream_readInt32(stream);
+            
+            if (mod->sessionInfo.sessionId > 0) {
+                lib_connect_agent(mod);
+            }
+            
+            break;
+        }
+        default:
+            break;
+    }
+
+    xstream_free(stream);
+    return 0;
+}
+
+int
 lib_ipc_onmessage(xipc_t* t, xipc_t* client, void* data, int len) {
     if (t == NULL)
         return 0;
@@ -77,7 +223,7 @@ lib_ipc_onmessage(xipc_t* t, xipc_t* client, void* data, int len) {
                 int re = xstream_readInt32(stream);
                 if (re == 1) {
                     char shm_name[512];
-                    if (get_object_name(mod->username, "/osxrdpshm", shm_name, 512) == 0) {
+                    if (get_object_name(mod->sessionInfo.sessionId, "/osxrdpshm", shm_name, 512) == 0) {
                         return 0;
                     }
                     
@@ -95,7 +241,7 @@ lib_ipc_onmessage(xipc_t* t, xipc_t* client, void* data, int len) {
         case OSXRDP_CMDTYPE_MSGFROMAGENT: {
             int packetType = xstream_readInt32(stream);
             if (packetType == OSXRDP_PACKETTYPE_TERMINATE) {
-                mod->requestStop = 1;
+                lib_disconnect_client(mod);
             }
             break;
         }
@@ -124,38 +270,14 @@ lib_mod_start(struct mod *mod, int w, int h, int bpp)
     
     lib_init_msgs(mod);
     
-    return 0;
-}
-
-static int
-lib_mod_switch_to_lockscreen(struct mod *mod)
-{
-    char server_path[512];
-    
-    if (get_object_name("root", "/tmp/osxrdp", server_path, 512) == 0)
-        return 1;
-    
-    int switched = 0;
-    int connected = 0;
-    
-    for (int i = 0; i < 10; i++) {
-        if (xipc_connect_server(mod->cmdIpc, server_path) == 0) {
-            connected = 1;
-            strcpy(mod->username, "root");
-            
-            break;
-        }
-        
-        if (switched == 0) {
-            // 잠금 화면으로 유도
-            osxup_switch_lockscreen();
-            switched = 1;
-        }
-        
-        sleep(1);
+    // 기존 클라이언트의 연결 해제
+    if (g_previousConnection) {
+        lib_disconnect_client(g_previousConnection);
     }
-
-    return connected;
+    
+    g_previousConnection = mod;
+    
+    return 0;
 }
 
 /******************************************************************************/
@@ -175,57 +297,25 @@ lib_mod_connect(struct mod *mod, int fd)
     memset(mod->password, 0x00, MAX_PATH);
     
     // check rdp client is valid (supported)
-    int recordFormat;
     if (mod->client_info.gfx == 1 && mod->client_info.rfx_codec_id == 0) {
         // using H264
-        recordFormat = OSXRDP_RECORDFORMAT_NV12;
+        mod->recordFormat = OSXRDP_RECORDFORMAT_NV12;
     }
     else if (mod->client_info.gfx == 1) {
-        recordFormat = -1;
+        mod->recordFormat = -1;
     }
     else {
-        recordFormat = OSXRDP_RECORDFORMAT_BGRA32;
+        mod->recordFormat = OSXRDP_RECORDFORMAT_BGRA32;
     }
     
-    if (recordFormat == -1) {
+    if (mod->recordFormat == -1) {
         mod->server_msg(mod, "RFX with gfx currently does not supported.", 0);
         mod->server_msg(mod, "Please use another client.", 0);
         return 1;
     }
     
-    // create ipc client ctx
-    mod->cmdIpc = xipc_ctx_create(lib_ipc_onmessage, mod);
-    if (mod->cmdIpc == NULL) {
-        return 1;
-    }
-    
-    char server_path[512];
-    if (get_object_name(mod->username, "/tmp/osxrdp", server_path, 512) == 0) return 1;
-    
-    // connect to main agent
-    if (xipc_connect_server(mod->cmdIpc, server_path) != 0) {
-    
-        // 접속하려는 사용자가 로그인된 사용자가 아님.
-        // 잠금화면 모드로 전환 및 로그인 후 재접속 유도
-        /*
-        if (lib_mod_switch_to_lockscreen(mod) != 1) {
-            mod->server_msg(mod, "Failed to connect agent.", 0);
-            
-            return 1;
-        }
-         */
-        mod->server_msg(mod, "OSXRDP agent does not running. Please check main agent is running.", 0);
-        
-        return 1;
-    }
-    
-    // run loop
-    pthread_create(&mod->ipcThread, NULL, lib_ipc_thread, (void*)mod);
-    
-    // send record command to agent
-    osxup_send_start_cmd(mod->cmdIpc, mod->width, mod->height, recordFormat, mod->usevirtualmon);
-
-    return 0;
+    // 세션 관리자와 연결
+    return lib_connect_sessionmanager(mod);
 }
 
 /******************************************************************************/
@@ -323,7 +413,9 @@ lib_mod_get_wait_objs(struct mod *mod, void *read_objs, int *rcount,
     if (mod->requestStop != 0) return 0;
     
     long* r = (long*)read_objs;
-    r[(*rcount)++] = mod->cmdIpc->fd;
+    
+    if (mod->cmdIpc)
+        r[(*rcount)++] = mod->cmdIpc->fd;
     
     *timeout = 100;
     
@@ -421,6 +513,20 @@ lib_cleanup_internals(struct mod* mod)
         mod->ipcThread = NULL;
     }
     
+    // session manager ipc 정지
+    if (mod->sessionIpc != NULL) {
+        // ipc 정리
+        xipc_end_loop(mod->sessionIpc);
+        
+        // ipc 스레드가 완전히 정지할때까지 대기
+        pthread_join(mod->sessionIpcThread, NULL);
+        
+        xipc_destroy(mod->sessionIpc);
+        
+        mod->sessionIpc = NULL;
+        mod->sessionIpcThread = NULL;
+    }
+    
     // 공유 메모리 해제 (실제 해제는 agent에서만 진행)
     if (mod->screenShm != NULL) {
         xshm_close(mod->screenShm);
@@ -428,6 +534,11 @@ lib_cleanup_internals(struct mod* mod)
     }
     
     lib_release_msgs(mod);
+}
+
+void
+lib_disconnect_client(struct mod* mod) {
+    mod->requestStop = 1;
 }
 
 /******************************************************************************/

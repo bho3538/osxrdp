@@ -10,6 +10,7 @@
 #include <time.h>
 
 #include "xrdp/xrdp_client_info.h"
+#include "osxrdp/sessioninfo.h"
 
 #define MAX_PATH 260
 
@@ -176,14 +177,19 @@ struct mod
     char username[MAX_PATH];
     char password[MAX_PATH];
     int usevirtualmon;
+    int recordFormat;
+    
+    session_info_t sessionInfo;
     
     int width;
     int height;
     int bpp;
     
     xipc_t* cmdIpc;
+    xipc_t* sessionIpc;
     xshm_t* screenShm;
     pthread_t ipcThread;
+    pthread_t sessionIpcThread;
     volatile int runPaint;
     volatile int requestStop;
     

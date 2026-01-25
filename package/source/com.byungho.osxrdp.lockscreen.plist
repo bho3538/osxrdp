@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.byungho.osxrdp.lockscreen</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Applications/osxrdp/OSXRDP.app/Contents/MacOS/OSXRDP</string>
+		<string>--lockscreen</string>
+	</array>
+	<key>LimitLoadToSessionType</key>
+	<array>
+		<string>LoginWindow</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+</dict>
+</plist>

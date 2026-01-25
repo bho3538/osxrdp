@@ -54,7 +54,11 @@ void UninstallManager::DoUninstall() {
     }
     
     UnregisterDaemon("/Library/LaunchDaemons/com.byungho.osxrdp.plist");
+    UnregisterDaemon("/Library/LaunchDaemons/com.byungho.osxrdp.sessionmanager.plist");
+    UnregisterDaemon("/Library/LaunchAgents/com.byungho.osxrdp.lockscreen.plist");
     RemoveFile("/Library/LaunchDaemons/com.byungho.osxrdp.plist");
+    RemoveFile("/Library/LaunchDaemons/com.byungho.osxrdp.sessionmanager.plist");
+    RemoveFile("/Library/LaunchAgents/com.byungho.osxrdp.lockscreen.plist");
     TerminateProcess("/Applications/osxrdp/OSXRDP.app/Contents/MacOS/OSXRDP");
     TerminateProcess("/Applications/osxrdp/OSXRDP.app/Contents/MacOS/xrdp");
     RemoveDirectory("/etc/xrdp");

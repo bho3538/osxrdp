@@ -6,9 +6,12 @@
 extern "C" {
 #endif
 
-int get_object_name_by_username(const char* prefix, char* buffer, int cchMax);
+//int get_object_name_by_username(const char* prefix, char* buffer, int cchMax);
 
-int get_object_name(const char* username, const char* prefix, char* buffer, int cchMax);
+//int get_object_name(const char* username, const char* prefix, char* buffer, int cchMax);
+int get_object_name_by_sessionid(const char* prefix, char* buffer, int cchMax);
+
+int get_object_name(int sessionid, const char* prefix, char* buffer, int cchMax);
 
 int is_root_process(void);
 
