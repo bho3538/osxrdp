@@ -48,6 +48,7 @@ echo "=== [2/6] Staging files into Payload ==="
 
 mkdir -p "$PAYLOAD_DIR/Applications/$INSTALL_FOLDER_NAME"
 mkdir -p "$PAYLOAD_DIR/Library/LaunchDaemons"
+mkdir -p "$PAYLOAD_DIR/Library/LaunchAgents"
 mkdir -p "$PAYLOAD_DIR/etc/xrdp"
 mkdir -p "$PAYLOAD_DIR/usr/local/lib/xrdp"
 mkdir -p "$PAYLOAD_DIR/usr/local/share/xrdp"

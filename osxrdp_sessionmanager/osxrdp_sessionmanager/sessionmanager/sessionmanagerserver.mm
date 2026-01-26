@@ -24,13 +24,6 @@ void SessionManagerServer::Start() {
         return;
     }
     
-    // 필수 권한이 있는지 확인
-    /*
-    if (is_root_process() == 0) {
-        return;
-    }
-     */
-    
     // 시작중으로 설정
     SetState(State_Starting);
     
@@ -216,6 +209,13 @@ int SessionManagerServer::OnMessageReceived(xipc_t* t, xipc_t* client, void* dat
                 
                 xstream_free(result);
             }
+            
+            break;
+        }
+        case OSXRDP_SESSMAN_REQUEST_RELEASESESSION: {
+            int sessionId = xstream_readInt32(cmd);
+            
+            osxrdp_sessionmanager_releasesession(sessionId);
             
             break;
         }

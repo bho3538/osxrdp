@@ -180,6 +180,7 @@ struct mod
     int recordFormat;
     
     session_info_t sessionInfo;
+    int sessionInfoRequestCnt;
     
     int width;
     int height;

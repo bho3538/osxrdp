@@ -15,8 +15,7 @@ int main(int argc, const char * argv[]) {
     
     server.Start();
     
-    int exitCode;
-    scanf("%d", &exitCode);
+    pause();
     
     server.Stop();
         

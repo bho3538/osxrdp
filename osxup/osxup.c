@@ -55,12 +55,20 @@ lib_connect_agent(struct mod* mod) {
             return 1;
         }
     }
-    
 
-    sleep(3); // todo
-    
     mod->cmdIpc = xipc_ctx_create(lib_ipc_onmessage, mod);
-    if (xipc_connect_server(mod->cmdIpc, server_path) != 0) {
+    
+    int connected = 0;
+    for (int i = 0; i < 20; i++) {
+        if (xipc_connect_server(mod->cmdIpc, server_path) == 0) {
+            connected = 1;
+            break;
+        }
+        
+        sleep(1);
+    }
+
+    if (connected == 0) {
         mod->server_msg(mod, "OSXRDP agent does not running.", 0);
         return 1;
     }
@@ -100,6 +108,11 @@ lib_connect_sessionmanager(struct mod* mod) {
 
 int
 lib_rerequest_session(struct mod* mod) {
+    mod->sessionInfoRequestCnt++;
+    // 오류발생 시 세션을 지속적으로 만드는 현상 방지
+    if (mod->sessionInfoRequestCnt > 3) {
+        return 1;
+    }
     
     // 이전의 agent 와 연결 해제
     if (mod->cmdIpc) {
@@ -107,6 +120,11 @@ lib_rerequest_session(struct mod* mod) {
         xipc_destroy(mod->cmdIpc);
         mod->cmdIpc = NULL;
     }
+    
+    osxup_send_sessionrelease(mod->sessionIpc, mod->sessionInfo.sessionId);
+    
+    mod->sessionInfo.sessionId = 0;
+    mod->sessionInfo.isLogined = 0;
     
     osxup_send_sessionrequest(mod->sessionIpc, mod->username);
     
@@ -167,7 +185,9 @@ lib_ipc_thread(void* args) {
         lib_disconnect_client(mod);
     }
     else {
-        lib_rerequest_session(mod);
+        if (lib_rerequest_session(mod) != 0) {
+            lib_disconnect_client(mod);
+        }
     }
 
     return NULL;
@@ -191,7 +211,9 @@ lib_sessionipc_onmessage(xipc_t* t, xipc_t* client, void* data, int len) {
             mod->sessionInfo.isLogined = xstream_readInt32(stream);
             
             if (mod->sessionInfo.sessionId > 0) {
-                lib_connect_agent(mod);
+                if (lib_connect_agent(mod) != 0) {
+                    lib_disconnect_client(mod);
+                }
             }
             
             break;
@@ -222,9 +244,18 @@ lib_ipc_onmessage(xipc_t* t, xipc_t* client, void* data, int len) {
             if (packetType == OSXRDP_PACKETTYPE_REP_SCREEN) {
                 int re = xstream_readInt32(stream);
                 if (re == 1) {
+                    // todo: shm name을 pipe 로 받아오기 (하드코딩 제거)
                     char shm_name[512];
-                    if (get_object_name(mod->sessionInfo.sessionId, "/osxrdpshm", shm_name, 512) == 0) {
-                        return 0;
+                    
+                    if (mod->sessionInfo.isLogined == 0) {
+                        if (get_object_name(mod->sessionInfo.sessionId, "/osxrdpshm_l", shm_name, 512) == 0) {
+                            return 0;
+                        }
+                    }
+                    else {
+                        if (get_object_name(mod->sessionInfo.sessionId, "/osxrdpshm", shm_name, 512) == 0) {
+                            return 0;
+                        }
                     }
                     
                     mod->screenShm = xshm_open(shm_name);
@@ -234,6 +265,9 @@ lib_ipc_onmessage(xipc_t* t, xipc_t* client, void* data, int len) {
                         // start paint thread
                         mod->runPaint = 1;
                     }
+                }
+                else {
+                    lib_disconnect_client(mod);
                 }
             }
             break;
@@ -410,12 +444,17 @@ static int
 lib_mod_get_wait_objs(struct mod *mod, void *read_objs, int *rcount,
                       void *write_objs, int *wcount, int *timeout)
 {
-    if (mod->requestStop != 0) return 0;
-    
     long* r = (long*)read_objs;
     
-    if (mod->cmdIpc)
+    if (mod->cmdIpc) {
         r[(*rcount)++] = mod->cmdIpc->fd;
+        osxup_check_alive(mod->cmdIpc);
+    }
+    
+    if (mod->sessionIpc) {
+        r[(*rcount)++] = mod->sessionIpc->fd;
+        osxup_check_alive(mod->sessionIpc);
+    }
     
     *timeout = 100;
     
@@ -432,7 +471,7 @@ lib_mod_check_wait_objs(struct mod *mod)
         
         return 1;
     }
-        
+    
     if (mod->runPaint == 0) return 0;
     
     osxup_paint(mod);
@@ -515,6 +554,11 @@ lib_cleanup_internals(struct mod* mod)
     
     // session manager ipc 정지
     if (mod->sessionIpc != NULL) {
+        
+        osxup_send_sessionrelease(mod->sessionIpc, mod->sessionInfo.sessionId);
+        
+        sleep(1);
+        
         // ipc 정리
         xipc_end_loop(mod->sessionIpc);
         
