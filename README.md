@@ -12,7 +12,7 @@ osxrdp is an unofficial module of xrdp to support rdp server in macOS.
 |------|---|
 |Smooth Remote Control (H.264)|✅|
 |Virtual monitor (for dynamic resolution)|✅|
-|Remote control for non logoned macOS user|❌|
+|Remote control for non logoned macOS user|✅|
 |Session Resizing|❌|
 |Audio|❌|
 |Clipboard|❌|
