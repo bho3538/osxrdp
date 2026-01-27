@@ -147,6 +147,12 @@ void xipc_destroy(xipc_t* ipc)
         xipc_destroy(ipc->next);
     }
     
+    if (ipc->isServer)
+    {
+        unlink(ipc->server_name);
+    }
+    
+    free(ipc->server_name);
     free(ipc);
 }
 
@@ -187,6 +193,7 @@ int xipc_create_server(xipc_t* ipc, const char* path, xipc_client_onconnected on
     ipc->isServer = 1;
     ipc->on_client_connected = on_client_connected;
     ipc->on_client_disconnected = on_client_disconnected;
+    ipc->server_name = strdup(path);
 
     set_nonBlocking(ipc->fd);
     
@@ -220,6 +227,7 @@ int xipc_connect_server(xipc_t* ipc, const char* path)
     
     ipc->fd = fd;
     ipc->isServer = 0;
+    ipc->server_name = strdup(path);
 
     set_nonBlocking(ipc->fd);
     

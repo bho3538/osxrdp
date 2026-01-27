@@ -163,10 +163,17 @@ bool ScreenRecorder::CreateRecordShm(int width, int height, int framerate) {
     int rawDataSize = width * height * 5;
     
     char shm_name[512];
-    if (get_object_name_by_username("/osxrdpshm", shm_name, 512) == 0) {
-        return false;
+    if (is_root_process() == 0) {
+        if (get_object_name_by_sessionid("/osxrdpshm", shm_name, 512) == 0) {
+            return false;
+        }
     }
-    
+    else {
+        if (get_object_name_by_sessionid("/osxrdpshm_l", shm_name, 512) == 0) {
+            return false;
+        }
+    }
+
     _recordShm = xshm_create(shm_name, sizeof(screenrecord_shm_t) + (rawDataSize * FRAME_SLOTS));
     if (_recordShm == NULL) {
         NSLog(@"[ScreenRecorder::CreateRecordShm] xshm_create failed.");

@@ -8,14 +8,13 @@
 
 #import "UI/PermissionSettingsWindow.h"
 
+static MirrorAppServer* g_server = nullptr;
+
 @interface AppDelegate ()
 {
     // UI
     // tray menu
     NSStatusItem* _trayMenu;
-    
-    // ETC
-    MirrorAppServer* _server;
 }
 
 @property (strong) IBOutlet NSWindow *window;
@@ -31,11 +30,13 @@
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
     [NSApp setActivationPolicy: NSApplicationActivationPolicyAccessory];
+
+    signal(SIGTERM, _handle_sigterm);
     
     extern int g_Lockscreen;
     if (g_Lockscreen == 1) {
-        _server = new MirrorAppServer();
-        _server->Start();
+        g_server = new MirrorAppServer();
+        g_server->Start();
         
         return;
     }
@@ -73,7 +74,6 @@
         self.startupSwitch.hidden = YES;
     }
 
-    
     // prepare osxrdp server
     [self startRemoteConnectionServer:YES];
 }
@@ -81,8 +81,10 @@
 
 - (void)applicationWillTerminate:(NSNotification *)aNotification {
     // Insert code here to tear down your application
-    if (_server != nullptr) {
-        _server->Stop();
+    if (g_server != nullptr) {
+        g_server->Stop();
+        delete g_server;
+        g_server = nullptr;
     }
 }
 
@@ -99,11 +101,11 @@
 }
 
 - (void)onExitMenuClicked {
-    if (_server != nullptr) {
-        _server->Stop();
+    if (g_server != nullptr) {
+        g_server->Stop();
         
-        delete _server;
-        _server = nullptr;
+        delete g_server;
+        g_server = nullptr;
     }
     
     [[NSApplication sharedApplication] terminate:nil];
@@ -138,23 +140,23 @@
         return;
     }
     
-    if (_server == nullptr) {
-        _server = new MirrorAppServer();
-        _server->Start();
+    if (g_server == nullptr) {
+        g_server = new MirrorAppServer();
+        g_server->Start();
         
         [self setEnabledBtnStyle: self.startRemoteConnectionBtn];
     }
 }
 
 - (void)stopRemoteConnectionServer {
-    if (_server == nullptr) {
+    if (g_server == nullptr) {
         return;
     }
     
-    _server->Stop();
-    delete _server;
+    g_server->Stop();
+    delete g_server;
     
-    _server = nullptr;
+    g_server = nullptr;
     
     [self setDisabledBtnStyle: self.startRemoteConnectionBtn];
 }
@@ -176,12 +178,20 @@
     else {
         StartupManager::DisableStartup();
     }
+}
+
+void _handle_sigterm(int signal) {
+    NSLog(@"[OSXRDP] on sigterm");
     
+    if (g_server != nullptr) {
+        g_server->Stop();
+        delete g_server;
+        g_server = nullptr;
+    }
 }
 
 - (void)setDisabledBtnStyle:(NSButton*)btn {
-    if (btn == nil)
-    {
+    if (btn == nil) {
       return;
     }
   

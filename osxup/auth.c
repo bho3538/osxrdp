@@ -67,11 +67,3 @@ int _verify_mac_user(const char *username, const char *password) {
 
     return (retval == PAM_SUCCESS) ? 0 : 1;
 }
-
-int osxup_switch_lockscreen(void) {
-    int sessionId = 0;
-    
-    CGSCreateLoginSession(&sessionId);
-    
-    return sessionId;
-}

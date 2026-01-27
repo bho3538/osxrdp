@@ -114,7 +114,7 @@ InputHandler::InputHandler() :
     _lastMouseClickTime(0),
     _lastWheelMoveLargeTime(0)
 {
-    _eventRef = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+    _eventRef = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
 }
 
 InputHandler::~InputHandler() {
@@ -224,7 +224,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
             return;
     }
     
-    CGEventPost(kCGHIDEventTap, ev);
+    CGEventPost(kCGSessionEventTap, ev);
     CFRelease(ev);
 }
 
@@ -267,7 +267,7 @@ void InputHandler::HandleKeyboardInputEvent(xstream_t* cmd) {
     
     CGEventSetFlags(ev, _keyboardModifierFlags);
     
-    CGEventPost(kCGHIDEventTap, ev);
+    CGEventPost(kCGSessionEventTap, ev);
     CFRelease(ev);
 }
 

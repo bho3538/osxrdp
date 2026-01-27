@@ -94,10 +94,22 @@ bool MirrorAppServer::CreateCommandPipeServer() {
     }
     
     char server_path[512];
-    if (get_object_name_by_username("/tmp/osxrdp", server_path, 512) == 0) {
-        NSLog(@"[MirrorAppServer]::CreateCommandPipeServer get_object_name_by_username failed.");
-        return false;
+    
+    if (is_root_process() == 1) {
+        // lock screen
+        if (get_object_name_by_sessionid("/tmp/osxrdplock", server_path, 512) == 0) {
+            NSLog(@"[MirrorAppServer]::CreateCommandPipeServer get_object_name_by_sessionid failed.");
+            return false;
+        }
     }
+    else {
+        // normal session 
+        if (get_object_name_by_sessionid("/tmp/osxrdp", server_path, 512) == 0) {
+            NSLog(@"[MirrorAppServer]::CreateCommandPipeServer get_object_name_by_sessionid failed.");
+            return false;
+        }
+    }
+
     
     if (xipc_create_server(cmdPipe, server_path, OnClientConnected, OnClientDisconnected) != 0) {
         xipc_destroy(cmdPipe);

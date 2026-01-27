@@ -67,7 +67,8 @@
         }
     };
     
-    _recordQue = dispatch_queue_create("osxrdp.fallback_record", DISPATCH_QUEUE_SERIAL);
+    dispatch_queue_attr_t attr = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, 0);
+    _recordQue = dispatch_queue_create("osxrdp.fallback_record", attr);
     
     int format = kCVPixelFormatType_32BGRA; // 일반 bitmap
     if (recordFormat == OSXRDP_RECORDFORMAT_NV12) {

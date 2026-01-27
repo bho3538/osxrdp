@@ -6,115 +6,132 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		396948322F24652500EAB2FF /* libScreenMirrorLib.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 396948312F24652500EAB2FF /* libScreenMirrorLib.a */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		396948242F24646500EAB2FF /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
-		9B6301E72F0CBC0900451117 /* OSXRDPUninstaller.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OSXRDPUninstaller.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		396948262F24646500EAB2FF /* osxrdp_sessionmanager */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = osxrdp_sessionmanager; sourceTree = BUILT_PRODUCTS_DIR; };
+		396948312F24652500EAB2FF /* libScreenMirrorLib.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; path = libScreenMirrorLib.a; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		9B6301E92F0CBC0900451117 /* OSXRDPUninstaller */ = {
+		396948282F24646500EAB2FF /* osxrdp_sessionmanager */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = OSXRDPUninstaller;
+			path = osxrdp_sessionmanager;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		9B6301E42F0CBC0900451117 /* Frameworks */ = {
+		396948232F24646500EAB2FF /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				396948322F24652500EAB2FF /* libScreenMirrorLib.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		9B6301DE2F0CBC0900451117 = {
+		3969481D2F24646500EAB2FF = {
 			isa = PBXGroup;
 			children = (
-				9B6301E92F0CBC0900451117 /* OSXRDPUninstaller */,
-				9B6301E82F0CBC0900451117 /* Products */,
+				396948282F24646500EAB2FF /* osxrdp_sessionmanager */,
+				396948302F24652500EAB2FF /* Frameworks */,
+				396948272F24646500EAB2FF /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		9B6301E82F0CBC0900451117 /* Products */ = {
+		396948272F24646500EAB2FF /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				9B6301E72F0CBC0900451117 /* OSXRDPUninstaller.app */,
+				396948262F24646500EAB2FF /* osxrdp_sessionmanager */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		396948302F24652500EAB2FF /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				396948312F24652500EAB2FF /* libScreenMirrorLib.a */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		9B6301E62F0CBC0900451117 /* OSXRDPUninstaller */ = {
+		396948252F24646500EAB2FF /* osxrdp_sessionmanager */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 9B6301F62F0CBC0A00451117 /* Build configuration list for PBXNativeTarget "OSXRDPUninstaller" */;
+			buildConfigurationList = 3969482D2F24646500EAB2FF /* Build configuration list for PBXNativeTarget "osxrdp_sessionmanager" */;
 			buildPhases = (
-				9B6301E32F0CBC0900451117 /* Sources */,
-				9B6301E42F0CBC0900451117 /* Frameworks */,
-				9B6301E52F0CBC0900451117 /* Resources */,
+				396948222F24646500EAB2FF /* Sources */,
+				396948232F24646500EAB2FF /* Frameworks */,
+				396948242F24646500EAB2FF /* CopyFiles */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				9B6301E92F0CBC0900451117 /* OSXRDPUninstaller */,
+				396948282F24646500EAB2FF /* osxrdp_sessionmanager */,
 			);
-			name = OSXRDPUninstaller;
+			name = osxrdp_sessionmanager;
 			packageProductDependencies = (
 			);
-			productName = OSXRDPUninstaller;
-			productReference = 9B6301E72F0CBC0900451117 /* OSXRDPUninstaller.app */;
-			productType = "com.apple.product-type.application";
+			productName = osxrdp_sessionmanager;
+			productReference = 396948262F24646500EAB2FF /* osxrdp_sessionmanager */;
+			productType = "com.apple.product-type.tool";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		9B6301DF2F0CBC0900451117 /* Project object */ = {
+		3969481E2F24646500EAB2FF /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastUpgradeCheck = 2610;
+				LastUpgradeCheck = 2620;
 				TargetAttributes = {
-					9B6301E62F0CBC0900451117 = {
-						CreatedOnToolsVersion = 26.1.1;
+					396948252F24646500EAB2FF = {
+						CreatedOnToolsVersion = 26.2;
 					};
 				};
 			};
-			buildConfigurationList = 9B6301E22F0CBC0900451117 /* Build configuration list for PBXProject "OSXRDPUninstaller" */;
+			buildConfigurationList = 396948212F24646500EAB2FF /* Build configuration list for PBXProject "osxrdp_sessionmanager" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
 				Base,
 			);
-			mainGroup = 9B6301DE2F0CBC0900451117;
+			mainGroup = 3969481D2F24646500EAB2FF;
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
-			productRefGroup = 9B6301E82F0CBC0900451117 /* Products */;
+			productRefGroup = 396948272F24646500EAB2FF /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				9B6301E62F0CBC0900451117 /* OSXRDPUninstaller */,
+				396948252F24646500EAB2FF /* osxrdp_sessionmanager */,
 			);
 		};
 /* End PBXProject section */
 
-/* Begin PBXResourcesBuildPhase section */
-		9B6301E52F0CBC0900451117 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXResourcesBuildPhase section */
-
 /* Begin PBXSourcesBuildPhase section */
-		9B6301E32F0CBC0900451117 /* Sources */ = {
+		396948222F24646500EAB2FF /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -124,7 +141,7 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
-		9B6301F42F0CBC0A00451117 /* Debug */ = {
+		3969482B2F24646500EAB2FF /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -159,7 +176,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = 7BU9JG4H6R;
+				DEVELOPMENT_TEAM = 33X7M69J4B;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -178,7 +195,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 26.1;
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -186,7 +203,7 @@
 			};
 			name = Debug;
 		};
-		9B6301F52F0CBC0A00451117 /* Release */ = {
+		3969482C2F24646500EAB2FF /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -221,7 +238,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = 7BU9JG4H6R;
+				DEVELOPMENT_TEAM = 33X7M69J4B;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -234,93 +251,61 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 26.1;
+				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
 			};
 			name = Release;
 		};
-		9B6301F72F0CBC0A00451117 /* Debug */ = {
+		3969482E2F24646500EAB2FF /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = 33X7M69J4B;
-				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSMainNibFile = MainMenu;
-				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
-				MARKETING_VERSION = 1.5;
-				PRODUCT_BUNDLE_IDENTIFIER = com.byungho.osxrdp.OSXRDPUninstaller;
+				PRODUCT_BUNDLE_IDENTIFIER = com.byungho.osxrdp.sessionmanager;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				REGISTER_APP_GROUPS = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
+				USER_HEADER_SEARCH_PATHS = "$(SRCROOT)/../ScreenMirrorLib";
 			};
 			name = Debug;
 		};
-		9B6301F82F0CBC0A00451117 /* Release */ = {
+		3969482F2F24646500EAB2FF /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = 33X7M69J4B;
-				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSMainNibFile = MainMenu;
-				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/../Frameworks",
-				);
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
-				MARKETING_VERSION = 1.5;
-				PRODUCT_BUNDLE_IDENTIFIER = com.byungho.osxrdp.OSXRDPUninstaller;
+				PRODUCT_BUNDLE_IDENTIFIER = com.byungho.osxrdp.sessionmanager;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				REGISTER_APP_GROUPS = YES;
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
+				USER_HEADER_SEARCH_PATHS = "$(SRCROOT)/../ScreenMirrorLib";
 			};
 			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		9B6301E22F0CBC0900451117 /* Build configuration list for PBXProject "OSXRDPUninstaller" */ = {
+		396948212F24646500EAB2FF /* Build configuration list for PBXProject "osxrdp_sessionmanager" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				9B6301F42F0CBC0A00451117 /* Debug */,
-				9B6301F52F0CBC0A00451117 /* Release */,
+				3969482B2F24646500EAB2FF /* Debug */,
+				3969482C2F24646500EAB2FF /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		9B6301F62F0CBC0A00451117 /* Build configuration list for PBXNativeTarget "OSXRDPUninstaller" */ = {
+		3969482D2F24646500EAB2FF /* Build configuration list for PBXNativeTarget "osxrdp_sessionmanager" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				9B6301F72F0CBC0A00451117 /* Debug */,
-				9B6301F82F0CBC0A00451117 /* Release */,
+				3969482E2F24646500EAB2FF /* Debug */,
+				3969482F2F24646500EAB2FF /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
-	rootObject = 9B6301DF2F0CBC0900451117 /* Project object */;
+	rootObject = 3969481E2F24646500EAB2FF /* Project object */;
 }

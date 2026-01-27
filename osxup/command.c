@@ -2,6 +2,8 @@
 
 #include "osxrdp/packet.h"
 
+#include <string.h>
+
 void _osxup_send_cmd(xipc_t* ipc, xstream_t* stream);
 
 int osxup_send_start_cmd(xipc_t* ipc, int width, int height, int recordFormat, int useVirtualmon) {
@@ -63,6 +65,37 @@ int osxup_send_keyboard_input(xstream_t* stream, xipc_t* ipc, int inputType, int
     _osxup_send_cmd(ipc, stream);
     
     return 0;
+}
+
+int osxup_send_sessionrequest(xipc_t* ipc, const char* username) {
+    xstream_t* stream = xstream_create(512);
+
+    xstream_writeInt32(stream, OSXRDP_SESSMAN_REQUEST_SESSION);
+    xstream_writeStr(stream, username, (int)strlen(username) + 1);
+
+    _osxup_send_cmd(ipc, stream);
+
+    xstream_free(stream);
+    
+    return 0;
+}
+
+int osxup_send_sessionrelease(xipc_t* ipc, int sessionId) {
+    xstream_t* stream = xstream_create(16);
+
+    xstream_writeInt32(stream, OSXRDP_SESSMAN_REQUEST_RELEASESESSION);
+    xstream_writeInt32(stream, sessionId);
+
+    _osxup_send_cmd(ipc, stream);
+
+    xstream_free(stream);
+    
+    return 0;
+}
+
+void osxup_check_alive(xipc_t* ipc) {
+    int dummy = 0xffff;
+    xipc_send_data(ipc, &dummy, sizeof(int));
 }
 
 void _osxup_send_cmd(xipc_t* ipc, xstream_t* stream) {

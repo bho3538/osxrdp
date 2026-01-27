@@ -10,3 +10,9 @@ touch /var/log/xrdp.log
 launchctl bootstrap system /Library/LaunchDaemons/com.byungho.osxrdp.plist
 launchctl enable system/com.byungho.osxrdp
 launchctl kickstart -k system/com.byungho.osxrdp
+
+launchctl bootstrap system /Library/LaunchDaemons/com.byungho.osxrdp.sessionmanager.plist
+launchctl enable system/com.byungho.osxrdp.sessionmanager
+launchctl kickstart -k system/com.byungho.osxrdp.sessionmanager
+
+launchctl load /Library/LaunchAgents/com.byungho.osxrdp.lockscreen.plist
