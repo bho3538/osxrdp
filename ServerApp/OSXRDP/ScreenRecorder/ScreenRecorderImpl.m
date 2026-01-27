@@ -70,7 +70,8 @@
     _recordConfig.minimumFrameInterval = CMTimeMake(1, framerate);
     
     // 녹화 큐 설정
-    _recordQue = dispatch_queue_create("osxrdp.record", DISPATCH_QUEUE_SERIAL);
+    dispatch_queue_attr_t attr = dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_USER_INITIATED, 0);
+    _recordQue = dispatch_queue_create("osxrdp.record", attr);
     
     // 녹화 데이터 콜백 (인코딩 한 후 이를 전달하기 위해)
     _recordCb = recordCb;

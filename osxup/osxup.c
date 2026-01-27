@@ -59,7 +59,7 @@ lib_connect_agent(struct mod* mod) {
     mod->cmdIpc = xipc_ctx_create(lib_ipc_onmessage, mod);
     
     int connected = 0;
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < 25; i++) {
         if (xipc_connect_server(mod->cmdIpc, server_path) == 0) {
             connected = 1;
             break;
@@ -448,12 +448,18 @@ lib_mod_get_wait_objs(struct mod *mod, void *read_objs, int *rcount,
     
     if (mod->cmdIpc) {
         r[(*rcount)++] = mod->cmdIpc->fd;
-        osxup_check_alive(mod->cmdIpc);
+        if (mod->ipcAlive++ > 50) {
+            osxup_check_alive(mod->cmdIpc);
+            mod->ipcAlive = 0;
+        }
     }
     
     if (mod->sessionIpc) {
         r[(*rcount)++] = mod->sessionIpc->fd;
-        osxup_check_alive(mod->sessionIpc);
+        if (mod->sessionipcAlive++ > 50) {
+            osxup_check_alive(mod->sessionIpc);
+            mod->sessionipcAlive = 0;
+        }
     }
     
     *timeout = 100;

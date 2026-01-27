@@ -193,7 +193,9 @@ struct mod
     pthread_t sessionIpcThread;
     volatile int runPaint;
     volatile int requestStop;
-    
+    volatile int ipcAlive;
+    volatile int sessionipcAlive;
+
     struct timespec lastMouseMove;
     
     struct xrdp_client_info client_info;

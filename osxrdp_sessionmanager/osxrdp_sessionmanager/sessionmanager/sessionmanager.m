@@ -34,6 +34,25 @@ int osxrdp_sessionmanager_getsessioninfo(const char* username, session_info_t* s
         }
         
         // 세션에서 요청된 계정의 세션정보를 조회
+        
+        // 주의!
+        // 한 컴퓨터에 콘솔 세션에는 단 하나의 잠금 화면만 있어야 한다. (그렇지 않은 경우 무한으로 깜박거림...)
+        // 요청된 계정의 세션이 있는 경우
+        //   잠긴 경우 :
+        //     다른 잠금 화면이 있는 경우 : 해당 잠금 화면을 사용
+        //     다른 잠금 화면이 없는 경우 : 잠금 화면 만들기 (세션 생성)
+        //   잠기지 않은 경우 : 그대로 사용
+        // 요청된 계정의 세션이 없는 경우
+        //   다른 잠금 화면이 있는 경우 : 해당 잠금 화면을 사용
+        //   다른 잠금 화면이 없는 경우 : 잠금 화면 만들기 (세션 생성)
+        
+        int mySessionId = -1;
+        int isMySessionLogined = 0;
+        int isMySessionConsole = 0;
+        
+        int loginWindowSessionId = -1;
+        int isLoginWindowSessionConsole = 0;
+        
         for (NSDictionary* session in sessions) {
             const NSString* session_username = session[kCGSSessionLongUserNameKey];
             if (session_username != nil && !strcmp(session_username.UTF8String, username)) {
@@ -42,20 +61,44 @@ int osxrdp_sessionmanager_getsessioninfo(const char* username, session_info_t* s
                 NSString* isLogined = session[@"kCGSessionLoginDoneKey"];
                 NSString* isConsoleSession = session[@"kCGSSessionOnConsoleKey"];
                 
-                NSLog(@"[osxrdp_sessionmanager_getsessioninfo] found session info. id: %@, isLogined: %@, console: %@", sessionId, isLogined, isConsoleSession);
-                
-                if (isConsoleSession.intValue == 0) {
-                    // CGSSessionSwitchToSessionID 가 막힌것 같음. (보안 취약점)
-                    // 새로운 세션을 만들어 로그인을 유도해야할것 같음
-                    return 1;
-                }
-                
-                sessionInfo->sessionId = sessionId.intValue;
-                sessionInfo->isLogined = isLogined.intValue;
-                
-                return 0;
+                NSLog(@"[osxrdp_sessionmanager_getsessioninfo] found my session info. id: %@, isLogined: %@, console: %@", sessionId, isLogined, isConsoleSession);
+
+                mySessionId = sessionId.intValue;
+                isMySessionLogined = isLogined.intValue;
+                isMySessionConsole = isConsoleSession.intValue;
             }
+            else if (session_username != nil && !strcmp(session_username.UTF8String, "root")) {
+                
+                NSString* sessionId = session[kCGSSessionIDKey];
+                NSString* isConsoleSession = session[@"kCGSSessionOnConsoleKey"];
+                
+                NSLog(@"[osxrdp_sessionmanager_getsessioninfo] found lockscreen session info. id: %@, console: %@", sessionId, isConsoleSession);
+
+                loginWindowSessionId = sessionId.intValue;
+                isLoginWindowSessionConsole = isConsoleSession.intValue;
+            }
+            
         }
+        
+        // 요청한 계정의 세션이 있고, 콘솔 세션인 경우
+        if (mySessionId != -1 && isMySessionConsole == 1) {
+            sessionInfo->isLogined = isMySessionLogined;
+            sessionInfo->sessionId = mySessionId;
+            
+            return 0;
+        }
+        
+        // 요청한 계정의 세션이 없는 경우
+        if (loginWindowSessionId != -1 && isLoginWindowSessionConsole == 1) {
+            // 다른 잠금 화면이 있는경우
+            // 이것을 사용
+            sessionInfo->isLogined = 0;
+            sessionInfo->sessionId = loginWindowSessionId;
+            
+            return 0;
+        }
+        
+        // 그렇지 못한 경우 세션을 만들도록 유도
     }
     
     NSLog(@"[osxrdp_sessionmanager_getsessioninfo] session not found");
