@@ -43,5 +43,4 @@ osxrdp 1.3 버전부터 가상 모니터 기능을 지원합니다. 이 기능�
   <img width="799" height="84" alt="" src="https://github.com/user-attachments/assets/ba128371-bed0-4cdc-af76-6c998f5a6406" />
 
 * 접속 시도 시 다음과 같은 메시지가 뜹니다 ('OSXRDP agent does not running. Please check main agent is running.')\
-  접속하려는 계정이 '로그온' 되어있고, 해당 계정의 세션에 OSXRDP 앱이 실행중인지 확인합니다.\
-  지금 버전은 아직 '로그온' 되지 않은 계정을 사용하여 접속하는 기능을 지원하지 않습니다. 이는 추후 개선될 예정입니다
+  접속하려는 계정에서 OSXRDP 앱을 실행한 후 'Start on logon' 옵션을 활성화 해야 합니다.
