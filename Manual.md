@@ -48,5 +48,4 @@ You can enable the Virtual Monitor feature by selecting the Session type on the 
 
 * When attempting to connect, the following message appears:\
   (“OSXRDP agent does not running. Please check main agent is running.”)\
-  Check that the account you are trying to connect to is logged in, and that the OSXRDP app is running in that account’s session.\
-  The current version does not yet support connecting using an account that is not logged in. This will be improved in a future update.
+  Start OSXRDP app on specific macOS account and enable 'Start on logon' options.
