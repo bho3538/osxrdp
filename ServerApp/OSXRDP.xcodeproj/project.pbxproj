@@ -311,7 +311,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = 33X7M69J4B;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -325,7 +325,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
-				MARKETING_VERSION = 1.5;
+				MARKETING_VERSION = 1.5.1;
 				OTHER_LDFLAGS = (
 					"-sectcreate",
 					__CGPreLoginApp,
@@ -352,7 +352,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 6;
+				CURRENT_PROJECT_VERSION = 7;
 				DEVELOPMENT_TEAM = 33X7M69J4B;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -373,7 +373,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
-				MARKETING_VERSION = 1.5;
+				MARKETING_VERSION = 1.5.1;
 				OTHER_LDFLAGS = (
 					"-sectcreate",
 					__CGPreLoginApp,
