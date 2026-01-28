@@ -67,6 +67,9 @@ int VirtualMonitor::Create(int width, int height) {
 
     [_virtualDisplay applySettings:settings];
     
+    // todo: 구형 os 에서 너무 빠르게 다음 작업을 수행하면 실패하는 경우가 있는것 같음... 지저분하지만 일단 이렇게..
+    sleep(1);
+    
     return _virtualDisplay.displayID;
 }
 
@@ -148,7 +151,7 @@ bool VirtualMonitor::DisableOtherMonitors() {
             continue;
         }
         else {
-            // 가상 디스플레이를 끄도록 구성
+            // 물리 디스플레이를 끄도록 구성
             CGSConfigureDisplayEnabled(cfg, displayIds[i], false);
             
             // 나중에 복원할 수 있도록 id 를 저장

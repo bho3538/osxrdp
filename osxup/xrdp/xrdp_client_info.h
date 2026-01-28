@@ -91,42 +91,17 @@ enum xrdp_capture_code
 };
 
 /**
- * Type describing Unicode input state
- */
-enum unicode_input_state
-{
-    UIS_UNSUPPORTED = 0, ///< Client does not support Unicode
-    UIS_SUPPORTED,       ///< Client supports Unicode, but it's not active
-    UIS_ACTIVE           ///< Unicode input is active
-};
-
-enum xrdp_encoder_flags
-{
-    NONE                                   = 0,
-    ENCODE_COMPLETE                        = 1 << 0,
-    GFX_PROGRESSIVE_RFX                    = 1 << 1,
-    GFX_H264                               = 1 << 2,
-    KEY_FRAME_REQUESTED                    = 1 << 3
-};
-
-/* Size definitions for some arrays in xrdp_client_info */
-enum
-{
-    CI_KBD_MODEL_SIZE = 16,
-    CI_KBD_LAYOUT_SIZE = 16,
-    CI_KBD_VARIANT_SIZE = 16,
-    CI_KBD_OPTIONS_SIZE = 256,
-    CI_KBD_XKB_RULES_SIZE = 32
-};
-
-/**
  * Information about the xrdp client
  *
- * Note to maintainers; this structure is no longer shared with
- * xorgxrdp. See common/xup_client_info.h for that structure.
+ * @note This structure is shared with xorgxrdp. If you change anything
+ *       above the 'private to xrdp below this line' comment, you MUST
+ *       bump the CLIENT_INFO_CURRENT_VERSION number so that the mismatch
+ *       can be detected.
  */
 struct xrdp_client_info
 {
+    int size; /* bytes for this structure */
+    int version; /* Should be CLIENT_INFO_CURRENT_VERSION */
     int bpp;
     /* bitmap cache info */
     int cache1_entries;
@@ -146,7 +121,7 @@ struct xrdp_client_info
     int op2; /* use smaller bitmap header in bitmap cache */
     int desktop_cache;
     int use_compact_packets; /* rdp5 smaller packets */
-    char client_name[INFO_CLIENT_NAME_BYTES_UTF8];
+    char hostname[32];
     int build;
     int keylayout;
     char username[INFO_CLIENT_MAX_CB_LEN];
@@ -189,7 +164,7 @@ struct xrdp_client_info
     char jpeg_prop[64];
     int v3_codec_id;
     int rfx_min_pixel;
-    char orders[XR_PRIMARY_ORDER_COUNT];
+    char orders[32];
     int order_flags_ex;
     int use_bulk_comp;
     int pointer_flags; /* 0 color, 1 new, 2 no new */
@@ -197,7 +172,6 @@ struct xrdp_client_info
     int require_credentials; /* when true, credentials *must* be passed on cmd line */
 
     int security_layer; /* SECURITY_LAYER_* */
-    int vmconnect; /* Used when used from inside Hyper-V */
 
     int multimon; /* 0 = deny , 1 = allow */
     struct display_size_description display_sizes;
@@ -213,26 +187,28 @@ struct xrdp_client_info
     int mcs_early_capability_flags;
 
     int max_fastpath_frag_bytes;
+    int pad0; /* unused */
     int capture_format;
 
     char certificate[1024];
     char key_file[1024];
 
     /* X11 keyboard layout - inferred from keyboard type/subtype */
-    char model[CI_KBD_MODEL_SIZE];
-    char layout[CI_KBD_LAYOUT_SIZE];
-    char variant[CI_KBD_VARIANT_SIZE];
-    char options[CI_KBD_OPTIONS_SIZE];
-    char xkb_rules[CI_KBD_XKB_RULES_SIZE];
-    // A few x11 keycodes are needed by the xup module
-    int x11_keycode_caps_lock;
-    int x11_keycode_num_lock;
-    int x11_keycode_scroll_lock;
+    char model[16];
+    char layout[16];
+    char variant[16];
+    char options[256];
+
+    enum xrdp_capture_code capture_code;
 
     /* xorgxrdp: frame capture interval (milliseconds) */
     int rfx_frame_interval;
     int h264_frame_interval;
     int normal_frame_interval;
+
+    /* ==================================================================== */
+    /* Private to xrdp below this line */
+    /* ==================================================================== */
 
     /* codec */
     int h264_codec_id;
@@ -277,8 +253,16 @@ struct xrdp_client_info
     // Can we resize the desktop by using a Deactivation-Reactivation Sequence?
     enum client_resize_mode client_resize_mode;
 
-    enum unicode_input_state unicode_input_support;
-    enum xrdp_capture_code capture_code;
+    int vmconnect; /* Used when used from inside Hyper-V */
+};
+
+enum xrdp_encoder_flags
+{
+    NONE                                   = 0,
+    ENCODE_COMPLETE                        = 1 << 0,
+    GFX_PROGRESSIVE_RFX                    = 1 << 1,
+    GFX_H264                               = 1 << 2,
+    KEY_FRAME_REQUESTED                    = 1 << 3
 };
 
 /*
@@ -286,5 +270,9 @@ struct xrdp_client_info
  */
 #define OUTPUT_SUPPRESSED_FOR_REASON(ci,reason) \
     (((ci)->suppress_output_mask & (unsigned int)reason) != 0)
+
+/* yyyymmdd of last incompatible change to xrdp_client_info */
+/* also used for changes to all the xrdp installed headers */
+#define CLIENT_INFO_CURRENT_VERSION 20241118
 
 #endif
