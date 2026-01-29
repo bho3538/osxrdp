@@ -11,7 +11,7 @@ typedef void (*on_record_cmd)(int cmd, void* userData);
 
 @interface ScreenRecorderFallbackImpl : NSObject
 
-- (void)initializeWithDisplay:(SCDisplay*)display
+- (void)initializeWithDisplayId:(int)displayId
             RecordWidth:(int)width
             RecordHeight:(int)height
             RecordFramerate:(int)framerate

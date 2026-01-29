@@ -147,6 +147,8 @@ bool MirrorAppServer::StartIoThread() {
         return false;
     }
     
+    NSLog(@"[MirrorAppServer]::StartIoThread");
+    
     _ioThreadStarted = 1;
     return true;
 }
@@ -181,6 +183,8 @@ void* MirrorAppServer::IoThreadEntry(void* arg) {
 int MirrorAppServer::OnClientConnected(xipc_t* t, xipc_t* client) {
     MirrorAppServer* _this = (MirrorAppServer*)t->user_data;
     
+    NSLog(@"[MirrorAppServer::OnClientConnected] new client connected");
+    
     if (_this->_client != NULL) {
         struct MirrorAppClientCtx* oldCtx = (struct MirrorAppClientCtx*)_this->_client->user_data;
         oldCtx->ScreenRecorder->SendDisconnectMsgToClient();
@@ -201,6 +205,8 @@ int MirrorAppServer::OnClientConnected(xipc_t* t, xipc_t* client) {
 int MirrorAppServer::OnClientDisconnected(xipc_t* t, xipc_t* client) {
     MirrorAppServer* _this = (MirrorAppServer*)t->user_data;
     _this->_client = NULL;
+    
+    NSLog(@"[MirrorAppServer::OnClientDisconnected] client disconnected");
 
     if (client->user_data == NULL)
         return 0;
@@ -243,11 +249,14 @@ int MirrorAppServer::OnMessageReceived(xipc_t* t, xipc_t* client, void* data, in
     // Stopping/Stopped 상태에서는 명령 무시
     bool canHandle = _this->IsState(State_Running);
     if (!canHandle) {
+        NSLog(@"[MirrorAppServer::OnMessageReceived] invalid status");
+
         xstream_free(cmd);
         return 0;
     }
     
     int cmdType = xstream_readInt32(cmd);
+        
     switch (cmdType) {
         case OSXRDP_CMDTYPE_SCREEN: {
             ctx->ScreenRecorder->HandleCommand(client, cmd);

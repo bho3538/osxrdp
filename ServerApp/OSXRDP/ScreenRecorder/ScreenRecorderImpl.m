@@ -111,8 +111,9 @@
         return NO;
     }
     
+    NSLog(@"[ScreenRecorderImpl::start] before start record\n");
     [_recordStream startCaptureWithCompletionHandler:nil];
-    NSLog(@"[ScreenRecorderImpl::start] Start Record\n");
+    NSLog(@"[ScreenRecorderImpl::start] start record\n");
 
     return YES;
 }

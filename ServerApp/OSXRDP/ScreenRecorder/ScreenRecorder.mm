@@ -48,6 +48,16 @@ ScreenRecorder::~ScreenRecorder() {
 }
 
 bool ScreenRecorder::StartRecord(xstream_t* cmd) {
+    if (_impl != NULL) {
+        return StartRecordNew(cmd);
+    }
+    else if (_implFallback != NULL) {
+        return StartRecordLegacy(cmd);
+    }
+    return false;
+}
+
+bool ScreenRecorder::StartRecordNew(xstream_t* cmd) {
     // parse cmd
     int monitorIndex = xstream_readInt32(cmd);
     (void)monitorIndex; // unused yet
@@ -70,6 +80,8 @@ bool ScreenRecorder::StartRecord(xstream_t* cmd) {
     }
     
     if (width <= 0 || height <= 0) {
+        NSLog(@"[ScreenRecorder::StartRecord] invalid request. width: %d height: %d", width, height);
+
         return false;
     }
     
@@ -80,18 +92,22 @@ bool ScreenRecorder::StartRecord(xstream_t* cmd) {
     if (useVirtualMon != 0) {
         int monId = _virtualMonitor.Create(width, height);
         if (monId == -1) {
+            _virtualMonitor.RestoreOtherMonitors();
+            
             display = _GET_DISPLAY_USING_INDEX(0);
             if (display == nil){
+                NSLog(@"[ScreenRecorder::StartRecord] display is nil (virtual desktop mod fallback)");
+
                 return false;
             }
         }
         else {
             display = _GET_DISPLAY_USING_ID(monId);
             if (display == nil){
+                NSLog(@"[ScreenRecorder::StartRecord] display is nil (virtual desktop mod. displayid %d)", monId);
+
                 return false;
             }
-            
-            _virtualMonitor.DisableOtherMonitors();
         }
         
         // macOS 12 에서 가상 디스플레이의 width, height 가 1로 오는 증상이 발생...
@@ -102,6 +118,8 @@ bool ScreenRecorder::StartRecord(xstream_t* cmd) {
     else {
         display = _GET_DISPLAY_USING_INDEX(0);
         if (display == nil){
+            NSLog(@"[ScreenRecorder::StartRecord] display is nil (no virtual desktop mod)");
+            
             return false;
         }
         
@@ -109,48 +127,107 @@ bool ScreenRecorder::StartRecord(xstream_t* cmd) {
     }
 
     if (CreateRecordShm(width, height, framerate) == false) {
+        NSLog(@"[ScreenRecorder::StartRecord] could not create record shm");
+        
+        return false;
+    }
+
+    ScreenRecorderImpl* impl = (__bridge ScreenRecorderImpl*)_impl;
+    if (recordFormat == OSXRDP_RECORDFORMAT_NV12) {
+        [impl initializeWithDisplay:display
+                        RecordWidth:width RecordHeight:height
+                        RecordFramerate:framerate RecordFormat:recordFormat
+                        RecordDataCallback:HandleNV12RecordData RecordDataCallbackUserData:this
+                        RecordCmdCallback:HandleRecordCommand RecordCmdCallbackUserData:this];
+    }
+    else {
+        [impl initializeWithDisplay:display
+                        RecordWidth:width RecordHeight:height
+                        RecordFramerate:framerate RecordFormat:recordFormat
+                        RecordDataCallback:HandleBGRA32RecordData RecordDataCallbackUserData:this
+                        RecordCmdCallback:HandleRecordCommand RecordCmdCallbackUserData:this];
+    }
+    
+    return [impl start];
+}
+
+bool ScreenRecorder::StartRecordLegacy(xstream_t* cmd) {
+    // parse cmd
+    int monitorIndex = xstream_readInt32(cmd);
+    (void)monitorIndex; // unused yet
+    int width = xstream_readInt32(cmd);
+    int height = xstream_readInt32(cmd);
+    int framerate = xstream_readInt32(cmd);
+    int recordFormat = xstream_readInt32(cmd);
+    int useVirtualMon = xstream_readInt32(cmd);
+    
+    // 잠금화면의 경우 virtual monitor 를 지원하지 않음.
+    if (is_root_process() != 0) {
+        useVirtualMon = 0;
+    }
+    
+    if (framerate > 60) {
+        framerate = 60;
+    }
+    else if (framerate < 30) {
+        framerate = 30;
+    }
+    
+    if (width <= 0 || height <= 0) {
+        NSLog(@"[ScreenRecorder::StartRecord] invalid request. width: %d height: %d", width, height);
+
         return false;
     }
     
-    if (_impl != NULL) {
-        ScreenRecorderImpl* impl = (__bridge ScreenRecorderImpl*)_impl;
-        if (recordFormat == OSXRDP_RECORDFORMAT_NV12) {
-            [impl initializeWithDisplay:display
-                            RecordWidth:width RecordHeight:height
-                            RecordFramerate:framerate RecordFormat:recordFormat
-                            RecordDataCallback:HandleNV12RecordData RecordDataCallbackUserData:this
-                            RecordCmdCallback:HandleRecordCommand RecordCmdCallbackUserData:this];
-        }
-        else {
-            [impl initializeWithDisplay:display
-                            RecordWidth:width RecordHeight:height
-                            RecordFramerate:framerate RecordFormat:recordFormat
-                            RecordDataCallback:HandleBGRA32RecordData RecordDataCallbackUserData:this
-                            RecordCmdCallback:HandleRecordCommand RecordCmdCallbackUserData:this];
+    width &= ~0x1;
+    height &= ~0x1;
+
+    int displayId = -1;
+    if (useVirtualMon != 0) {
+        displayId = _virtualMonitor.Create(width, height);
+        if (displayId == -1) {
+            _virtualMonitor.RestoreOtherMonitors();
+            
+            displayId = CGMainDisplayID();
         }
         
-        return [impl start];
+        // macOS 12 에서 가상 디스플레이의 width, height 가 1로 오는 증상이 발생...
+        // 가상 디스플레이는 클라이언트의 해상도를 따라가므로 동일하게 설정
+        //_inputHandler.UpdateDisplayRes((int)display.width, (int)display.height, width, height);
+        _inputHandler.UpdateDisplayRes(width, height, width, height);
     }
     else {
-        ScreenRecorderFallbackImpl* fallbackImpl = (__bridge ScreenRecorderFallbackImpl*)_implFallback;
-        if (recordFormat == OSXRDP_RECORDFORMAT_NV12) {
-            [fallbackImpl initializeWithDisplay:display
-                            RecordWidth:width RecordHeight:height
-                            RecordFramerate:framerate RecordFormat:recordFormat
-                            RecordDataCallback:HandleFallbackNV12RecordData RecordDataCallbackUserData:this
-                            RecordCmdCallback:HandleRecordCommand RecordCmdCallbackUserData:this];
-            
-        }
-        else {
-            [fallbackImpl initializeWithDisplay:display
-                            RecordWidth:width RecordHeight:height
-                            RecordFramerate:framerate RecordFormat:recordFormat
-                            RecordDataCallback:HandleFallbackBGRA32RecordData RecordDataCallbackUserData:this
-                            RecordCmdCallback:HandleRecordCommand RecordCmdCallbackUserData:this];
-        }
+        displayId = CGMainDisplayID();
         
-        return [fallbackImpl start];
+        CGRect rect = CGDisplayBounds(displayId);
+        
+        _inputHandler.UpdateDisplayRes((int)rect.size.width, (int)rect.size.height, width, height);
     }
+
+    if (CreateRecordShm(width, height, framerate) == false) {
+        NSLog(@"[ScreenRecorder::StartRecord] could not create record shm");
+        
+        return false;
+    }
+
+    ScreenRecorderFallbackImpl* fallbackImpl = (__bridge ScreenRecorderFallbackImpl*)_implFallback;
+    if (recordFormat == OSXRDP_RECORDFORMAT_NV12) {
+        [fallbackImpl initializeWithDisplayId:displayId
+                        RecordWidth:width RecordHeight:height
+                        RecordFramerate:framerate RecordFormat:recordFormat
+                        RecordDataCallback:HandleFallbackNV12RecordData RecordDataCallbackUserData:this
+                        RecordCmdCallback:HandleRecordCommand RecordCmdCallbackUserData:this];
+        
+    }
+    else {
+        [fallbackImpl initializeWithDisplayId:displayId
+                        RecordWidth:width RecordHeight:height
+                        RecordFramerate:framerate RecordFormat:recordFormat
+                        RecordDataCallback:HandleFallbackBGRA32RecordData RecordDataCallbackUserData:this
+                        RecordCmdCallback:HandleRecordCommand RecordCmdCallbackUserData:this];
+    }
+    
+    return [fallbackImpl start];
 }
 
 bool ScreenRecorder::CreateRecordShm(int width, int height, int framerate) {
@@ -238,9 +315,12 @@ void ScreenRecorder::HandleCommand(xipc_t* client, xstream_t* cmd) {
     
     int packetType = xstream_readInt32(cmd);
     
+    NSLog(@"[ScreenRecorder::HandleCommand] packetType %d", packetType);
     switch (packetType) {
         case OSXRDP_PACKETTYPE_REQ_SCREEN: {
             bool re = StartRecord(cmd);
+            
+            NSLog(@"[ScreenRecorder::HandleCommand] start record. result %d", re);
             
             _client = client;
             
@@ -261,6 +341,8 @@ void ScreenRecorder::HandleCommand(xipc_t* client, xstream_t* cmd) {
             break;
         }
         case OSXRDP_PACKETTYPE_REQ_SCREENOFF: {
+            NSLog(@"[ScreenRecorder::HandleCommand] stop record");
+            
             Stop();
             break;
         }
@@ -293,6 +375,8 @@ void* ScreenRecorder::GetDisplay(int unused) {
     __block SCDisplay* found = nil;
     
     dispatch_semaphore_t sema = dispatch_semaphore_create(0);
+    
+    // ????? macOS 12, 13, 14 모두 잠금화면에서 이것을 호출하면 hang 이 발생함.... 뭐지
     [SCShareableContent getShareableContentWithCompletionHandler:^(SCShareableContent * _Nullable content, NSError * _Nullable error) {
         found = content.displays.firstObject;
         dispatch_semaphore_signal(sema);

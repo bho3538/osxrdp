@@ -25,7 +25,7 @@
     return self;
 }
 
-- (void)initializeWithDisplay:(SCDisplay*)display
+- (void)initializeWithDisplayId:(int)displayId
             RecordWidth:(int)width
             RecordHeight:(int)height
             RecordFramerate:(int)framerate
@@ -34,8 +34,6 @@
             RecordDataCallbackUserData:(void*)userData
             RecordCmdCallback:(on_record_cmd)recordCmdCb
             RecordCmdCallbackUserData:(void*)userData2 {
-    
-    if (display == nil) return;
     
     CGRect destRect = CGRectMake(0, 0, width, height);
     CFDictionaryRef destRectDict = CGRectCreateDictionaryRepresentation(destRect);
@@ -75,7 +73,7 @@
         format = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange; // h264
     }
     
-    _displayStream = CGDisplayStreamCreateWithDispatchQueue([display displayID], width, height, format, (__bridge CFDictionaryRef)_recordConfig, _recordQue, handler);
+    _displayStream = CGDisplayStreamCreateWithDispatchQueue(displayId, width, height, format, (__bridge CFDictionaryRef)_recordConfig, _recordQue, handler);
     
     _recordCb = recordCb;
     _recordCbUserData = userData;
@@ -94,6 +92,8 @@
         return FALSE;
     }
     
+    NSLog(@"[ScreenRecorderFallbackImpl::start] before start record\n");
+    
     CGError err = CGDisplayStreamStart(_displayStream);
     if (err != kCGErrorSuccess) {
         NSLog(@"[ScreenRecorderFallbackImpl::start] Failed to start stream: %d\n", err);
@@ -102,7 +102,7 @@
         return FALSE;
     }
     
-    NSLog(@"[ScreenRecorderFallbackImpl::start] Start Record\n");
+    NSLog(@"[ScreenRecorderFallbackImpl::start] start record\n");
     return TRUE;
 }
 

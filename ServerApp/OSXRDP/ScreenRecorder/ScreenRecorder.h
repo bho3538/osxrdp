@@ -36,6 +36,9 @@ private:
     void DestroyRecordShm();
     
     bool StartRecord(xstream_t* cmd);
+    bool StartRecordNew(xstream_t* cmd);
+    bool StartRecordLegacy(xstream_t* cmd);
+
     
     static void* GetDisplay(int unused);
     static void* GetDisplayById(int unused);

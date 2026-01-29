@@ -23,7 +23,7 @@ int VirtualMonitor::Create(int width, int height) {
     if (desc == nil) return -1;
     
     // 가상 디스플레이의 기본 속성
-    desc.queue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
+    desc.queue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0);
     desc.name = @"OSXRDP Virtual Display";
     desc.maxPixelsWide = width;
     desc.maxPixelsHigh = height;
@@ -61,14 +61,16 @@ int VirtualMonitor::Create(int width, int height) {
     
     _width = width;
     _height = height;
-    
+        
     _virtualDisplay = [[CGVirtualDisplay alloc] initWithDescriptor:desc];
     if (_virtualDisplay == nil) return -1;
+    
+    DisableOtherMonitors();
 
     [_virtualDisplay applySettings:settings];
     
-    // todo: 구형 os 에서 너무 빠르게 다음 작업을 수행하면 실패하는 경우가 있는것 같음... 지저분하지만 일단 이렇게..
-    sleep(1);
+    // 가상 디스플레이의 해상도 설정
+    SetResolution(_width, _height);
     
     return _virtualDisplay.displayID;
 }
@@ -164,9 +166,6 @@ bool VirtualMonitor::DisableOtherMonitors() {
     CGCompleteDisplayConfiguration(cfg, kCGConfigureForAppOnly);
 
     free(displayIds);
-    
-    // 가상 디스플레이의 해상도 설정
-    SetResolution(_width, _height);
     
     return true;
 }

@@ -27,8 +27,8 @@ int osxrdp_sessionmanager_getsessioninfo(const char* username, session_info_t* s
         
         // 컴퓨터의 gui 세션을 enum
         NSArray<NSDictionary*>* sessions = CGSCopySessionList();
-        if (sessions == nil) {
-            NSLog(@"[osxrdp_sessionmanager_getsessioninfo] enum sessions is null");
+        if (sessions == nil || sessions.count == 0) {
+            NSLog(@"[osxrdp_sessionmanager_getsessioninfo] enum sessions is null or empty");
 
             return -1;
         }
@@ -55,9 +55,12 @@ int osxrdp_sessionmanager_getsessioninfo(const char* username, session_info_t* s
         
         for (NSDictionary* session in sessions) {
             const NSString* session_username = session[kCGSSessionLongUserNameKey];
+            NSString* sessionId = session[kCGSSessionIDKey];
+            
+            NSLog(@"[osxrdp_sessionmanager_getsessioninfo] enum session. username : %@, sessionId : %@", session_username, sessionId);
+            
             if (session_username != nil && !strcmp(session_username.UTF8String, username)) {
                 
-                NSString* sessionId = session[kCGSSessionIDKey];
                 NSString* isLogined = session[@"kCGSessionLoginDoneKey"];
                 NSString* isConsoleSession = session[@"kCGSSessionOnConsoleKey"];
                 
@@ -68,8 +71,6 @@ int osxrdp_sessionmanager_getsessioninfo(const char* username, session_info_t* s
                 isMySessionConsole = isConsoleSession.intValue;
             }
             else if (session_username != nil && !strcmp(session_username.UTF8String, "root")) {
-                
-                NSString* sessionId = session[kCGSSessionIDKey];
                 NSString* isConsoleSession = session[@"kCGSSessionOnConsoleKey"];
                 
                 NSLog(@"[osxrdp_sessionmanager_getsessioninfo] found lockscreen session info. id: %@, console: %@", sessionId, isConsoleSession);
