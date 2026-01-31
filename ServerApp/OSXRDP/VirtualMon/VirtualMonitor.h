@@ -30,7 +30,7 @@ private:
     uint32_t* _disabledDisplayIds;
     int _disabledDisplayIdsCnt;
     
-    void SetResolution(int width, int height);
+    int SetResolution(int width, int height);
 };
 
 #endif /* VirtualMonitor_h */

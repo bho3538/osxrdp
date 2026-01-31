@@ -314,8 +314,6 @@ void ScreenRecorder::HandleCommand(xipc_t* client, xstream_t* cmd) {
     if (cmd == NULL) return;
     
     int packetType = xstream_readInt32(cmd);
-    
-    NSLog(@"[ScreenRecorder::HandleCommand] packetType %d", packetType);
     switch (packetType) {
         case OSXRDP_PACKETTYPE_REQ_SCREEN: {
             bool re = StartRecord(cmd);

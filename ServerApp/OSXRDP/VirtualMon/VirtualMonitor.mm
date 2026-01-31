@@ -61,16 +61,29 @@ int VirtualMonitor::Create(int width, int height) {
     
     _width = width;
     _height = height;
-        
+    
     _virtualDisplay = [[CGVirtualDisplay alloc] initWithDescriptor:desc];
     if (_virtualDisplay == nil) return -1;
     
     DisableOtherMonitors();
-
+    
     [_virtualDisplay applySettings:settings];
     
     // 가상 디스플레이의 해상도 설정
-    SetResolution(_width, _height);
+    // 가상 디스플레이가 완전히 추가될때까지 모니터 해상도를 조회할 수 없음. 따라서 여러번 시도 후 그래도 적용실패시 가상모니터 사용을 안하도록 유도
+    int applyResolution = 0;
+    for (int i = 0; i < 5; i++) {
+        if (SetResolution(_width, _height) == 0) {
+            applyResolution = 1;
+            break;
+        }
+        
+        sleep(1);
+    }
+    
+    if (applyResolution == 0) {
+        return -1;
+    }
     
     return _virtualDisplay.displayID;
 }
@@ -170,12 +183,13 @@ bool VirtualMonitor::DisableOtherMonitors() {
     return true;
 }
 
-void VirtualMonitor::SetResolution(int width, int height) {
+int VirtualMonitor::SetResolution(int width, int height) {
     CGDisplayModeRef bestMode = NULL;
-        
+    
     CFArrayRef modes = CGDisplayCopyAllDisplayModes(_virtualDisplay.displayID, NULL);
     if (modes == NULL) {
-        return;
+        NSLog(@"[VirtualMonitor::SetResolution] CGDisplayCopyAllDisplayModes null\n");
+        return 1;
     }
     
     CFIndex cnt = CFArrayGetCount(modes);
@@ -186,18 +200,18 @@ void VirtualMonitor::SetResolution(int width, int height) {
         size_t modeHeight = CGDisplayModeGetHeight(mode);
         
         if (modeWidth == width && modeHeight == height) {
-            printf("found bestmode\n");
+            NSLog(@"found bestmode\n");
             bestMode = mode;
             break;
         }
     }
     
     if (bestMode == NULL) {
-        printf("bestmode is null\n");
+        NSLog(@"bestmode is null\n");
         
         CFRelease(modes);
         
-        return;
+        return 1;
     }
     
     CGError err = CGDisplaySetDisplayMode(_virtualDisplay.displayID, bestMode, NULL);
@@ -206,4 +220,6 @@ void VirtualMonitor::SetResolution(int width, int height) {
     }
     
     CFRelease(modes);
+    
+    return err == kCGErrorSuccess ? 0 : 1;
 }
