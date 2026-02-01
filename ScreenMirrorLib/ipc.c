@@ -126,7 +126,6 @@ void xipc_destroy(xipc_t* ipc)
             xipc_msg_t* tmp = msg;
             msg = msg->next;
             
-            free(tmp->data);
             free(tmp);
         }
     }
@@ -241,7 +240,7 @@ int xipc_send_data(xipc_t* ipc, const void* data, int len)
         return -1;
     }
     
-    xipc_msg_t* msg = (xipc_msg_t*)malloc(sizeof(xipc_msg_t));
+    xipc_msg_t* msg = (xipc_msg_t*)malloc(sizeof(xipc_msg_t) + len + sizeof(int));
     if (msg == NULL)
     {
         return -1;
@@ -250,13 +249,6 @@ int xipc_send_data(xipc_t* ipc, const void* data, int len)
     msg->num_send = 0;
     msg->next = NULL;
     msg->len = len + sizeof(int);
-    msg->data = (char*)malloc(msg->len);
-    if (msg->data == NULL)
-    {
-        free(msg);
-        
-        return -1;
-    }
     
     // header + body
     memcpy(msg->data, &len, sizeof(int));
@@ -267,16 +259,12 @@ int xipc_send_data(xipc_t* ipc, const void* data, int len)
     if (ipc->out_msgs == NULL)
     {
         ipc->out_msgs = msg;
+        ipc->out_msgs_end = msg;
     }
     else
     {
-        xipc_msg_t* tmp = ipc->out_msgs;
-        while (tmp->next != NULL)
-        {
-            tmp = tmp->next;
-        }
-        
-        tmp->next = msg;
+        ipc->out_msgs_end->next = msg;
+        ipc->out_msgs_end = msg;
     }
     
     pthread_mutex_unlock(&ipc->lock);
@@ -307,7 +295,7 @@ void xipc_loop(xipc_t* ipc)
         
         xipc_t* current = ipc->next;
         
-        while (current && MAX_CONNECTION * 2)
+        while (current != NULL)
         {
             prepare_wait_poll(&numFds, fds, ipc_map, current);
 
@@ -432,7 +420,11 @@ int send_data_to_client(xipc_t* client, int* needClose)
                 xipc_msg_t* tmp = client->out_msgs;
                 client->out_msgs = client->out_msgs->next;
                 
-                free(tmp->data);
+                if (client->out_msgs == NULL)
+                {
+                    client->out_msgs_end = NULL;
+                }
+                
                 free(tmp);
             }
         }
@@ -564,7 +556,7 @@ int read_data_from_socket(xipc_t* client, int* needClose)
 
 void prepare_wait_poll(int* currentIndex, struct pollfd* fds, xipc_t** ipcs, xipc_t* ipc)
 {
-    if (*currentIndex >= MAX_CONNECTION * 2)
+    if (*currentIndex + 1 >= MAX_CONNECTION * 2)
     {
         return;
     }

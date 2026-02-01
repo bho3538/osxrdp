@@ -18,8 +18,8 @@ typedef int (*xipc_data_callback)(struct xipc* ipc, struct xipc* client, void* d
 typedef struct xipc_msg {
     int len;
     int num_send;
-    char* data;
     struct xipc_msg* next;
+    char data[];
 } xipc_msg_t;
 
 
@@ -38,6 +38,7 @@ typedef struct xipc {
     
     pthread_mutex_t lock;
     xipc_msg_t* out_msgs;
+    xipc_msg_t* out_msgs_end;
     xipc_data_callback on_data;
     xipc_client_onconnected on_client_connected;
     xipc_client_ondisconnected on_client_disconnected;
