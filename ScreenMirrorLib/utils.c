@@ -50,8 +50,7 @@ int get_object_name_by_sessionid(const char* prefix, char* buffer, int cchMax) {
     
     int sessionId = 0;
     CFNumberGetValue(sessionIdRef, kCFNumberIntType, &sessionId);
-    
-    CFRelease(sessionIdRef);
+
     CFRelease(sessionInfo);
     
     return get_object_name(sessionId, prefix, buffer, cchMax);

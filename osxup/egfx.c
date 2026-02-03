@@ -155,8 +155,7 @@ void osxup_draw_frame(struct mod* mod, unsigned int frame_id, screenrecord_frame
     
     // 한번 더 복사 (그대로)
     int rects_data_len = (int)((char*)cmd->data_current - rects_start_ptr);
-    memcpy(cmd->data_current, rects_start_ptr, rects_data_len);
-    cmd->data_current += rects_data_len;
+    xstream_writeData(cmd, rects_start_ptr, rects_data_len);
     
     //xstream_writeInt16(cmd, 0);
     //xstream_writeInt16(cmd, 0);

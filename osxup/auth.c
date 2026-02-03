@@ -28,7 +28,7 @@ int _pam_conv_handler(int num_msg, const struct pam_message **msg,
     char *password = (char *)appdata_ptr;
     struct pam_response *reply = NULL;
 
-    reply = (struct pam_response *)malloc(sizeof(struct pam_response));
+    reply = (struct pam_response *)malloc(sizeof(struct pam_response) * num_msg);
     if (reply == NULL) return PAM_BUF_ERR;
 
     for (int i = 0; i < num_msg; i++) {
@@ -55,7 +55,7 @@ int _verify_mac_user(const char *username, const char *password) {
     retval = pam_start("sshd", username, &conv, &pamh);
 
     if (retval != PAM_SUCCESS) {
-        return 0; // 초기화 실패
+        return 1; // 초기화 실패
     }
 
     retval = pam_authenticate(pamh, 0);

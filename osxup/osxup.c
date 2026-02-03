@@ -419,9 +419,11 @@ lib_mod_set_param(struct mod *mod, const char *name, const char *value)
 {
     if (strcasecmp(name, "username") == 0) {
         strncpy(mod->username, value, MAX_PATH - 1);
+        mod->username[MAX_PATH - 1] = '\0';
     }
     else if (strcasecmp(name, "password") == 0) {
         strncpy(mod->password, value, MAX_PATH - 1);
+        mod->password[MAX_PATH - 1] = '\0';
     }
     else if (strcasecmp(name, "client_info") == 0) {
         memcpy(&(mod->client_info), value, sizeof(mod->client_info));
