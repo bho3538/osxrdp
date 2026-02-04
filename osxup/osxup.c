@@ -450,7 +450,7 @@ lib_mod_get_wait_objs(struct mod *mod, void *read_objs, int *rcount,
     
     if (mod->cmdIpc) {
         r[(*rcount)++] = mod->cmdIpc->fd;
-        if (mod->ipcAlive++ > 50) {
+        if (mod->ipcAlive++ > 100) {
             osxup_check_alive(mod->cmdIpc);
             mod->ipcAlive = 0;
         }
@@ -458,7 +458,7 @@ lib_mod_get_wait_objs(struct mod *mod, void *read_objs, int *rcount,
     
     if (mod->sessionIpc) {
         r[(*rcount)++] = mod->sessionIpc->fd;
-        if (mod->sessionipcAlive++ > 50) {
+        if (mod->sessionipcAlive++ > 100) {
             osxup_check_alive(mod->sessionIpc);
             mod->sessionipcAlive = 0;
         }

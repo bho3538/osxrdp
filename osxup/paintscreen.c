@@ -20,43 +20,48 @@ void osxup_paint(struct mod* mod) {
     size_t imgDataSize = 0;
     unsigned int frame_id = 0;
     
-    // 읽을 화면 데이터가 있는지 확인
-    if (_osxup_paint_get_data(shm, &frameInfo, &imgData, &imgDataSize, &frame_id) == 0) {
-        return;
-    }
-    
-    if (mod->client_info.gfx) {
-        // using GFX
-        osxup_start_frame(mod, frame_id);
+    // ScreenRecorder --> agent --> osxup 까지 데이터가 오는대 처리 지연이 발생하는것 같음 (밀리는 데이터가 점점 생김)
+    // 따라서 한번 처리할때 2~3번씩 그려주니 이러한 현상이 많이 줄어드는것 같음
+    // 깔끔한 방식은 아니라서 이렇게 해도 될지 고민....
+    for (int i = 0; i < 3; i++) {
+        // 읽을 화면 데이터가 있는지 확인
+        if (_osxup_paint_get_data(shm, &frameInfo, &imgData, &imgDataSize, &frame_id) == 0) {
+            return;
+        }
         
-        osxup_draw_frame(mod, frame_id, frameInfo, (char*)imgData, (int)imgDataSize);
-        
-        osxup_end_frame(mod, frame_id);
-    }
-    else {
-        // using legacy bitmap
-        mod->server_begin_update(mod);
+        if (mod->client_info.gfx) {
+            // using GFX
+            osxup_start_frame(mod, frame_id);
             
-        if (frameInfo->dirtyCount > 0 && frameInfo->dirtyCount < MAX_DIRTY_COUNT) {
-            struct xrdp_rect dirtys[MAX_DIRTY_COUNT];
+            osxup_draw_frame(mod, frame_id, frameInfo, (char*)imgData, (int)imgDataSize);
             
-            // dirty area 정보를 담기
-            for (int i = 0; i < frameInfo->dirtyCount; i++) {
-                dirtys[i].x = (short)frameInfo->dirtys[i].x;
-                dirtys[i].y = (short)frameInfo->dirtys[i].y;
-                dirtys[i].cx = (short)frameInfo->dirtys[i].width;
-                dirtys[i].cy = (short)frameInfo->dirtys[i].height;
-            }
-            
-            mod->server_paint_rects(mod, frameInfo->dirtyCount, (short*)dirtys, frameInfo->dirtyCount, (short*)dirtys, imgData, mod->width, mod->height, 0 ,frame_id);
+            osxup_end_frame(mod, frame_id);
         }
         else {
-            // full draw
-            struct xrdp_rect dummy = {0, 0, mod->width, mod->height};
-            mod->server_paint_rects(mod, 1, (short*)&dummy, 1, (short*)&dummy, imgData, mod->width, mod->height, 0 ,frame_id);
+            // using legacy bitmap
+            mod->server_begin_update(mod);
+                
+            if (frameInfo->dirtyCount > 0 && frameInfo->dirtyCount < MAX_DIRTY_COUNT) {
+                struct xrdp_rect dirtys[MAX_DIRTY_COUNT];
+                
+                // dirty area 정보를 담기
+                for (int i = 0; i < frameInfo->dirtyCount; i++) {
+                    dirtys[i].x = (short)frameInfo->dirtys[i].x;
+                    dirtys[i].y = (short)frameInfo->dirtys[i].y;
+                    dirtys[i].cx = (short)frameInfo->dirtys[i].width;
+                    dirtys[i].cy = (short)frameInfo->dirtys[i].height;
+                }
+                
+                mod->server_paint_rects(mod, frameInfo->dirtyCount, (short*)dirtys, frameInfo->dirtyCount, (short*)dirtys, imgData, mod->width, mod->height, 0 ,frame_id);
+            }
+            else {
+                // full draw
+                struct xrdp_rect dummy = {0, 0, mod->width, mod->height};
+                mod->server_paint_rects(mod, 1, (short*)&dummy, 1, (short*)&dummy, imgData, mod->width, mod->height, 0 ,frame_id);
+            }
+                
+            mod->server_end_update(mod);
         }
-            
-        mod->server_end_update(mod);
     }
 }
 
