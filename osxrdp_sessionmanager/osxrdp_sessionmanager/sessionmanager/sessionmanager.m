@@ -5,15 +5,17 @@
 //  Created by byungho on 1/24/26.
 //
 
+#include "../pch.h"
 #include "sessionmanager.h"
 
-#import <Foundation/Foundation.h>
 #import <CoreGraphics/CoreGraphics.h>
 
+// private api
 extern NSArray<NSDictionary*>* CGSCopySessionList(void);
 extern CGError CGSCreateSessionWithDataAndOptions(CFStringRef, CFArrayRef, void*, void*, void*, int, int*, int*);
 extern CGError CGSReleaseSession(int session);
 
+// private const
 extern const NSString* kCGSSessionIDKey;
 extern const NSString* kCGSSessionLongUserNameKey;
 
@@ -23,12 +25,12 @@ int osxrdp_sessionmanager_getsessioninfo(const char* username, session_info_t* s
     }
     
     @autoreleasepool {
-        NSLog(@"[osxrdp_sessionmanager_getsessioninfo] username: %s", username);
+        dzlog_info("[osxrdp_sessionmanager_getsessioninfo] username: %s", username);
         
         // 컴퓨터의 gui 세션을 enum
         NSArray<NSDictionary*>* sessions = CGSCopySessionList();
         if (sessions == nil || sessions.count == 0) {
-            NSLog(@"[osxrdp_sessionmanager_getsessioninfo] enum sessions is null or empty");
+            dzlog_error("[osxrdp_sessionmanager_getsessioninfo] enum sessions is null or empty");
 
             return -1;
         }
@@ -57,14 +59,14 @@ int osxrdp_sessionmanager_getsessioninfo(const char* username, session_info_t* s
             const NSString* session_username = session[kCGSSessionLongUserNameKey];
             NSString* sessionId = session[kCGSSessionIDKey];
             
-            NSLog(@"[osxrdp_sessionmanager_getsessioninfo] enum session. username : %@, sessionId : %@", session_username, sessionId);
+            dzlog_info("[osxrdp_sessionmanager_getsessioninfo] enum session. username : %s, sessionId : %d", session_username.UTF8String, sessionId.intValue);
             
             if (session_username != nil && !strcmp(session_username.UTF8String, username)) {
                 
                 NSString* isLogined = session[@"kCGSessionLoginDoneKey"];
                 NSString* isConsoleSession = session[@"kCGSSessionOnConsoleKey"];
                 
-                NSLog(@"[osxrdp_sessionmanager_getsessioninfo] found my session info. id: %@, isLogined: %@, console: %@", sessionId, isLogined, isConsoleSession);
+                dzlog_info("[osxrdp_sessionmanager_getsessioninfo] found my session info. id: %d, isLogined: %d, console: %d", sessionId.intValue, isLogined.intValue, isConsoleSession.intValue);
 
                 mySessionId = sessionId.intValue;
                 isMySessionLogined = isLogined.intValue;
@@ -73,7 +75,7 @@ int osxrdp_sessionmanager_getsessioninfo(const char* username, session_info_t* s
             else if (session_username != nil && !strcmp(session_username.UTF8String, "root")) {
                 NSString* isConsoleSession = session[@"kCGSSessionOnConsoleKey"];
                 
-                NSLog(@"[osxrdp_sessionmanager_getsessioninfo] found lockscreen session info. id: %@, console: %@", sessionId, isConsoleSession);
+                dzlog_info("[osxrdp_sessionmanager_getsessioninfo] found lockscreen session info. id: %d, console: %d", sessionId.intValue, isConsoleSession.intValue);
 
                 loginWindowSessionId = sessionId.intValue;
                 isLoginWindowSessionConsole = isConsoleSession.intValue;
@@ -102,7 +104,7 @@ int osxrdp_sessionmanager_getsessioninfo(const char* username, session_info_t* s
         // 그렇지 못한 경우 세션을 만들도록 유도
     }
     
-    NSLog(@"[osxrdp_sessionmanager_getsessioninfo] session not found");
+    dzlog_info("[osxrdp_sessionmanager_getsessioninfo] session not found");
     
     return 1;
 }
@@ -112,7 +114,7 @@ int osxrdp_sessionmanager_createsession(session_info_t* created_sessionInfo) {
     
     @autoreleasepool {
         
-        NSLog(@"[osxrdp_sessionmanager_createsession] create session");
+        dzlog_info("[osxrdp_sessionmanager_createsession] create session");
         
         // Lock screen window
         NSString *path = @"/System/Library/CoreServices/loginwindow.app/Contents/MacOS/loginwindow";
@@ -132,11 +134,14 @@ int osxrdp_sessionmanager_createsession(session_info_t* created_sessionInfo) {
         );
 
         if (err != 0) {
+            dzlog_error("[osxrdp_sessionmanager_createsession] could not create new user session");
             return 1;
         }
         
         created_sessionInfo->sessionId = sessionId;
         created_sessionInfo->isLogined = 0;
+        
+        dzlog_info("[osxrdp_sessionmanager_createsession] create session success. sessionid : %d", sessionId);
         
         return 0;
     }
@@ -147,7 +152,7 @@ void osxrdp_sessionmanager_releasesession(int sessionId) {
     // 세션이 로그인 되어있는지 확인 (그냥 날려버리면 사용자 작업이 유실)
     @autoreleasepool {
         
-        NSLog(@"[osxrdp_sessionmanager_releasesession] release session %d", sessionId);
+        dzlog_info("[osxrdp_sessionmanager_releasesession] release session %d", sessionId);
 
         // 컴퓨터의 gui 세션을 enum
         NSArray<NSDictionary*>* sessions = CGSCopySessionList();
@@ -162,6 +167,8 @@ void osxrdp_sessionmanager_releasesession(int sessionId) {
             
             // 아직 로그인되지 않은 세션일 경우 날려버리기
             if (current_sessionId.intValue == sessionId && current_isLogined.intValue == 0) {
+                dzlog_info("[osxrdp_sessionmanager_releasesession] release session completed %d", sessionId);
+
                 CGSReleaseSession(sessionId);
                 break;
             }

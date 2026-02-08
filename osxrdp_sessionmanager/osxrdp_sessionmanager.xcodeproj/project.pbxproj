@@ -23,6 +23,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		391E056D2F3752AA00D52E26 /* libzlog.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libzlog.a; path = ../extern_lib/zlog/lib/libzlog.a; sourceTree = "<group>"; };
 		396948262F24646500EAB2FF /* osxrdp_sessionmanager */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = osxrdp_sessionmanager; sourceTree = BUILT_PRODUCTS_DIR; };
 		396948312F24652500EAB2FF /* libScreenMirrorLib.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; path = libScreenMirrorLib.a; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -67,6 +68,7 @@
 		396948302F24652500EAB2FF /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				391E056D2F3752AA00D52E26 /* libzlog.a */,
 				396948312F24652500EAB2FF /* libScreenMirrorLib.a */,
 			);
 			name = Frameworks;
@@ -264,7 +266,9 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 33X7M69J4B;
 				ENABLE_HARDENED_RUNTIME = YES;
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../../osxrdp_private/extern_lib/zlog/lib";
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				OTHER_LDFLAGS = "-lzlog";
 				PRODUCT_BUNDLE_IDENTIFIER = com.byungho.osxrdp.sessionmanager;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				USER_HEADER_SEARCH_PATHS = "$(SRCROOT)/../ScreenMirrorLib";
@@ -277,7 +281,9 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 33X7M69J4B;
 				ENABLE_HARDENED_RUNTIME = YES;
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../../osxrdp_private/extern_lib/zlog/lib";
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				OTHER_LDFLAGS = "-lzlog";
 				PRODUCT_BUNDLE_IDENTIFIER = com.byungho.osxrdp.sessionmanager;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				USER_HEADER_SEARCH_PATHS = "$(SRCROOT)/../ScreenMirrorLib";

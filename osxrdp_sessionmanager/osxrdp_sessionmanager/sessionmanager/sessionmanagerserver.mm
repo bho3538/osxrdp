@@ -1,3 +1,4 @@
+#include "../pch.h"
 #include "SessionManagerServer.h"
 #import <Foundation/Foundation.h>
 
@@ -76,19 +77,19 @@ bool SessionManagerServer::IsRunning() {
 
 bool SessionManagerServer::CreateCommandPipeServer() {
     if (_cmdPipe != NULL) {
-        NSLog(@"[SessionManagerServer]::CreateCommandPipeServer cmdPipe already exists.");
+        dzlog_error("[SessionManagerServer]::CreateCommandPipeServer cmdPipe already exists.");
         return false;
     }
     
     xipc_t* cmdPipe = xipc_ctx_create(OnMessageReceived, this);
     if (cmdPipe == NULL) {
-        NSLog(@"[SessionManagerServer]::CreateCommandPipeServer xipc_ctx_create failed.");
+        dzlog_error("[SessionManagerServer]::CreateCommandPipeServer xipc_ctx_create failed.");
         return false;
     }
     
     if (xipc_create_server(cmdPipe, "/tmp/osxrdpsessionmanager", NULL, NULL) != 0) {
         xipc_destroy(cmdPipe);
-        NSLog(@"[SessionManagerServer]::CreateCommandPipeServer xipc_create_server failed.");
+        dzlog_error("[SessionManagerServer]::CreateCommandPipeServer xipc_create_server failed.");
         return false;
     }
     
@@ -117,7 +118,7 @@ bool SessionManagerServer::StartIoThread() {
     // ipc 소켓을 기동하기 위한 thread 생성
     int rc = pthread_create(&_ioThread, NULL, &SessionManagerServer::IoThreadEntry, this);
     if (rc != 0) {
-        NSLog(@"[SessionManagerServer]::StartIoThread pthread_create failed: %d", rc);
+        dzlog_error("[SessionManagerServer]::StartIoThread pthread_create failed: %d", rc);
         _ioThreadStarted = 0;
         return false;
     }

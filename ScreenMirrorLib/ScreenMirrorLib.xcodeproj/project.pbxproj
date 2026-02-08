@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		3918B95C2F384C29000C2406 /* duprun.c in Sources */ = {isa = PBXBuildFile; fileRef = 3918B95B2F384C29000C2406 /* duprun.c */; };
+		3918B95D2F384C29000C2406 /* duprun.h in Headers */ = {isa = PBXBuildFile; fileRef = 3918B95A2F384C29000C2406 /* duprun.h */; };
 		9B4A9E9E2ED5964B00260492 /* ipc.c in Sources */ = {isa = PBXBuildFile; fileRef = 9B4A9E9D2ED5964B00260492 /* ipc.c */; };
 		9B4A9E9F2ED5964B00260492 /* ipc.h in Headers */ = {isa = PBXBuildFile; fileRef = 9B4A9E9C2ED5964B00260492 /* ipc.h */; };
 		9B6301FB2F0CC1DE00451117 /* utils.h in Headers */ = {isa = PBXBuildFile; fileRef = 9B6301F92F0CC1DE00451117 /* utils.h */; };
@@ -18,6 +20,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		3918B95A2F384C29000C2406 /* duprun.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = duprun.h; sourceTree = "<group>"; };
+		3918B95B2F384C29000C2406 /* duprun.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = duprun.c; sourceTree = "<group>"; };
 		9B4A9E5F2ED593F900260492 /* libScreenMirrorLib.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libScreenMirrorLib.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		9B4A9E9C2ED5964B00260492 /* ipc.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ipc.h; sourceTree = "<group>"; };
 		9B4A9E9D2ED5964B00260492 /* ipc.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = ipc.c; sourceTree = "<group>"; };
@@ -60,6 +64,8 @@
 				9B4A9E9D2ED5964B00260492 /* ipc.c */,
 				9B6D5AEA2EF1169700CB34E9 /* xshm.h */,
 				9B6D5AEB2EF1169700CB34E9 /* xshm.c */,
+				3918B95B2F384C29000C2406 /* duprun.c */,
+				3918B95A2F384C29000C2406 /* duprun.h */,
 				9B4A9E602ED593F900260492 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -81,6 +87,7 @@
 			files = (
 				9B6301FB2F0CC1DE00451117 /* utils.h in Headers */,
 				9B6D5AEC2EF1169700CB34E9 /* xshm.h in Headers */,
+				3918B95D2F384C29000C2406 /* duprun.h in Headers */,
 				9B4A9E9F2ED5964B00260492 /* ipc.h in Headers */,
 				9B9916AB2EEFEB0E006E995A /* xstream.h in Headers */,
 			);
@@ -151,6 +158,7 @@
 			files = (
 				9B9916AA2EEFEB0E006E995A /* xstream.c in Sources */,
 				9B6301FC2F0CC1DE00451117 /* utils.c in Sources */,
+				3918B95C2F384C29000C2406 /* duprun.c in Sources */,
 				9B6D5AED2EF1169700CB34E9 /* xshm.c in Sources */,
 				9B4A9E9E2ED5964B00260492 /* ipc.c in Sources */,
 			);
