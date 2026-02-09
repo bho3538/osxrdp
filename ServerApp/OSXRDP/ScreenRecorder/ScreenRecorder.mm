@@ -422,6 +422,9 @@ void ScreenRecorder::HandleNV12RecordData(void* sampleBuffer, void* imgBuffer, v
     int index = writePos % FRAME_SLOTS;
     
     screenrecord_frame* slot = &recordInfo->frames[index];
+    
+    _this->_cursorHandler.HandleCursorInfo(&slot->cursor_data);
+    
     char* screenrecord_data = *(&recordInfo->screenrecord_datas + (recordInfo->screenrecord_data_size * index));
     HandleNV12DirtyArea(sampleBuffer, imgBuffer, slot, screenrecord_data);
 
@@ -449,6 +452,9 @@ void ScreenRecorder::HandleBGRA32RecordData(void* sampleBuffer, void* imgBuffer,
     int index = writePos % FRAME_SLOTS;
     
     screenrecord_frame* slot = &recordInfo->frames[index];
+    
+    _this->_cursorHandler.HandleCursorInfo(&slot->cursor_data);
+    
     char* screenrecord_data = *(&recordInfo->screenrecord_datas + (recordInfo->screenrecord_data_size * index));
     HandleBGRA32DirtyArea(sampleBuffer, imgBuffer, slot, screenrecord_data);
 
@@ -627,6 +633,9 @@ void ScreenRecorder::HandleFallbackNV12RecordData(void* pixelBuffer, const CGRec
     int index = writePos % FRAME_SLOTS;
     
     screenrecord_frame* slot = &recordInfo->frames[index];
+    
+    _this->_cursorHandler.HandleCursorInfo(&slot->cursor_data);
+    
     char* screenrecord_data = *(&recordInfo->screenrecord_datas + (recordInfo->screenrecord_data_size * index));
     HandleFallbackNV12DirtyArea(pixelBuffer, slot, dirtyRects, dirtyRectsCnt, screenrecord_data);
 
@@ -725,6 +734,9 @@ void ScreenRecorder::HandleFallbackBGRA32RecordData(void* pixelBuffer, const CGR
     int index = writePos % FRAME_SLOTS;
     
     screenrecord_frame* slot = &recordInfo->frames[index];
+    
+    _this->_cursorHandler.HandleCursorInfo(&slot->cursor_data);
+    
     char* screenrecord_data = *(&recordInfo->screenrecord_datas + (recordInfo->screenrecord_data_size * index));
     HandleFallbackBGRA32DirtyArea(pixelBuffer, slot, dirtyRects, dirtyRectsCnt, screenrecord_data);
 

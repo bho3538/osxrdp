@@ -7,6 +7,7 @@
 #include "xshm.h"
 #include "osxrdp/screenrecordshm.h"
 #include "InputHandler.h"
+#include "CursorHandler.h"
 #include "../VirtualMon/VirtualMonitor.h"
 
 class ScreenRecorder {
@@ -29,6 +30,9 @@ private:
     
     // Input handler (mouse, keyboard)
     InputHandler _inputHandler;
+    
+    // Mouse cursor handler
+    CursorHandler _cursorHandler;
     
     VirtualMonitor _virtualMonitor;
     
