@@ -26,7 +26,6 @@ osxrdp is an unofficial module of xrdp to support rdp server in macOS.
 * osxrdp is still in alpha version. It may contain numerous bugs and is not suitable for production use.
 
 ## Known Issuses
-* The mouse cursor does not change shape according to the situation.
 * Using mstsc, if you minimize the mstsc window and then reopen it, the image quality deteriorates slightly. I'm not sure why this is happening.
   
 ## Supported OS
