@@ -500,7 +500,7 @@ lib_mod_check_wait_objs(struct mod *mod)
     if (mod->cursorShm != NULL) {
         cursor_data_t* cursor = (cursor_data_t*)mod->cursorShm->mem;
         
-        int updated = atomic_load_explicit(&cursor->updated,  memory_order_relaxed);
+        int updated = atomic_load_explicit(&cursor->updated,  memory_order_acquire);
         if (updated == 1) {
             mod->server_set_pointer_large(mod, cursor->hotspotX, cursor->hotspotY, cursor->cursorImgData, cursor->cursorMaskData, 32, cursor->width, cursor->height);
             
@@ -658,6 +658,10 @@ mod_exit(void* handle)
     if (mod == 0)
     {
         return 0;
+    }
+    
+    if (g_previousConnection == mod) {
+        g_previousConnection = NULL;
     }
     
     lib_cleanup_internals(mod);
