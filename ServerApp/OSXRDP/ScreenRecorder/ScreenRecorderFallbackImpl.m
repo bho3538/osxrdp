@@ -42,8 +42,8 @@
 
     _recordConfig = @{
         (__bridge NSString*)kCGDisplayStreamShowCursor : @NO,
-        (__bridge NSString*)kCGDisplayStreamQueueDepth : @3,
-        (__bridge NSString*)kCGDisplayStreamMinimumFrameTime : @0.0167,     // 60fps
+        (__bridge NSString*)kCGDisplayStreamQueueDepth : @2,
+        (__bridge NSString*)kCGDisplayStreamMinimumFrameTime : @0.01666,     // 60fps
         (__bridge NSString*)kCGDisplayStreamDestinationRect : (__bridge_transfer NSDictionary*)destRectDict,
         (__bridge NSString*)kCGDisplayStreamPreserveAspectRatio : @NO,      // 비율 무시하고 녹화 (늘리기)
         (__bridge NSString*)kCGDisplayStreamColorSpace : (__bridge id)sRGB, // 이 설정이 없으면 물빠진 색감이 나옴

@@ -17,6 +17,19 @@ struct RECT {
     short height;
 };
 
+#define MAX_CURSOR_IMG_BUFFER_SIZE (128 * 128)
+
+typedef struct cursor_data {
+    _Atomic int updated;
+    int width;
+    int height;
+    int hotspotX;
+    int hotspotY;
+    int cursorImgDataSize;
+    char cursorImgData[MAX_CURSOR_IMG_BUFFER_SIZE * 4]; //BGRA
+    char cursorMaskData[MAX_CURSOR_IMG_BUFFER_SIZE]; //mask (dummy)
+} cursor_data_t;
+
 typedef struct screenrecord_frame {
     int dirtyCount;  // <--- 이것이 0일 경우 full redraw
     struct RECT dirtys[MAX_DIRTY_COUNT];
@@ -29,7 +42,6 @@ typedef struct screenrecord_shm {
     int height;
     int fps;
     int unused;
-    int unused2;
     screenrecord_frame_t frames[FRAME_SLOTS];
     int screenrecord_data_size;
     char screenrecord_datas[1];

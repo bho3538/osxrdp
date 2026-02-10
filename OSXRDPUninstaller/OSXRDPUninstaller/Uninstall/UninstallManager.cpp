@@ -61,7 +61,9 @@ void UninstallManager::DoUninstall() {
     RemoveFile("/Library/LaunchAgents/com.byungho.osxrdp.lockscreen.plist");
     TerminateProcess("/Applications/osxrdp/OSXRDP.app/Contents/MacOS/OSXRDP");
     TerminateProcess("/Applications/osxrdp/OSXRDP.app/Contents/MacOS/xrdp");
+    RemoveDirectory("/Library/Logs/osxrdp");
     RemoveDirectory("/etc/xrdp");
+    RemoveDirectory("/etc/osxrdp");
     RemoveDirectory("/usr/local/lib/xrdp");
     RemoveDirectory("/usr/local/share/xrdp");
     RemoveFile("/var/log/xrdp.log");

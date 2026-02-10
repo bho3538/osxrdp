@@ -246,7 +246,6 @@ lib_ipc_onmessage(xipc_t* t, xipc_t* client, void* data, int len) {
                 if (re == 1) {
                     // todo: shm name을 pipe 로 받아오기 (하드코딩 제거)
                     char shm_name[512];
-                    
                     if (mod->sessionInfo.isLogined == 0) {
                         if (get_object_name(mod->sessionInfo.sessionId, "/osxrdpshm_l", shm_name, 512) == 0) {
                             return 0;
@@ -265,6 +264,19 @@ lib_ipc_onmessage(xipc_t* t, xipc_t* client, void* data, int len) {
                         // start paint thread
                         mod->runPaint = 1;
                     }
+                    
+                    if (mod->sessionInfo.isLogined == 0) {
+                        if (get_object_name(mod->sessionInfo.sessionId, "/osxrdpcursorshm_l", shm_name, 512) == 0) {
+                            return 0;
+                        }
+                    }
+                    else {
+                        if (get_object_name(mod->sessionInfo.sessionId, "/osxrdpcursorshm", shm_name, 512) == 0) {
+                            return 0;
+                        }
+                    }
+                    
+                    mod->cursorShm = xshm_open(shm_name);
                 }
                 else {
                     lib_disconnect_client(mod);
@@ -450,7 +462,7 @@ lib_mod_get_wait_objs(struct mod *mod, void *read_objs, int *rcount,
     
     if (mod->cmdIpc) {
         r[(*rcount)++] = mod->cmdIpc->fd;
-        if (mod->ipcAlive++ > 100) {
+        if (mod->ipcAlive++ > 50) {
             osxup_check_alive(mod->cmdIpc);
             mod->ipcAlive = 0;
         }
@@ -458,13 +470,13 @@ lib_mod_get_wait_objs(struct mod *mod, void *read_objs, int *rcount,
     
     if (mod->sessionIpc) {
         r[(*rcount)++] = mod->sessionIpc->fd;
-        if (mod->sessionipcAlive++ > 100) {
+        if (mod->sessionipcAlive++ > 50) {
             osxup_check_alive(mod->sessionIpc);
             mod->sessionipcAlive = 0;
         }
     }
     
-    *timeout = 100;
+    *timeout = 70;
     
     return 0;
 }
@@ -483,6 +495,18 @@ lib_mod_check_wait_objs(struct mod *mod)
     if (mod->runPaint == 0) return 0;
     
     osxup_paint(mod);
+    
+    // cursor update
+    if (mod->cursorShm != NULL) {
+        cursor_data_t* cursor = (cursor_data_t*)mod->cursorShm->mem;
+        
+        int updated = atomic_load_explicit(&cursor->updated,  memory_order_relaxed);
+        if (updated == 1) {
+            mod->server_set_pointer_large(mod, cursor->hotspotX, cursor->hotspotY, cursor->cursorImgData, cursor->cursorMaskData, 32, cursor->width, cursor->height);
+            
+            atomic_store_explicit(&cursor->updated, 0, memory_order_release);
+        }
+    }
     
     return 0;
 }
@@ -583,6 +607,11 @@ lib_cleanup_internals(struct mod* mod)
     if (mod->screenShm != NULL) {
         xshm_close(mod->screenShm);
         mod->screenShm = NULL;
+    }
+    
+    if (mod->cursorShm != NULL) {
+        xshm_close(mod->cursorShm);
+        mod->cursorShm = NULL;
     }
     
     lib_release_msgs(mod);

@@ -9,7 +9,7 @@ APP_NAME="OSXRDP.app"
 UNINS_APP_NAME="OSXRDPUninstaller.app"
 INSTALL_FOLDER_NAME="osxrdp"
 PKG_ID="com.byungho.osxrdp.setup"
-VERSION="1.5.6"
+VERSION="1.5.7"
 
 # 파일명 설정
 COMPONENT_PKG="osxrdp_component.pkg"
@@ -50,6 +50,7 @@ mkdir -p "$PAYLOAD_DIR/Applications/$INSTALL_FOLDER_NAME"
 mkdir -p "$PAYLOAD_DIR/Library/LaunchDaemons"
 mkdir -p "$PAYLOAD_DIR/Library/LaunchAgents"
 mkdir -p "$PAYLOAD_DIR/etc/xrdp"
+mkdir -p "$PAYLOAD_DIR/etc/osxrdp"
 mkdir -p "$PAYLOAD_DIR/usr/local/lib/xrdp"
 mkdir -p "$PAYLOAD_DIR/usr/local/share/xrdp"
 
@@ -75,6 +76,11 @@ cp "$SOURCE_DIR/com.byungho.osxrdp.lockscreen.plist" "$PAYLOAD_DIR/Library/Launc
 if [ -d "$SOURCE_DIR/config" ]; then
     cp -R "$SOURCE_DIR/config/"* "$PAYLOAD_DIR/etc/xrdp/"
 fi
+
+if [ -d "$SOURCE_DIR/log" ]; then
+    cp -R "$SOURCE_DIR/log/"* "$PAYLOAD_DIR/etc/osxrdp/"
+fi
+
 cp "$SOURCE_DIR/module/libosxup.dylib" "$PAYLOAD_DIR/usr/local/lib/xrdp"
 cp "$SOURCE_DIR/resources/"* "$PAYLOAD_DIR/usr/local/share/xrdp"
 

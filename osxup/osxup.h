@@ -186,6 +186,7 @@ struct mod
     xipc_t* cmdIpc;
     xipc_t* sessionIpc;
     xshm_t* screenShm;
+    xshm_t* cursorShm;
     pthread_t ipcThread;
     pthread_t sessionIpcThread;
     volatile int runPaint;
