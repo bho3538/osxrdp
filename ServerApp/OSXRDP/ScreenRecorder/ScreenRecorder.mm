@@ -131,6 +131,12 @@ bool ScreenRecorder::StartRecordNew(xstream_t* cmd) {
         
         return false;
     }
+    
+    if (CreateCursorShm()== false) {
+        NSLog(@"[ScreenRecorder::StartRecord] could not create cursor shm");
+        
+        return false;
+    }
 
     ScreenRecorderImpl* impl = (__bridge ScreenRecorderImpl*)_impl;
     if (recordFormat == OSXRDP_RECORDFORMAT_NV12) {
@@ -209,6 +215,12 @@ bool ScreenRecorder::StartRecordLegacy(xstream_t* cmd) {
         
         return false;
     }
+    
+    if (CreateCursorShm()== false) {
+        NSLog(@"[ScreenRecorder::StartRecord] could not create cursor shm");
+        
+        return false;
+    }
 
     ScreenRecorderFallbackImpl* fallbackImpl = (__bridge ScreenRecorderFallbackImpl*)_implFallback;
     if (recordFormat == OSXRDP_RECORDFORMAT_NV12) {
@@ -279,6 +291,47 @@ void ScreenRecorder::DestroyRecordShm() {
     _recordShm = NULL;
 }
 
+bool ScreenRecorder::CreateCursorShm() {
+    if (_cursorShm != NULL) {
+        NSLog(@"[ScreenRecorder::CreateCursorShm] cursorShm is already exists.");
+        
+        return false;
+    }
+    
+    char shm_name[512];
+    if (is_root_process() == 0) {
+        if (get_object_name_by_sessionid("/osxrdpcursorshm", shm_name, 512) == 0) {
+            return false;
+        }
+    }
+    else {
+        if (get_object_name_by_sessionid("/osxrdpcursorshm_l", shm_name, 512) == 0) {
+            return false;
+        }
+    }
+
+    _cursorShm = xshm_create(shm_name, sizeof(cursor_data_t));
+    if (_cursorShm == NULL) {
+        NSLog(@"[ScreenRecorder::CreateCursorShm] xshm_create failed.");
+        
+        return false;
+    }
+    
+    memset(_cursorShm->mem, 0x00, sizeof(cursor_data_t));
+    
+    return true;
+}
+
+void ScreenRecorder::DestroyCursorShm() {
+    if (_cursorShm == NULL) {
+        return;
+    }
+    
+    xshm_close(_cursorShm);
+    xshm_destroy(_cursorShm);
+    _cursorShm = NULL;
+}
+
 void ScreenRecorder::Stop() {
     if (_impl == NULL && _implFallback == NULL) return;
         
@@ -308,6 +361,7 @@ void ScreenRecorder::Stop() {
     
     // 공유 메모리 정리
     DestroyRecordShm();
+    DestroyCursorShm();
 }
 
 void ScreenRecorder::HandleCommand(xipc_t* client, xstream_t* cmd) {
@@ -346,6 +400,8 @@ void ScreenRecorder::HandleCommand(xipc_t* client, xstream_t* cmd) {
         }
         case OSXRDP_PACKETTYPE_MOUSEEVT: {
             _inputHandler.HandleMousseInputEvent(cmd);
+
+            _cursorHandler.HandleCursorInfo((cursor_data_t*)_cursorShm->mem);
             break;
         }
         case OSXRDP_PACKETTYPE_KEYBOARDEVT: {
@@ -422,9 +478,6 @@ void ScreenRecorder::HandleNV12RecordData(void* sampleBuffer, void* imgBuffer, v
     int index = writePos % FRAME_SLOTS;
     
     screenrecord_frame* slot = &recordInfo->frames[index];
-    
-    _this->_cursorHandler.HandleCursorInfo(&slot->cursor_data);
-    
     char* screenrecord_data = *(&recordInfo->screenrecord_datas + (recordInfo->screenrecord_data_size * index));
     HandleNV12DirtyArea(sampleBuffer, imgBuffer, slot, screenrecord_data);
 
@@ -452,9 +505,6 @@ void ScreenRecorder::HandleBGRA32RecordData(void* sampleBuffer, void* imgBuffer,
     int index = writePos % FRAME_SLOTS;
     
     screenrecord_frame* slot = &recordInfo->frames[index];
-    
-    _this->_cursorHandler.HandleCursorInfo(&slot->cursor_data);
-    
     char* screenrecord_data = *(&recordInfo->screenrecord_datas + (recordInfo->screenrecord_data_size * index));
     HandleBGRA32DirtyArea(sampleBuffer, imgBuffer, slot, screenrecord_data);
 
@@ -633,9 +683,6 @@ void ScreenRecorder::HandleFallbackNV12RecordData(void* pixelBuffer, const CGRec
     int index = writePos % FRAME_SLOTS;
     
     screenrecord_frame* slot = &recordInfo->frames[index];
-    
-    _this->_cursorHandler.HandleCursorInfo(&slot->cursor_data);
-    
     char* screenrecord_data = *(&recordInfo->screenrecord_datas + (recordInfo->screenrecord_data_size * index));
     HandleFallbackNV12DirtyArea(pixelBuffer, slot, dirtyRects, dirtyRectsCnt, screenrecord_data);
 
@@ -734,9 +781,6 @@ void ScreenRecorder::HandleFallbackBGRA32RecordData(void* pixelBuffer, const CGR
     int index = writePos % FRAME_SLOTS;
     
     screenrecord_frame* slot = &recordInfo->frames[index];
-    
-    _this->_cursorHandler.HandleCursorInfo(&slot->cursor_data);
-    
     char* screenrecord_data = *(&recordInfo->screenrecord_datas + (recordInfo->screenrecord_data_size * index));
     HandleFallbackBGRA32DirtyArea(pixelBuffer, slot, dirtyRects, dirtyRectsCnt, screenrecord_data);
 

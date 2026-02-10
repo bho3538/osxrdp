@@ -62,10 +62,6 @@ void osxup_paint(struct mod* mod) {
                 
             mod->server_end_update(mod);
         }
-        
-        if (frameInfo->cursor_data.updated != 0) {
-            mod->server_set_pointer_large(mod, frameInfo->cursor_data.hotspotX, frameInfo->cursor_data.hotspotY, frameInfo->cursor_data.cursorImgData, frameInfo->cursor_data.cursorImgMask, 32, frameInfo->cursor_data.width, frameInfo->cursor_data.height);
-        }
     }
 }
 

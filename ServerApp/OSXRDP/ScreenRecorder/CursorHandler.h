@@ -15,7 +15,7 @@ public:
     CursorHandler();
     ~CursorHandler();
     
-    void HandleCursorInfo(cursor_data_t* cursor);
+    bool HandleCursorInfo(cursor_data_t* cursor);
     
 private:
     int _cursorseed;
@@ -29,8 +29,6 @@ private:
     
     static int PickSquarePointerSize(int width, int height);
     static void BuildSquarePointerBGRA(const char* src, int srcRowBytes, int srcSizeBytes, int srcWidth, int srcHeight, int dstSize, char* dstData);
-    static void ClearMask(char* mask, int width, int height);
-    static long long GetCurrentTime();
 };
 
 #endif /* CursorHandler_h */

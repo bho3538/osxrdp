@@ -25,6 +25,7 @@ private:
     void* _implFallback;
     void* _encodingSession;
     xshm_t* _recordShm;
+    xshm_t* _cursorShm;
     xipc_t* _client;
     int _gfxFlags;
     
@@ -38,6 +39,9 @@ private:
     
     bool CreateRecordShm(int width, int height, int framerate);
     void DestroyRecordShm();
+    
+    bool CreateCursorShm();
+    void DestroyCursorShm();
     
     bool StartRecord(xstream_t* cmd);
     bool StartRecordNew(xstream_t* cmd);
