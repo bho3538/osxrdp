@@ -22,6 +22,8 @@ public:
     // 비활성화 하였던 나머지 모니터들을 다시 활성화
     void RestoreOtherMonitors();
     
+    static void WakeupDisplay();
+    
 private:
     __strong CGVirtualDisplay* _virtualDisplay;
     int _width;

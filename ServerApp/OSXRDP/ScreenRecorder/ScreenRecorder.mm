@@ -87,6 +87,10 @@ bool ScreenRecorder::StartRecordNew(xstream_t* cmd) {
     
     width &= ~0x1;
     height &= ~0x1;
+    
+    // 절전 모드는 아니지만, 디스플레이가 꺼져 있는 경우 문제가 발생할 수 있음.
+    // 따라서 먼저 디스플레이를 잠시 깨워준다. (가상 디스플레이 사용중일때는 다시 꺼질 예정)
+    VirtualMonitor::WakeupDisplay();
 
     SCDisplay* display = nil;
     if (useVirtualMon != 0) {
@@ -100,6 +104,8 @@ bool ScreenRecorder::StartRecordNew(xstream_t* cmd) {
 
                 return false;
             }
+            
+            _inputHandler.UpdateDisplayRes((int)display.width, (int)display.height, width, height);
         }
         else {
             display = _GET_DISPLAY_USING_ID(monId);
@@ -108,12 +114,12 @@ bool ScreenRecorder::StartRecordNew(xstream_t* cmd) {
 
                 return false;
             }
+            
+            // macOS 12 에서 가상 디스플레이의 width, height 가 1로 오는 증상이 발생...
+            // 가상 디스플레이는 클라이언트의 해상도를 따라가므로 동일하게 설정
+            //_inputHandler.UpdateDisplayRes((int)display.width, (int)display.height, width, height);
+            _inputHandler.UpdateDisplayRes(width, height, width, height);
         }
-        
-        // macOS 12 에서 가상 디스플레이의 width, height 가 1로 오는 증상이 발생...
-        // 가상 디스플레이는 클라이언트의 해상도를 따라가므로 동일하게 설정
-        //_inputHandler.UpdateDisplayRes((int)display.width, (int)display.height, width, height);
-        _inputHandler.UpdateDisplayRes(width, height, width, height);
     }
     else {
         display = _GET_DISPLAY_USING_INDEX(0);

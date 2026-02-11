@@ -1,5 +1,8 @@
 #include "VirtualMonitor.h"
 
+#include <IOKit/pwr_mgt/IOPMLib.h>
+
+
 VirtualMonitor::VirtualMonitor() :
     _virtualDisplay(nil),
     _width(0),
@@ -40,7 +43,7 @@ int VirtualMonitor::Create(int width, int height) {
     
     CGVirtualDisplaySettings* settings = [[CGVirtualDisplaySettings alloc] init];
     if (settings == nil) return -1;
-    settings.hiDPI = 1;
+    settings.hiDPI = 0;
     
     // 이와 같이 구성을 채우지 않으면 macOS 가 이를 모니터가 아닌 다른 무언가로 인식하여 대화상자를 띄우는것 같음 (airplay 수신기?)
     // 따라서 기본 구성을 진짜 모니터처럼 넣고 xrdp 해상도를 마지막에 넣는다.
@@ -103,6 +106,9 @@ void VirtualMonitor::RestoreOtherMonitors() {
         return;
     }
     
+    // 디스플레이가 꺼진 상태에선 restore 가 안먹힐때가 많음
+    WakeupDisplay();
+    
     CGDisplayConfigRef cfg = NULL;
     CGBeginDisplayConfiguration(&cfg);
     
@@ -121,6 +127,14 @@ void VirtualMonitor::RestoreOtherMonitors() {
     
     // 설정 저장
     CGCompleteDisplayConfiguration(cfg, kCGConfigureForAppOnly);
+}
+
+void VirtualMonitor::WakeupDisplay() {
+    IOPMAssertionID assertionID = kIOPMNullAssertionID;
+    IOPMAssertionDeclareUserActivity(CFSTR("OSXRDP: wake display"), kIOPMUserActiveLocal, &assertionID);
+    if (assertionID != kIOPMNullAssertionID) {
+        IOPMAssertionRelease(assertionID);
+    }
 }
 
 bool VirtualMonitor::DisableOtherMonitors() {
