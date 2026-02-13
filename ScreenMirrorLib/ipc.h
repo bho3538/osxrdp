@@ -55,6 +55,7 @@ int xipc_connect_server(xipc_t* ipc, const char* path);
 int xipc_send_data(xipc_t* ipc, const void* data, int len);
 void xipc_loop(xipc_t* ipc);
 void xipc_end_loop(xipc_t* ipc);
+void xipc_loop_once(xipc_t* ipc);
 
 #ifdef __cplusplus
 }
