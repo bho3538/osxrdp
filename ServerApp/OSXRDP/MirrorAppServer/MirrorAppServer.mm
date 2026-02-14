@@ -193,9 +193,11 @@ int MirrorAppServer::OnClientConnected(xipc_t* t, xipc_t* client) {
 
 int MirrorAppServer::OnClientDisconnected(xipc_t* t, xipc_t* client) {
     MirrorAppServer* _this = (MirrorAppServer*)t->user_data;
-    _this->_client = NULL;
-    
     NSLog(@"[MirrorAppServer::OnClientDisconnected] client disconnected");
+    
+    if (_this->_client == client) {
+        _this->_client = NULL;
+    }
 
     if (client->user_data == NULL)
         return 0;

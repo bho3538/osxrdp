@@ -192,8 +192,6 @@ lib_mod_check_wait_objs(struct mod *mod)
     
     // 화면을 그리기
     mod->connectionManager->Paint();
-    
-    // 커서를 그리기
 
     return 0;
 }

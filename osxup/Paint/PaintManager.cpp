@@ -104,6 +104,12 @@ void PaintManager::Release() {
         
         _recordShm = NULL;
     }
+    
+    if (_cursorShm != NULL) {
+        xshm_close(_cursorShm);
+        
+        _cursorShm = NULL;
+    }
 }
 
 void PaintManager::Paint() {

@@ -65,9 +65,7 @@ bool ConnectionManager::Connect(const mod* mod) {
 }
 
 void ConnectionManager::Release() {
-    assert(_inited == true);
-    
-    _paintManager.Release();
+    if (_inited == false) return;
     
     // close all ipc
     if (_agentIpc != NULL) {
@@ -82,9 +80,9 @@ void ConnectionManager::Release() {
         _sessionIpc = NULL;
     }
     
-    if (_inited == false) {
-        return;
-    }
+    _paintManager.Release();
+    
+    _inited = false;
 }
 
 void ConnectionManager::KeepAlive() {
@@ -120,7 +118,7 @@ void ConnectionManager::KeepAlive() {
         _paintManager.Release();
         
         // 마지막 시도가 락스크린일 경우 재접속
-        if (_statusManager.CheckReconnection() == false || _ConnectToAgent(_sessionId, 0) == false) {
+        if (_statusManager.CheckReconnection() == false || _ConnectToAgent(_sessionId, false) == false) {
             // 그렇지 않은 경우 종료
             _statusManager.SetStopping();
         }
@@ -283,7 +281,7 @@ int ConnectionManager::_OnReceivedSessionManagerMessage(xipc_t* t, xipc_t* clien
             int sessionId = xstream_readInt32(stream);
             int isLogined = xstream_readInt32(stream);
             
-            _this->_HandleSessionMessage(sessionId, !isLogined);
+            _this->_HandleSessionMessage(sessionId, isLogined == 0 ? true : false);
         
             break;
         }

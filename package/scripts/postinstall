@@ -7,7 +7,7 @@
 touch /var/log/xrdp.log
 
 # create log folder (osxrdp)
-mkdir /Library/Logs/osxrdp
+mkdir -p /Library/Logs/osxrdp
 chmod 755 /Library/Logs/osxrdp
 
 # start service

@@ -132,7 +132,7 @@ void PaintH264::DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, 
     char* rects_start_ptr = (char*)_drawCmd->data_current;
     
     // rects
-    if (frameInfo->dirtyCount > 0) {
+    if (frameInfo->dirtyCount > 0 && frameInfo->dirtyCount < MAX_DIRTY_COUNT) {
         xstream_writeInt16(_drawCmd, frameInfo->dirtyCount); // num_rects
         
         for (int i = 0; i < frameInfo->dirtyCount; i++) {
