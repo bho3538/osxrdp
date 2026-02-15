@@ -114,13 +114,20 @@ void ConnectionManager::KeepAlive() {
     // 에이전트 연결이 끊긴 경우 (맨 처음 연결 init 제외)
     if (_agentIpc == NULL && _statusManager.CheckInitStatus() == false) {
         
+        _sessionId = -1;
+        
         // painter 와 커서 manager 는 재생성해야함 (agent 에 종속적)
         _paintManager.Release();
         
         // 마지막 시도가 락스크린일 경우 재접속
-        if (_statusManager.CheckReconnection() == false || _ConnectToAgent(_sessionId, false) == false) {
+        if (_statusManager.CheckReconnection() == false) {
             // 그렇지 않은 경우 종료
             _statusManager.SetStopping();
+        }
+        else {
+            // 세션 재연결 시도를 위해 세션 정보 다시 조회
+            _statusManager.SetRequestSession();
+            _command.SendSessionRequestMsg(_sessionIpc, _mod->username, (int)strlen(_mod->username));
         }
     }
 }
@@ -143,6 +150,10 @@ bool ConnectionManager::CanPaint() {
 
 bool ConnectionManager::NeedTerminate() {
     return _statusManager.CheckNeedTerminate();
+}
+
+void ConnectionManager::Terminate() {
+    _statusManager.SetStopping();
 }
 
 void ConnectionManager::Paint() {    
@@ -280,7 +291,7 @@ int ConnectionManager::_OnReceivedSessionManagerMessage(xipc_t* t, xipc_t* clien
         case OSXRDP_SESSMAN_REPLY_SESSION: {
             int sessionId = xstream_readInt32(stream);
             int isLogined = xstream_readInt32(stream);
-            
+                        
             _this->_HandleSessionMessage(sessionId, isLogined == 0 ? true : false);
         
             break;

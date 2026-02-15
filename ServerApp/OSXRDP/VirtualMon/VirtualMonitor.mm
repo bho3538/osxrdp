@@ -134,6 +134,7 @@ void VirtualMonitor::WakeupDisplay() {
     IOPMAssertionDeclareUserActivity(CFSTR("OSXRDP: wake display"), kIOPMUserActiveLocal, &assertionID);
     if (assertionID != kIOPMNullAssertionID) {
         IOPMAssertionRelease(assertionID);
+        assertionID = kIOPMNullAssertionID;
     }
 }
 

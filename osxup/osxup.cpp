@@ -2,12 +2,16 @@
 #include "osxup.h"
 #include "auth.h"
 #include "osxrdp/packet.h"
+#include "Connection/MultipleConnectionManager.h"
 
 #include <unistd.h>
 
 #ifndef EXPORT_CC
 #define EXPORT_CC __attribute__((visibility("default")))
 #endif
+
+// 가상 모니터 등과 같은 이유로 지금은 다중 사용자의 동시 접속을 지원하지 않음
+MultipleConnectionManager _multipleConn;
 
 /******************************************************************************/
 /* return error */
@@ -42,15 +46,6 @@ lib_mod_connect(struct mod *mod, int fd)
     // erase password
     memset(mod->password, 0x01, MAX_PATH);
     memset(mod->password, 0x00, MAX_PATH);
-    
-    // todo: check record format
-    
-    mod->connectionManager = new ConnectionManager();
-    if (mod->connectionManager == NULL) {
-        mod->server_msg(mod, "Unknown error occurred.", 0);
-        
-        return 1;
-    }
     
     // connection manager 를 초기화 (sessionmanager와 연결)
     if (mod->connectionManager->Initialize() != 0) {
@@ -274,7 +269,17 @@ mod_init(void)
     mod->mod_server_monitor_full_invalidate = lib_send_server_monitor_full_invalidate;
     mod->mod_server_version_message = lib_send_server_version_message;
     
-    return (void*) mod;
+    
+    mod->connectionManager = new ConnectionManager();
+    if (mod->connectionManager == NULL) {
+        free(mod);
+        
+        return NULL;
+    }
+    
+    _multipleConn.AddConnection(mod);
+    
+    return (void*)mod;
 }
 
 /******************************************************************************/
@@ -285,6 +290,8 @@ mod_exit(void* handle)
     if (mod == 0) {
         return 0;
     }
+    
+    _multipleConn.RemoveConnection();
     
     if (mod->connectionManager != NULL) {
         mod->connectionManager->Release();

@@ -6,6 +6,8 @@
 #include "../Status/StatusManager.h"
 #include "../Command/Command.h"
 
+#include <pthread.h>
+
 struct mod;
 
 class ConnectionManager {
@@ -32,6 +34,8 @@ public:
     bool CanPaint();
     bool NeedTerminate();
     
+    void Terminate();
+    
     // 화면 그리기
     void Paint();
     
@@ -44,9 +48,7 @@ private:
     xipc_t* _sessionIpc;
     xipc_t* _agentIpc;
     int _sessionId;
-    
     const mod* _mod;
-
     
     bool _ConnectToSessionManager();
     bool _ConnectToAgent(int sessionId, bool isLockScreen);
