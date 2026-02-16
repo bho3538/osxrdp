@@ -1,0 +1,28 @@
+
+
+#ifndef Command_h
+#define Command_h
+
+#include "ipc.h"
+#include "xstream.h"
+
+class Command {
+  
+public:
+    
+    void SendRecordStartMsg(xipc_t* agentIpc, int width, int height, int recordFormat, int useVirtualmon);
+    void SendRecordStopMsg(xipc_t* agentIpc);
+    
+    void SendMouseInputMsg(xipc_t* agentIpc, int inputType, short x, short y);
+    void SendKeyboardInputMsg(xipc_t* agentIpc, int inputType, int keycode, int flags);
+    
+    void SendSessionRequestMsg(xipc_t* sessionIpc, const char* username, int usernameLen);
+    void SendSessionReleaseMsg(xipc_t* sessionIpc, int sessionId);
+
+    
+private:
+    
+    void _SendMsg(xipc_t* ipc, xstream_t* stream);
+};
+
+#endif

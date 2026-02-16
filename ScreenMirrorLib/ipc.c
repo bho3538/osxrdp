@@ -392,6 +392,113 @@ void xipc_loop(xipc_t* ipc)
 escapeArea:
     return;
 }
+
+void xipc_loop_once(xipc_t* ipc) {
+    struct pollfd fds[MAX_CONNECTION * 2];
+    xipc_t* ipc_map[MAX_CONNECTION * 2];
+    
+    int numFds = 0;
+    int numFdsHandled = 0;
+    
+    // clients
+    pthread_mutex_lock(&ipc->lock);
+    
+    prepare_wait_poll(&numFds, fds, ipc_map, ipc);
+    
+    xipc_t* current = ipc->next;
+    
+    while (current != NULL)
+    {
+        prepare_wait_poll(&numFds, fds, ipc_map, current);
+        
+        current = current->next;
+    }
+    
+    pthread_mutex_unlock(&ipc->lock);
+    
+    if (poll(fds, numFds, 0) < 0)
+    {
+        return;
+    }
+    
+    while (numFdsHandled < numFds)
+    {
+        xipc_t* client = ipc_map[numFdsHandled];
+        struct pollfd* fdinfo = &fds[numFdsHandled];
+        
+        if (client == NULL)
+        {
+            // wakeup pipe
+            numFdsHandled++;
+            
+            client = ipc_map[numFdsHandled];
+            fdinfo = &fds[numFdsHandled];
+            
+            // dummy
+            char data[2];
+            read(client->wakeup_pipe[0], data, sizeof(char));
+            
+            fdinfo->revents |= POLLOUT;
+        }
+        
+        // socket
+        if (fdinfo->revents & POLLIN)
+        {
+            if (ipc->isServer != 0 && client->fd == ipc->fd)
+            {
+                // accept new client
+                accept_new_client(ipc);
+            }
+            else
+            {
+                int needClose = 0;
+                if (recv_data_from_client(ipc, client, &needClose) != 0)
+                {
+                    client->closed = 1;
+                }
+                
+                if (needClose != 0)
+                {
+                    client->closed = 1;
+                }
+            }
+        }
+        
+        if (client->closed == 0 && fdinfo->revents & POLLOUT)
+        {
+            int needClose = 0;
+            send_data_to_client(client, &needClose);
+            
+            if (needClose != 0)
+            {
+                client->closed = 1;
+            }
+        }
+        
+        if (client->closed == 1)
+        {
+            if (client->isServer == 0 && ipc->on_client_disconnected)
+                ipc->on_client_disconnected(ipc, client);
+            
+            if (ipc->isServer == 1 && client->isServer == 0)
+            {
+                remove_at_clients_list(ipc, client);
+                xipc_destroy(client);
+            }
+            else
+            {
+                goto escapeArea;
+            }
+            
+        }
+        
+        numFdsHandled++;
+    }
+    
+escapeArea:
+    return;
+}
+
 void xipc_end_loop(xipc_t* ipc) {
     if (ipc != NULL) {
         ipc->closed = 1;

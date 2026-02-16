@@ -3,22 +3,15 @@
 
 #define CURRENT_MOD_VER 4
 
-#include "xstream.h"
-#include "ipc.h"
-#include "xshm.h"
 #include <pthread.h>
 #include <time.h>
 
 #include "xrdp/xrdp_client_info.h"
 #include "osxrdp/sessioninfo.h"
+#include "Connection/ConnectionManager.h"
+
 
 #define MAX_PATH 260
-
-struct cmd_msgs {
-    xstream_t* paint_msg;
-    xstream_t* mouse_msg;
-    xstream_t* keyboard_msg;
-};
 
 struct mod
 {
@@ -170,37 +163,22 @@ struct mod
     void* painter;
     struct source_info* si;
     
+    // -----------
+    int width;
+    int height;
+    int bpp;
+    
+    ConnectionManager* connectionManager;
+    
     // custom data
     char username[MAX_PATH];
     char password[MAX_PATH];
     int usevirtualmon;
     int recordFormat;
     
-    session_info_t sessionInfo;
-    int sessionInfoRequestCnt;
-    
-    int width;
-    int height;
-    int bpp;
-    
-    xipc_t* cmdIpc;
-    xipc_t* sessionIpc;
-    xshm_t* screenShm;
-    xshm_t* cursorShm;
-    pthread_t ipcThread;
-    pthread_t sessionIpcThread;
-    volatile int runPaint;
-    volatile int requestStop;
-    volatile int ipcAlive;
-    volatile int sessionipcAlive;
-
-    struct timespec lastMouseMove;
-    
     struct xrdp_client_info client_info;
-    
-    // paint egfx cmd memory
-    //xstream_t* paint_egfx_cmd;
-    struct cmd_msgs msgs;
+
 };
 
 #endif /* osxup_h */
+

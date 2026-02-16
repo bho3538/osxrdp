@@ -193,6 +193,10 @@ bool ScreenRecorder::StartRecordLegacy(xstream_t* cmd) {
     
     width &= ~0x1;
     height &= ~0x1;
+    
+    // 절전 모드는 아니지만, 디스플레이가 꺼져 있는 경우 문제가 발생할 수 있음.
+    // 따라서 먼저 디스플레이를 잠시 깨워준다. (가상 디스플레이 사용중일때는 다시 꺼질 예정)
+    VirtualMonitor::WakeupDisplay();
 
     int displayId = -1;
     if (useVirtualMon != 0) {
@@ -258,15 +262,8 @@ bool ScreenRecorder::CreateRecordShm(int width, int height, int framerate) {
     int rawDataSize = width * height * 5;
     
     char shm_name[512];
-    if (is_root_process() == 0) {
-        if (get_object_name_by_sessionid("/osxrdpshm", shm_name, 512) == 0) {
-            return false;
-        }
-    }
-    else {
-        if (get_object_name_by_sessionid("/osxrdpshm_l", shm_name, 512) == 0) {
-            return false;
-        }
+    if (get_object_name_by_sessionid("/osxrdpshm", shm_name, 512, is_root_process()) == 0) {
+        return false;
     }
 
     _recordShm = xshm_create(shm_name, sizeof(screenrecord_shm_t) + (rawDataSize * FRAME_SLOTS));
@@ -305,15 +302,8 @@ bool ScreenRecorder::CreateCursorShm() {
     }
     
     char shm_name[512];
-    if (is_root_process() == 0) {
-        if (get_object_name_by_sessionid("/osxrdpcursorshm", shm_name, 512) == 0) {
-            return false;
-        }
-    }
-    else {
-        if (get_object_name_by_sessionid("/osxrdpcursorshm_l", shm_name, 512) == 0) {
-            return false;
-        }
+    if (get_object_name_by_sessionid("/osxrdpcursorshm", shm_name, 512, is_root_process()) == 0) {
+        return false;
     }
 
     _cursorShm = xshm_create(shm_name, sizeof(cursor_data_t));

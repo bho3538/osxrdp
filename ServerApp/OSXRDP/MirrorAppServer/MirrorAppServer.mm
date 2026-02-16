@@ -95,22 +95,11 @@ bool MirrorAppServer::CreateCommandPipeServer() {
     
     char server_path[512];
     
-    if (is_root_process() == 1) {
-        // lock screen
-        if (get_object_name_by_sessionid("/tmp/osxrdplock", server_path, 512) == 0) {
-            NSLog(@"[MirrorAppServer]::CreateCommandPipeServer get_object_name_by_sessionid failed.");
-            return false;
-        }
-    }
-    else {
-        // normal session 
-        if (get_object_name_by_sessionid("/tmp/osxrdp", server_path, 512) == 0) {
-            NSLog(@"[MirrorAppServer]::CreateCommandPipeServer get_object_name_by_sessionid failed.");
-            return false;
-        }
+    if (get_object_name_by_sessionid("/tmp/osxrdp", server_path, 512, is_root_process()) == 0) {
+        NSLog(@"[MirrorAppServer]::CreateCommandPipeServer get_object_name_by_sessionid failed.");
+        return false;
     }
 
-    
     if (xipc_create_server(cmdPipe, server_path, OnClientConnected, OnClientDisconnected) != 0) {
         xipc_destroy(cmdPipe);
         NSLog(@"[MirrorAppServer]::CreateCommandPipeServer xipc_create_server failed. serverName %s", server_path);
@@ -204,9 +193,11 @@ int MirrorAppServer::OnClientConnected(xipc_t* t, xipc_t* client) {
 
 int MirrorAppServer::OnClientDisconnected(xipc_t* t, xipc_t* client) {
     MirrorAppServer* _this = (MirrorAppServer*)t->user_data;
-    _this->_client = NULL;
-    
     NSLog(@"[MirrorAppServer::OnClientDisconnected] client disconnected");
+    
+    if (_this->_client == client) {
+        _this->_client = NULL;
+    }
 
     if (client->user_data == NULL)
         return 0;

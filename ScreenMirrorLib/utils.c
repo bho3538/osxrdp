@@ -36,7 +36,7 @@ int get_object_name(const char* username, const char* prefix, char* buffer, int 
 }
  */
 
-int get_object_name_by_sessionid(const char* prefix, char* buffer, int cchMax) {
+int get_object_name_by_sessionid(const char* prefix, char* buffer, int cchMax, int isLockscreen) {
 
     CFDictionaryRef sessionInfo = CGSCopyCurrentSessionDictionary();
     if (sessionInfo == NULL) return 0;
@@ -53,18 +53,23 @@ int get_object_name_by_sessionid(const char* prefix, char* buffer, int cchMax) {
 
     CFRelease(sessionInfo);
     
-    return get_object_name(sessionId, prefix, buffer, cchMax);
+    return get_object_name(sessionId, prefix, buffer, cchMax, isLockscreen);
 }
 
-int get_object_name(int sessionid, const char* prefix, char* buffer, int cchMax) {
+int get_object_name(int sessionid, const char* prefix, char* buffer, int cchMax, int isLockscreen) {
     if (prefix == NULL) return 0;
     
     int prefixLen = (int)strlen(prefix);
     if (prefixLen == 0) return 0;
     
-    if (prefixLen + 12 + (sizeof(char) * 2) > cchMax) return 0;
+    if (prefixLen + 14 + (sizeof(char) * 2) > cchMax) return 0;
     
-    return sprintf(buffer, "%s_%d", prefix, sessionid);
+    if (isLockscreen == 0) {
+        return sprintf(buffer, "%s_%d", prefix, sessionid);
+    }
+    else {
+        return sprintf(buffer, "%s_l_%d", prefix, sessionid);
+    }
 }
 
 int is_root_process(void) {
