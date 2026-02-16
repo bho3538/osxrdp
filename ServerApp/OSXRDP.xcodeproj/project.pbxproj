@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		39464B5F2F43317700466D8B /* Carbon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 39464B5E2F43317700466D8B /* Carbon.framework */; };
 		39738CFB2F10BFB6004D50EF /* xrdp-keygen in CopyFiles */ = {isa = PBXBuildFile; fileRef = 39738CFA2F10BFAC004D50EF /* xrdp-keygen */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		9B4A9EA52ED5968900260492 /* libScreenMirrorLib.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 9B4A9EA42ED5968900260492 /* libScreenMirrorLib.a */; };
 		9B6302022F0D01BE00451117 /* ServiceManagement.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9B6302012F0D01BE00451117 /* ServiceManagement.framework */; };
@@ -28,6 +29,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		39464B5E2F43317700466D8B /* Carbon.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Carbon.framework; path = System/Library/Frameworks/Carbon.framework; sourceTree = SDKROOT; };
 		39738CFA2F10BFAC004D50EF /* xrdp-keygen */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.executable"; path = "xrdp-keygen"; sourceTree = "<group>"; };
 		9B4A9E6F2ED5955E00260492 /* OSXRDP.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = OSXRDP.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9B4A9EA42ED5968900260492 /* libScreenMirrorLib.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; path = libScreenMirrorLib.a; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -50,6 +52,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				9B4A9EA52ED5968900260492 /* libScreenMirrorLib.a in Frameworks */,
+				39464B5F2F43317700466D8B /* Carbon.framework in Frameworks */,
 				9B6302022F0D01BE00451117 /* ServiceManagement.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -79,6 +82,7 @@
 		9B4A9EA32ED5968900260492 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				39464B5E2F43317700466D8B /* Carbon.framework */,
 				9B8470752F0DECB4001E143F /* Accelerate.framework */,
 				9B6302012F0D01BE00451117 /* ServiceManagement.framework */,
 				9B4A9EA42ED5968900260492 /* libScreenMirrorLib.a */,
@@ -311,7 +315,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 17;
 				DEVELOPMENT_TEAM = 33X7M69J4B;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -325,7 +329,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
-				MARKETING_VERSION = 1.5.9;
+				MARKETING_VERSION = 1.6.0;
 				OTHER_LDFLAGS = (
 					"-sectcreate",
 					__CGPreLoginApp,
@@ -352,7 +356,7 @@
 				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 17;
 				DEVELOPMENT_TEAM = 33X7M69J4B;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -373,7 +377,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
-				MARKETING_VERSION = 1.5.9;
+				MARKETING_VERSION = 1.6.0;
 				OTHER_LDFLAGS = (
 					"-sectcreate",
 					__CGPreLoginApp,

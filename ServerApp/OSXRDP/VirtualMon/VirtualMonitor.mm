@@ -131,7 +131,7 @@ void VirtualMonitor::RestoreOtherMonitors() {
 
 void VirtualMonitor::WakeupDisplay() {
     IOPMAssertionID assertionID = kIOPMNullAssertionID;
-    IOPMAssertionDeclareUserActivity(CFSTR("OSXRDP: wake display"), kIOPMUserActiveLocal, &assertionID);
+    IOReturn status = IOPMAssertionDeclareUserActivity(CFSTR("OSXRDP: wake display"), kIOPMUserActiveLocal, &assertionID);
     if (assertionID != kIOPMNullAssertionID) {
         IOPMAssertionRelease(assertionID);
         assertionID = kIOPMNullAssertionID;

@@ -1,5 +1,5 @@
 [codec]
-order = [ "H.264" ]
+order = [ "H.264", "RFX" ]
 
 # Specify a preferred H.264 encoder, "x264" or "OpenH264".
 # This parameter takes effect only when more than one encoder is
@@ -54,7 +54,7 @@ vbv_buffer_size = 50
 [OpenH264.default]
 # NOTE: OpenH264 specifies bitrate in unit of bps, not kbps.
 EnableFrameSkip = true
-TargetBitrate = 25_000_000
+TargetBitrate = 28_000_000
 MaxBitrate =    0          # unspecified
 MaxFrameRate = 60.0
 
@@ -63,23 +63,23 @@ MaxFrameRate = 60.0
 
 [OpenH264.wan]
 EnableFrameSkip = true
-TargetBitrate = 15_000_000
-MaxBitrate =    17_000_000
+TargetBitrate = 19_000_000
+MaxBitrate =    22_000_000
 
 [OpenH264.broadband_high]
 EnableFrameSkip = true
-TargetBitrate = 10_000_000
-MaxBitrate =   14_000_000
+TargetBitrate = 15_000_000
+MaxBitrate =   18_000_000
 
 [OpenH264.satellite]
 EnableFrameSkip = true
-TargetBitrate = 6_000_000
-MaxBitrate =    8_000_000
+TargetBitrate = 10_000_000
+MaxBitrate =    12_000_000
 
 [OpenH264.broadband_low]
 EnableFrameSkip = true
-TargetBitrate = 1_600_000
-MaxBitrate =    1_800_000
+TargetBitrate = 1_500_000
+MaxBitrate =    2_000_000
 
 [OpenH264.modem]
 EnableFrameSkip = true

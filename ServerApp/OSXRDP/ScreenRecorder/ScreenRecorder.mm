@@ -193,6 +193,10 @@ bool ScreenRecorder::StartRecordLegacy(xstream_t* cmd) {
     
     width &= ~0x1;
     height &= ~0x1;
+    
+    // 절전 모드는 아니지만, 디스플레이가 꺼져 있는 경우 문제가 발생할 수 있음.
+    // 따라서 먼저 디스플레이를 잠시 깨워준다. (가상 디스플레이 사용중일때는 다시 꺼질 예정)
+    VirtualMonitor::WakeupDisplay();
 
     int displayId = -1;
     if (useVirtualMon != 0) {

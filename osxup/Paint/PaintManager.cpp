@@ -106,7 +106,7 @@ void PaintManager::Release() {
     // 이는 잠금 화면 에이전트 -> 메인 에이전트로 재접속 시 발생하는 문제이며, xrdp 인코더의 상태를 직접적으로 알 수 없어 지금 방식으로는 고치기 어렵다.
     // 이를 근본적으로 해결하기 위해서는 공유 메모리를 각 에이전트별로 만들어 전환하는 방식에서 osxup 에서 만든 공유 메모리를 에이전트가 사용하도록 구조를 바꿔야 한다.
     // 임시적으로 xrdp 인코더 스레드가 공유 메모리에 담긴 데이터를 다 처리할 수 있도록 잠시 sleep 후 정리하도록 해서 크래시를 회피한다.
-    sleep(1);
+    sleep(2);
     
     // close shm
     if (_recordShm != NULL) {
@@ -130,6 +130,9 @@ void PaintManager::Paint() {
     assert(_cursorShm != NULL);
     assert(_inited == true);
     
+    // 마우스 커서 그리기
+    PaintMouseCursor();
+    
     screenrecord_frame_t* frameInfo = NULL;
     char* imgData = NULL;
     size_t imgDataSize = 0;
@@ -142,9 +145,6 @@ void PaintManager::Paint() {
     
     // 그리기
     _paint->DoPaint(_mod, frameInfo, imgData, imgDataSize, frame_id);
-    
-    // 마우스 커서 그리기
-    PaintMouseCursor();
 }
 
 bool PaintManager::GetPaintData(screenrecord_frame_t** outFrameInfo, char** outImgData, size_t* outImgDataSize, unsigned int* frame_id) {

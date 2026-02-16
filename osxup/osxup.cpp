@@ -194,10 +194,8 @@ lib_mod_check_wait_objs(struct mod *mod)
 /******************************************************************************/
 /* return error */
 static int
-lib_mod_frame_ack(struct mod *amod, int flags, int frame_id)
+lib_mod_frame_ack(struct mod *mod, int flags, int frame_id)
 {
-
-    // ??? 뭐하는 놈이지?
     
     return 0;
 }
