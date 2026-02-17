@@ -4,7 +4,7 @@ osxrdp 는 macOS에서 rdp 서버를 사용할 수 있게 해주는 xrdp의 비�
 <img width="1282" height="832" alt="OSXRDP" src="https://github.com/user-attachments/assets/0980b2b5-f50c-4fa6-88ba-c4c8eaa29ec5" />
 
 
-<h6><a href="https://youtu.be/fqtFD4xAFJo">영상</a></h6>
+<h6><a href="https://www.youtube.com/watch?v=ltxx2bha5-8">영상</a></h6>
 
 ## 기능
 |기능|상태|
