@@ -114,7 +114,9 @@ InputHandler::InputHandler() :
     _keyboardModifierFlags(0),
     _mouseClickCnt(0),
     _lastMouseClickTime(0),
-    _lastWheelMoveLargeTime(0)
+    _lastWheelEventTime(0),
+    _wheelEventBurstCount(0),
+    _lastWheelIsTrackpad(false)
 {
     _eventRef = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
 }
@@ -198,13 +200,21 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         }
         case XRDP_MOUSE_WHEELUP : {
             int amount = GetMouseWheelMoveAmount();
-            ev = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitPixel, 1, amount, 0);
-            break;
+            if (_lastWheelIsTrackpad) {
+                PostTrackpadScrollEvent(amount);
+                return;
+            }
+            PostScrollEvent(amount, false);
+            return;
         }
         case XRDP_MOUSE_WHEELDOWN : {
             int amount = GetMouseWheelMoveAmount() * -1;
-            ev = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitPixel, 1, amount, 0);
-            break;
+            if (_lastWheelIsTrackpad) {
+                PostTrackpadScrollEvent(amount);
+                return;
+            }
+            PostScrollEvent(amount, false);
+            return;
         }
         case XRDP_MOUSE_BBTNUP: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseUp, point, (CGMouseButton)3);
@@ -323,18 +333,106 @@ long long InputHandler::GetCurrentEventTime() {
 }
 
 int InputHandler::GetMouseWheelMoveAmount() {
+    const int kGlobalScrollGain = 3;
+    const int kTrackpadScrollGain = 4;
+    const int kTrackpadWarmupAmount = 8 * kTrackpadScrollGain;
+
     long long currentTime = GetCurrentEventTime();
-    long long gap = currentTime - _lastWheelMoveLargeTime;
-    
-    int scrollAmount = 150;
-    if (gap < 50) {
-        scrollAmount = 15;
+    if (_lastWheelEventTime == 0) {
+        _lastWheelEventTime = currentTime;
+        _wheelEventBurstCount = 0;
+        _lastWheelIsTrackpad = true;
+        return kTrackpadWarmupAmount;
+    }
+
+    long long gap = currentTime - _lastWheelEventTime;
+    _lastWheelEventTime = currentTime;
+
+    if (gap > 180) {
+        _wheelEventBurstCount = 0;
+        
+        if (_lastWheelIsTrackpad) {
+            return kTrackpadWarmupAmount;
+        }
+
+        _lastWheelIsTrackpad = false;
+        return 80 * kGlobalScrollGain;
     }
     else {
-        _lastWheelMoveLargeTime = currentTime;
+        _wheelEventBurstCount++;
     }
-    
-    return scrollAmount;
+
+    // 이벤트가 45ms 이하로 연속으로 오면 트랙패드로 판단
+    _lastWheelIsTrackpad = (gap <= 45);
+
+    // 트랙패드의 연속 이벤트 간격을 측정하여 스크롤할 양을 결정
+    if (gap <= 14) {
+        return 2 * kTrackpadScrollGain;
+    }
+    if (gap <= 22) {
+        return 3 * kTrackpadScrollGain;
+    }
+    if (gap <= 32) {
+        return 6 * kTrackpadScrollGain;
+    }
+    if (gap <= 45) {
+        if (_wheelEventBurstCount > 12) {
+            return 4 * kTrackpadScrollGain;
+        }
+        return 16 * kTrackpadScrollGain;
+    }
+
+    // 마우스 처리
+    if (gap <= 70) {
+        return 55 * kGlobalScrollGain;
+    }
+    if (gap <= 110) {
+        return 100 * kGlobalScrollGain;
+    }
+
+    return 140 * kGlobalScrollGain;
+}
+
+void InputHandler::PostScrollEvent(int amount, bool continuous) {
+    CGEventRef ev = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitPixel, 1, amount, 0);
+    if (ev == NULL) {
+        return;
+    }
+
+    // 트랙패드 스타일의 스크롤 설정 (연속되는 이벤트의 경우)
+    if (continuous) {
+        CGEventSetIntegerValueField(ev, kCGScrollWheelEventIsContinuous, 1);
+    }
+
+    CGEventPost(kCGSessionEventTap, ev);
+    CFRelease(ev);
+}
+
+void InputHandler::PostTrackpadScrollEvent(int amount) {
+    int absAmount = abs(amount);
+    if (absAmount <= 0) {
+        return;
+    }
+
+    int steps = absAmount / 8;
+    if (steps < 3) {
+        steps = 3;
+    }
+    else if (steps > 10) {
+        steps = 10;
+    }
+
+    int base = absAmount / steps;
+    int remain = absAmount % steps;
+    int sign = (amount < 0) ? -1 : 1;
+
+    for (int i = 0; i < steps; i++) {
+        int part = base + ((i < remain) ? 1 : 0);
+        if (part <= 0) {
+            continue;
+        }
+        PostScrollEvent(part * sign, true);
+    }
 }
 
 CGKeyCode InputHandler::MapExtendedKey(int scancode) {
