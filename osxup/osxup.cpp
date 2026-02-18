@@ -55,7 +55,7 @@ lib_mod_connect(struct mod *mod, int fd)
     }
     
     if (mod->connectionManager->Connect(mod) == false) {
-        mod->server_msg(mod, "RFX with gfx currently does not supported.", 0);
+        mod->server_msg(mod, "No compatible graphics codec negotiated.", 0);
         mod->server_msg(mod, "Please use another client.", 0);
 
         return 1;

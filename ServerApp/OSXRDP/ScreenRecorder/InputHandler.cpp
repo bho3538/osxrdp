@@ -5,7 +5,7 @@
 #include <sys/time.h>
 #include <Carbon/Carbon.h>
 
-#define _IME_SWITCH_CODE 61
+#define _IME_SWITCH_CODE 56
 
 static const CGKeyCode keymap[] = {
     /* 0x00 */ kVK_ANSI_A,                      // Placeholder (No key)
@@ -237,6 +237,14 @@ void InputHandler::HandleKeyboardInputEvent(xstream_t* cmd) {
     int keyCode = xstream_readInt32(cmd);
     int flags = xstream_readInt32(cmd);
     
+    if (keyCode == _IME_SWITCH_CODE) {
+        if (inputType == XRDP_KEYBOARD_DOWN) {
+            SwitchIME();
+        }
+        
+        return;
+    }
+    
     if (flags & 0x100) {
         // convert xrdp extended key code to macOS keycode
         keyCode = MapExtendedKey(keyCode & 0x7F);
@@ -249,14 +257,6 @@ void InputHandler::HandleKeyboardInputEvent(xstream_t* cmd) {
         
         // convert xrdp key code to macOS keycode
         keyCode = keymap[keyCode];
-    }
-    
-    if (keyCode == _IME_SWITCH_CODE) {
-        if (inputType == XRDP_KEYBOARD_DOWN) {
-            SwitchIME();
-        }
-        
-        return;
     }
         
     CGEventRef ev;

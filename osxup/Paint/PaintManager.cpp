@@ -4,6 +4,7 @@
 #include "osxrdp/packet.h"
 #include "PaintBitmap.h"
 #include "PaintH264.h"
+#include "PaintRFX.h"
 #include "utils.h"
 
 static const char* OSXRDP_SCREENSHM_NAME = "/osxrdpshm";
@@ -25,13 +26,12 @@ int PaintManager::CheckRecordFormat(const struct mod* mod) {
     if (mod == NULL) return -1;
     
     if (mod->client_info.gfx == 1) {
-        if (mod->client_info.rfx_codec_id != 0) {
-            // rfx with gfx currently not support.
-            return -1;
+        if (mod->client_info.h264_codec_id != 0) {
+            // using H.264
+            return OSXRDP_RECORDFORMAT_NV12;
         }
         
-        // using H.264
-        return OSXRDP_RECORDFORMAT_NV12;
+        return OSXRDP_RECORDFORMAT_RFX;
     }
     else {
         return OSXRDP_RECORDFORMAT_BGRA32;
@@ -80,6 +80,9 @@ int PaintManager::Initialize(const struct mod* mod, int recordFormat, int sessio
     
     if (recordFormat == OSXRDP_RECORDFORMAT_NV12) {
         _paint = new PaintH264();
+    }
+    else if (recordFormat == OSXRDP_RECORDFORMAT_RFX) {
+        _paint = new PaintRFX();
     }
     else {
         _paint = new PaintBitmap();

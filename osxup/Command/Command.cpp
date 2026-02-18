@@ -15,7 +15,7 @@ void Command::SendRecordStartMsg(xipc_t* agentIpc, int width, int height, int re
     xstream_writeInt32(stream, width);          // width
     xstream_writeInt32(stream, height);         // height
     xstream_writeInt32(stream, 60);             // fps
-    xstream_writeInt32(stream, recordFormat);   // recordFormat (BGRA32, NV12)
+    xstream_writeInt32(stream, recordFormat);   // recordFormat (BGRA32, NV12, RFX)
     xstream_writeInt32(stream, useVirtualmon);  // use virtual monitor (0, 1)
     
     _SendMsg(agentIpc, stream);
