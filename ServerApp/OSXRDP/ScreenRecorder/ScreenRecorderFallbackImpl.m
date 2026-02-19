@@ -72,6 +72,9 @@
     if (recordFormat == OSXRDP_RECORDFORMAT_NV12) {
         format = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange; // h264
     }
+    else if (recordFormat == OSXRDP_RECORDFORMAT_RFX) {
+        format = kCVPixelFormatType_32BGRA; // rfx (BGRA 캡처 후 상위에서 YUV444 변환)
+    }
     
     _displayStream = CGDisplayStreamCreateWithDispatchQueue(displayId, width, height, format, (__bridge CFDictionaryRef)_recordConfig, _recordQue, handler);
     
