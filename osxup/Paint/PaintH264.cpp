@@ -112,7 +112,7 @@ void PaintH264::DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, 
     startCmd.header.flags = 0;
     startCmd.header.pduLength = sizeof(startCmd);
     startCmd.timestamp = 0;
-    startCmd.frame_id = 0;
+    startCmd.frame_id = frame_id;
     
     mod->server_egfx_cmd((struct mod*)mod, (char*)&startCmd, sizeof(startCmd), NULL, 0);
     

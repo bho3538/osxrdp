@@ -17,6 +17,7 @@ public:
     void Release();
     
     void Paint();
+    void PaintEnd(int ackFrameId);
     
     static int CheckRecordFormat(const struct mod* mod);
     
@@ -26,11 +27,22 @@ private:
     xshm_t* _recordShm;
     xshm_t* _cursorShm;
     const struct mod* _mod;
+    volatile bool _inPainting;
+    unsigned int _nextFrameId;
+    int _maxInFlight;
+
+    static const int kInFlightCapacity = 32;
+    unsigned int _inFlightFrameIds[kInFlightCapacity];
+    unsigned int _inFlightReadPos[kInFlightCapacity];
+    int _inFlightHead;
+    int _inFlightCount;
     
     bool GetPaintData(screenrecord_frame_t** outFrameInfo, char** outImgData, size_t* outImgDataSize, unsigned int* frame_id);
+    bool PushInFlight(unsigned int frameId, unsigned int shmReadPos);
+    int PopAckedInFlight(int ackFrameId, unsigned int* outMaxReadPos);
+    void ResetInFlight();
     
     void PaintMouseCursor();
 };
 
 #endif
-

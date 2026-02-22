@@ -38,6 +38,7 @@ public:
     
     // 화면 그리기
     void Paint();
+    void PaintEnd(int ackFrameId);
     
 private:
     bool _inited;
@@ -64,4 +65,3 @@ private:
 };
 
 #endif /* ConnectionManager_h */
-

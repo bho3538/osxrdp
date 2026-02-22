@@ -22,17 +22,22 @@ public:
     // 비활성화 하였던 나머지 모니터들을 다시 활성화
     void RestoreOtherMonitors();
     
+    bool IsRetina() {
+        return _retina;
+    }
+    
     static void WakeupDisplay();
     
 private:
     __strong CGVirtualDisplay* _virtualDisplay;
     int _width;
     int _height;
+    bool _retina;
     
     uint32_t* _disabledDisplayIds;
     int _disabledDisplayIdsCnt;
     
-    int SetResolution(int width, int height);
+    int SetResolution(int width, int height, bool retinaMode);
 };
 
 #endif /* VirtualMonitor_h */

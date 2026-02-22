@@ -246,7 +246,12 @@ bool ScreenRecorder::ResolveDisplayForNewRecorder(const RecordStartParams* param
 
             // macOS 12 에서 가상 디스플레이의 width, height 가 1로 오는 증상이 발생...
             // 가상 디스플레이는 클라이언트의 해상도를 따라가므로 동일하게 설정
-            _inputHandler.UpdateDisplayRes(params->width, params->height, params->width, params->height);
+            int div = 1;
+            if (_virtualMonitor.IsRetina() == true) {
+                div = 2;
+            }
+            
+            _inputHandler.UpdateDisplayRes(params->width / div, params->height / div, params->width, params->height);
         }
     }
     else {
@@ -278,7 +283,13 @@ bool ScreenRecorder::ResolveDisplayForLegacyRecorder(const RecordStartParams* pa
 
         // macOS 12 에서 가상 디스플레이의 width, height 가 1로 오는 증상이 발생...
         // 가상 디스플레이는 클라이언트의 해상도를 따라가므로 동일하게 설정
-        _inputHandler.UpdateDisplayRes(params->width, params->height, params->width, params->height);
+        
+        int div = 1;
+        if (_virtualMonitor.IsRetina() == true) {
+            div = 2;
+        }
+        
+        _inputHandler.UpdateDisplayRes(params->width / div, params->height / div, params->width, params->height);
     }
     else {
         displayId = CGMainDisplayID();
