@@ -55,7 +55,7 @@ lib_mod_connect(struct mod *mod, int fd)
     }
     
     if (mod->connectionManager->Connect(mod) == false) {
-        mod->server_msg(mod, "RFX with gfx currently does not supported.", 0);
+        mod->server_msg(mod, "No compatible graphics codec negotiated.", 0);
         mod->server_msg(mod, "Please use another client.", 0);
 
         return 1;
@@ -163,7 +163,7 @@ lib_mod_get_wait_objs(struct mod *mod, void *read_objs, int *rcount,
 {
     mod->connectionManager->KeepAlive();
 
-    *timeout = 11;
+    *timeout = 10;
     
     return 0;
 }
@@ -196,6 +196,9 @@ lib_mod_check_wait_objs(struct mod *mod)
 static int
 lib_mod_frame_ack(struct mod *mod, int flags, int frame_id)
 {
+    if (mod->connectionManager->CanPaint() == true) {
+        mod->connectionManager->PaintEnd(frame_id);
+    }
     
     return 0;
 }

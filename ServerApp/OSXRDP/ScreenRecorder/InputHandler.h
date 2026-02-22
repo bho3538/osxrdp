@@ -29,7 +29,9 @@ private:
     int _inMouseDown;
     int _mouseClickCnt;
     long long _lastMouseClickTime;
-    long long _lastWheelMoveLargeTime;
+    long long _lastWheelEventTime;
+    int _wheelEventBurstCount;
+    bool _lastWheelIsTrackpad;
     
     CGEventFlags _keyboardModifierFlags;
     
@@ -37,6 +39,8 @@ private:
     
     void HandleMouseDoubleClick(CGEventRef ev, bool mouseDown, int mouseX, int mouseY);
     int GetMouseWheelMoveAmount();
+    void PostScrollEvent(int amount, bool continuous);
+    void PostTrackpadScrollEvent(int amount);
     
     static int CalcPos(int clientPos, float scale);
     
@@ -49,4 +53,3 @@ private:
 };
 
 #endif /* InputHandler_hpp */
-

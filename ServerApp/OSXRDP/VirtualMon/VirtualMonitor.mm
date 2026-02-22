@@ -8,7 +8,8 @@ VirtualMonitor::VirtualMonitor() :
     _width(0),
     _height(0),
     _disabledDisplayIds(NULL),
-    _disabledDisplayIdsCnt(0)
+    _disabledDisplayIdsCnt(0),
+    _retina(false)
 {}
 
 VirtualMonitor::~VirtualMonitor() {
@@ -38,12 +39,20 @@ int VirtualMonitor::Create(int width, int height) {
     CGVirtualDisplayMode* mode = [[CGVirtualDisplayMode alloc] initWithWidth:width height:height refreshRate:60];
     if (mode == nil) return -1;
     
-    //CGVirtualDisplayMode* retinaMode = [[CGVirtualDisplayMode alloc] initWithWidth:width * 2 height:height * 2 refreshRate:60];
-    //if (mode == nil) return -1;
+    CGVirtualDisplayMode* retinaMode = [[CGVirtualDisplayMode alloc] initWithWidth:width / 2 height:height / 2 refreshRate:60];
+    if (mode == nil) return -1;
     
     CGVirtualDisplaySettings* settings = [[CGVirtualDisplaySettings alloc] init];
     if (settings == nil) return -1;
-    settings.hiDPI = 0;
+    
+    if (width > 2300 && height > 1500) {
+        settings.hiDPI = 1;
+        _retina = true;
+    }
+    else {
+        settings.hiDPI = 0;
+        _retina = false;
+    }
     
     // 이와 같이 구성을 채우지 않으면 macOS 가 이를 모니터가 아닌 다른 무언가로 인식하여 대화상자를 띄우는것 같음 (airplay 수신기?)
     // 따라서 기본 구성을 진짜 모니터처럼 넣고 xrdp 해상도를 마지막에 넣는다.
@@ -59,7 +68,8 @@ int VirtualMonitor::Create(int width, int height) {
         [[CGVirtualDisplayMode alloc] initWithWidth:1680 height:1050 refreshRate:60],
         [[CGVirtualDisplayMode alloc] initWithWidth:1440 height:900 refreshRate:60],
         [[CGVirtualDisplayMode alloc] initWithWidth:1280 height:800 refreshRate:60],
-        mode
+        mode,
+        retinaMode
     ];
     
     _width = width;
@@ -76,7 +86,7 @@ int VirtualMonitor::Create(int width, int height) {
     // 가상 디스플레이가 완전히 추가될때까지 모니터 해상도를 조회할 수 없음. 따라서 여러번 시도 후 그래도 적용실패시 가상모니터 사용을 안하도록 유도
     int applyResolution = 0;
     for (int i = 0; i < 5; i++) {
-        if (SetResolution(_width, _height) == 0) {
+        if (SetResolution(_width, _height, _retina) == 0) {
             applyResolution = 1;
             break;
         }
@@ -136,6 +146,9 @@ void VirtualMonitor::WakeupDisplay() {
         IOPMAssertionRelease(assertionID);
         assertionID = kIOPMNullAssertionID;
     }
+    
+    // hack: intel mac 에서 디스플레이가 늦게 켜짐...
+    sleep(1);
 }
 
 bool VirtualMonitor::DisableOtherMonitors() {
@@ -198,26 +211,74 @@ bool VirtualMonitor::DisableOtherMonitors() {
     return true;
 }
 
-int VirtualMonitor::SetResolution(int width, int height) {
+int VirtualMonitor::SetResolution(int width, int height, bool retinaMode) {
     CGDisplayModeRef bestMode = NULL;
     
-    CFArrayRef modes = CGDisplayCopyAllDisplayModes(_virtualDisplay.displayID, NULL);
+    CFStringRef keys[1] = { kCGDisplayShowDuplicateLowResolutionModes };
+        CFTypeRef values[1] = { kCFBooleanTrue };
+        
+        CFDictionaryRef options = CFDictionaryCreate(
+            kCFAllocatorDefault,
+            (const void **)keys,
+            (const void **)values,
+            1,
+            &kCFTypeDictionaryKeyCallBacks,
+            &kCFTypeDictionaryValueCallBacks
+        );
+        
+    CFArrayRef modes = CGDisplayCopyAllDisplayModes(_virtualDisplay.displayID, options);
     if (modes == NULL) {
         NSLog(@"[VirtualMonitor::SetResolution] CGDisplayCopyAllDisplayModes null\n");
+        CFRelease(options);
+        
         return 1;
     }
     
-    CFIndex cnt = CFArrayGetCount(modes);
-    for (CFIndex i = 0; i < cnt; i++) {
-        CGDisplayModeRef mode = (CGDisplayModeRef)CFArrayGetValueAtIndex(modes, i);
+    if (retinaMode) {
+        CFIndex cnt = CFArrayGetCount(modes);
+        for (CFIndex i = 0; i < cnt; i++) {
+            CGDisplayModeRef mode = (CGDisplayModeRef)CFArrayGetValueAtIndex(modes, i);
+            
+            size_t modeWidth = CGDisplayModeGetWidth(mode);
+            size_t modeHeight = CGDisplayModeGetHeight(mode);
+            //size_t pixelWidth = CGDisplayModeGetPixelWidth(mode);
+            
+            if (modeWidth == (width / 2) && modeHeight == (height / 2)) {
+                NSLog(@"found retina bestmode\n");
+                bestMode = mode;
+                break;
+            }
+        }
         
-        size_t modeWidth = CGDisplayModeGetWidth(mode);
-        size_t modeHeight = CGDisplayModeGetHeight(mode);
-        
-        if (modeWidth == width && modeHeight == height) {
-            NSLog(@"found bestmode\n");
-            bestMode = mode;
-            break;
+        if (bestMode == NULL) {
+            CFIndex cnt = CFArrayGetCount(modes);
+            for (CFIndex i = 0; i < cnt; i++) {
+                CGDisplayModeRef mode = (CGDisplayModeRef)CFArrayGetValueAtIndex(modes, i);
+                
+                size_t modeWidth = CGDisplayModeGetWidth(mode);
+                size_t modeHeight = CGDisplayModeGetHeight(mode);
+                
+                if (modeWidth == width && modeHeight == height) {
+                    NSLog(@"found bestmode\n");
+                    bestMode = mode;
+                    break;
+                }
+            }
+        }
+    }
+    else {
+        CFIndex cnt = CFArrayGetCount(modes);
+        for (CFIndex i = 0; i < cnt; i++) {
+            CGDisplayModeRef mode = (CGDisplayModeRef)CFArrayGetValueAtIndex(modes, i);
+            
+            size_t modeWidth = CGDisplayModeGetWidth(mode);
+            size_t modeHeight = CGDisplayModeGetHeight(mode);
+            
+            if (modeWidth == width && modeHeight == height) {
+                NSLog(@"found bestmode\n");
+                bestMode = mode;
+                break;
+            }
         }
     }
     
@@ -225,6 +286,7 @@ int VirtualMonitor::SetResolution(int width, int height) {
         NSLog(@"bestmode is null\n");
         
         CFRelease(modes);
+        CFRelease(options);
         
         return 1;
     }
@@ -235,6 +297,7 @@ int VirtualMonitor::SetResolution(int width, int height) {
     }
     
     CFRelease(modes);
+    CFRelease(options);
     
     return err == kCGErrorSuccess ? 0 : 1;
 }

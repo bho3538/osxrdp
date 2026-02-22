@@ -160,6 +160,10 @@ void ConnectionManager::Paint() {
     _paintManager.Paint();
 }
 
+void ConnectionManager::PaintEnd(int ackFrameId) {
+    _paintManager.PaintEnd(ackFrameId);
+}
+
 bool ConnectionManager::_ConnectToSessionManager() {
     xipc_t* ipc = xipc_ctx_create(_OnReceivedSessionManagerMessage, this);
     if (ipc == NULL) {

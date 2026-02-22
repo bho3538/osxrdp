@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		39464B5F2F43317700466D8B /* Carbon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 39464B5E2F43317700466D8B /* Carbon.framework */; };
+		395849CF2F471FFA005CC60C /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9B8470752F0DECB4001E143F /* Accelerate.framework */; };
 		39738CFB2F10BFB6004D50EF /* xrdp-keygen in CopyFiles */ = {isa = PBXBuildFile; fileRef = 39738CFA2F10BFAC004D50EF /* xrdp-keygen */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		9B4A9EA52ED5968900260492 /* libScreenMirrorLib.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 9B4A9EA42ED5968900260492 /* libScreenMirrorLib.a */; };
 		9B6302022F0D01BE00451117 /* ServiceManagement.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9B6302012F0D01BE00451117 /* ServiceManagement.framework */; };
@@ -52,6 +53,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				9B4A9EA52ED5968900260492 /* libScreenMirrorLib.a in Frameworks */,
+				395849CF2F471FFA005CC60C /* Accelerate.framework in Frameworks */,
 				39464B5F2F43317700466D8B /* Carbon.framework in Frameworks */,
 				9B6302022F0D01BE00451117 /* ServiceManagement.framework in Frameworks */,
 			);
@@ -329,7 +331,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.6.1;
 				OTHER_LDFLAGS = (
 					"-sectcreate",
 					__CGPreLoginApp,
@@ -377,7 +379,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 1.6.1;
 				OTHER_LDFLAGS = (
 					"-sectcreate",
 					__CGPreLoginApp,
