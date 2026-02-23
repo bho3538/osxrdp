@@ -186,6 +186,11 @@ bool ScreenRecorder::ParseStartRecordParams(xstream_t* cmd, RecordStartParams* p
         NSLog(@"[ScreenRecorder::StartRecord] invalid request. width: %d height: %d", params->width, params->height);
         return false;
     }
+    
+    if (params->width > 10000 || params->height > 10000) {
+        NSLog(@"[ScreenRecorder::StartRecord] invalid request. too large display width: %d height: %d", params->width, params->height);
+        return false;
+    }
 
     params->width &= ~0x1;
     params->height &= ~0x1;

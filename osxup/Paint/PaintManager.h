@@ -15,6 +15,7 @@ public:
     
     int Initialize(const struct mod* mod, int recordFormat, int sessionId, bool isLockScreen);
     void Release();
+    bool TryReleaseForReconnect();
     
     void Paint();
     void PaintEnd(int ackFrameId);
@@ -28,6 +29,7 @@ private:
     xshm_t* _cursorShm;
     const struct mod* _mod;
     volatile bool _inPainting;
+    volatile bool _releasePending;
     unsigned int _nextFrameId;
     int _maxInFlight;
 
@@ -41,6 +43,7 @@ private:
     bool PushInFlight(unsigned int frameId, unsigned int shmReadPos);
     int PopAckedInFlight(int ackFrameId, unsigned int* outMaxReadPos);
     void ResetInFlight();
+    void ReleaseResources();
     
     void PaintMouseCursor();
 };

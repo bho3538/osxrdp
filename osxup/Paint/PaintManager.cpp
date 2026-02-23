@@ -14,11 +14,13 @@ static const int OSXRDP_MIN_MAX_IN_FLIGHT = 1;
 static const int OSXRDP_MAX_MAX_IN_FLIGHT = 8;
 
 PaintManager::PaintManager() :
+    _inited(false),
     _mod(NULL),
     _paint(NULL),
     _recordShm(NULL),
     _cursorShm(NULL),
     _inPainting(false),
+    _releasePending(false),
     _nextFrameId(1),
     _maxInFlight(OSXRDP_DEFAULT_MAX_IN_FLIGHT),
     _inFlightHead(0),
@@ -100,7 +102,7 @@ int PaintManager::Initialize(const struct mod* mod, int recordFormat, int sessio
     _paint->Initialize(mod);
     
     _mod = mod;
-    _nextFrameId = 1;
+    _releasePending = false;
     _maxInFlight = OSXRDP_DEFAULT_MAX_IN_FLIGHT;
     const char* maxInFlightEnv = getenv("OSXRDP_MAX_IN_FLIGHT");
     if (maxInFlightEnv != NULL && *maxInFlightEnv != '\0') {
@@ -117,18 +119,32 @@ int PaintManager::Initialize(const struct mod* mod, int recordFormat, int sessio
 }
 
 void PaintManager::Release() {
+    _releasePending = false;
+    ReleaseResources();
+}
+
+bool PaintManager::TryReleaseForReconnect() {
+    if (_inited == false && _recordShm == NULL && _cursorShm == NULL && _paint == NULL) {
+        return true;
+    }
+
+    _releasePending = true;
+
+    if (_inFlightCount > 0) {
+        return false;
+    }
+
+    ReleaseResources();
+    _releasePending = false;
+    return true;
+}
+
+void PaintManager::ReleaseResources() {
     if (_paint != NULL) {
         delete _paint;
         _paint = NULL;
     }
-    
-    // hack
-    // xrdp 가 화면을 그리는 중에 (백그라운드 스레드에서) 공유 메모리를 무효화시키면 메모리가 깨져버리면서 crash 가 발생
-    // 이는 잠금 화면 에이전트 -> 메인 에이전트로 재접속 시 발생하는 문제이며, xrdp 인코더의 상태를 직접적으로 알 수 없어 지금 방식으로는 고치기 어렵다.
-    // 이를 근본적으로 해결하기 위해서는 공유 메모리를 각 에이전트별로 만들어 전환하는 방식에서 osxup 에서 만든 공유 메모리를 에이전트가 사용하도록 구조를 바꿔야 한다.
-    // 임시적으로 xrdp 인코더 스레드가 공유 메모리에 담긴 데이터를 다 처리할 수 있도록 잠시 sleep 후 정리하도록 해서 크래시를 회피한다.
-    sleep(2);
-    
+
     // close shm
     if (_recordShm != NULL) {
         xshm_close(_recordShm);
@@ -142,17 +158,23 @@ void PaintManager::Release() {
         _cursorShm = NULL;
     }
     
-    _nextFrameId = 1;
+    _mod = NULL;
     ResetInFlight();
     _inPainting = false;
+    _releasePending = false;
     _inited = false;
 }
 
 void PaintManager::Paint() {
-    assert(_paint != NULL);
-    assert(_recordShm != NULL);
-    assert(_cursorShm != NULL);
-    assert(_inited == true);
+    if (_inited == false || _paint == NULL || _recordShm == NULL || _cursorShm == NULL) {
+        return;
+    }
+
+    // 재접속 중에는 이전 공유메모리에 대한 신규 paint 제출을 중지하고
+    // 기존 in-flight 프레임 ACK만 기다린다.
+    if (_releasePending == true) {
+        return;
+    }
     
     // 마우스 커서 그리기
     PaintMouseCursor();
@@ -295,8 +317,10 @@ void PaintManager::ResetInFlight() {
 }
 
 void PaintManager::PaintEnd(int ackFrameId) {
-    assert(_recordShm != NULL);
-    assert(_inited == true);
+    if (_inited == false || _recordShm == NULL) {
+        _inPainting = false;
+        return;
+    }
     
     if (_inFlightCount <= 0) {
         _inPainting = false;

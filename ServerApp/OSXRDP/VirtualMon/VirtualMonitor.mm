@@ -1,7 +1,13 @@
 #include "VirtualMonitor.h"
+#include "DisplayReconfigWatcher.h"
+#include "DisplayUtils.h"
 
 #include <IOKit/pwr_mgt/IOPMLib.h>
+#include <unistd.h>
 
+static int kVirtualDetachTimeoutMs = 3000;
+static int kReconfigQuietMs = 200;
+static int kRestoreVerifyTimeoutMs = 2000;
 
 VirtualMonitor::VirtualMonitor() :
     _virtualDisplay(nil),
@@ -40,7 +46,7 @@ int VirtualMonitor::Create(int width, int height) {
     if (mode == nil) return -1;
     
     CGVirtualDisplayMode* retinaMode = [[CGVirtualDisplayMode alloc] initWithWidth:width / 2 height:height / 2 refreshRate:60];
-    if (mode == nil) return -1;
+    if (retinaMode == nil) return -1;
     
     CGVirtualDisplaySettings* settings = [[CGVirtualDisplaySettings alloc] init];
     if (settings == nil) return -1;
@@ -102,10 +108,29 @@ int VirtualMonitor::Create(int width, int height) {
 }
 
 void VirtualMonitor::Destroy() {
-    // nil 로 설정하면 알아서 뽀개짐
+    CGDirectDisplayID virtualDisplayId = 0;
+    DisplayReconfigWatcher watcher;
+    uint64_t seqAtStart = 0;
+
+    // 가상 디스플레이를 뽀개기 전 마지막 상태를 저장
+    if (_virtualDisplay != nil) {
+        virtualDisplayId = _virtualDisplay.displayID;
+        if (watcher.Start()) {
+            seqAtStart = watcher.Sequence();
+        }
+    }
+
+    // nil 로 설정하면 알아서 뽀개짐 (즉시 뽀개지는건 아님)
     _virtualDisplay = nil;
     _width = 0;
     _height = 0;
+
+    if (virtualDisplayId != 0) {
+        // 특정 pc에서 virtual display 제거가 완벽히 끝나기 전에 복원을 시도하면 WindowServer 가 크래시하는 현상이 발생
+        // 따라서 가상 디스플레이가 완전히 제거되고 crash 방지를 위해 WindowServer 이벤트가 잠잠해질때 까지 대기
+        DisplayUtils::WaitDisplayOnlineState(virtualDisplayId, false, kVirtualDetachTimeoutMs);
+        watcher.WaitForQuiet(seqAtStart, kReconfigQuietMs, kVirtualDetachTimeoutMs);
+    }
     
     // 비활성화한 디스플레이 롤백
     RestoreOtherMonitors();
@@ -116,44 +141,48 @@ void VirtualMonitor::RestoreOtherMonitors() {
         return;
     }
     
-    // 디스플레이가 꺼진 상태에선 restore 가 안먹힐때가 많음
-    WakeupDisplay();
-    
-    CGDisplayConfigRef cfg = NULL;
-    CGBeginDisplayConfiguration(&cfg);
-    
-    if (cfg == NULL) {
-        return;
+    // wakeup 없이 restore 시도
+    bool restored = DisplayUtils::ApplyDisplayEnabled(_disabledDisplayIds, _disabledDisplayIdsCnt, true) &&
+                    DisplayUtils::WaitAllDisplaysOnline(_disabledDisplayIds, _disabledDisplayIdsCnt, kRestoreVerifyTimeoutMs);
+
+    if (restored == false) {
+        // 필요할 때만 wakeup 후 재시도
+        WakeupDisplay();
+        restored = DisplayUtils::ApplyDisplayEnabled(_disabledDisplayIds, _disabledDisplayIdsCnt, true) &&
+                   DisplayUtils::WaitAllDisplaysOnline(_disabledDisplayIds, _disabledDisplayIdsCnt, kRestoreVerifyTimeoutMs);
     }
-    
-    // 다시 켜기
-    for (uint32_t i = 0; i < _disabledDisplayIdsCnt; i++) {
-        CGSConfigureDisplayEnabled(cfg, _disabledDisplayIds[i], true);
+
+    if (restored) {
+        free(_disabledDisplayIds);
+        _disabledDisplayIds = NULL;
+        _disabledDisplayIdsCnt = 0;
     }
-    
-    free(_disabledDisplayIds);
-    _disabledDisplayIds = NULL;
-    _disabledDisplayIdsCnt = 0;
-    
-    // 설정 저장
-    CGCompleteDisplayConfiguration(cfg, kCGConfigureForAppOnly);
+    else {
+        NSLog(@"[VirtualMonitor::RestoreOtherMonitors] restore failed. keep disabled display list for retry.");
+    }
 }
 
 void VirtualMonitor::WakeupDisplay() {
     IOPMAssertionID assertionID = kIOPMNullAssertionID;
-    IOReturn status = IOPMAssertionDeclareUserActivity(CFSTR("OSXRDP: wake display"), kIOPMUserActiveLocal, &assertionID);
+    IOPMAssertionDeclareUserActivity(CFSTR("OSXRDP: wake display"), kIOPMUserActiveLocal, &assertionID);
     if (assertionID != kIOPMNullAssertionID) {
         IOPMAssertionRelease(assertionID);
         assertionID = kIOPMNullAssertionID;
     }
-    
-    // hack: intel mac 에서 디스플레이가 늦게 켜짐...
-    sleep(1);
+
+    usleep(150 * 1000);
 }
 
+// todo: DisplayUtils::ApplyDisplayEnabled 에 중복 로직이 있음
 bool VirtualMonitor::DisableOtherMonitors() {
     // 가상 디스플레이가 없으면 무시
     if (_virtualDisplay == nil) return false;
+
+    if (_disabledDisplayIds != NULL) {
+        free(_disabledDisplayIds);
+        _disabledDisplayIds = NULL;
+        _disabledDisplayIdsCnt = 0;
+    }
     
     // 디스플레이 갯수를 조회
     uint32_t displayCnt = 0;
@@ -179,12 +208,15 @@ bool VirtualMonitor::DisableOtherMonitors() {
         
         return false;
     }
+
+    _disabledDisplayIdsCnt = 0;
     
     CGDisplayConfigRef cfg = NULL;
-    CGBeginDisplayConfiguration(&cfg);
-    
-    if (cfg == NULL) {
+    if (CGBeginDisplayConfiguration(&cfg) != kCGErrorSuccess || cfg == NULL) {
         free(displayIds);
+        free(_disabledDisplayIds);
+        _disabledDisplayIds = NULL;
+        _disabledDisplayIdsCnt = 0;
         
         return false;
     }
@@ -204,7 +236,14 @@ bool VirtualMonitor::DisableOtherMonitors() {
     }
     
     // 설정 저장
-    CGCompleteDisplayConfiguration(cfg, kCGConfigureForAppOnly);
+    CGError completeErr = CGCompleteDisplayConfiguration(cfg, kCGConfigureForAppOnly);
+    if (completeErr != kCGErrorSuccess) {
+        free(displayIds);
+        free(_disabledDisplayIds);
+        _disabledDisplayIds = NULL;
+        _disabledDisplayIdsCnt = 0;
+        return false;
+    }
 
     free(displayIds);
     
@@ -214,17 +253,18 @@ bool VirtualMonitor::DisableOtherMonitors() {
 int VirtualMonitor::SetResolution(int width, int height, bool retinaMode) {
     CGDisplayModeRef bestMode = NULL;
     
+    // Retina 해상도 까지 조회하기 위한 옵션
     CFStringRef keys[1] = { kCGDisplayShowDuplicateLowResolutionModes };
-        CFTypeRef values[1] = { kCFBooleanTrue };
+    CFTypeRef values[1] = { kCFBooleanTrue };
         
-        CFDictionaryRef options = CFDictionaryCreate(
-            kCFAllocatorDefault,
-            (const void **)keys,
-            (const void **)values,
-            1,
-            &kCFTypeDictionaryKeyCallBacks,
-            &kCFTypeDictionaryValueCallBacks
-        );
+    CFDictionaryRef options = CFDictionaryCreate(
+        kCFAllocatorDefault,
+        (const void **)keys,
+        (const void **)values,
+        1,
+        &kCFTypeDictionaryKeyCallBacks,
+        &kCFTypeDictionaryValueCallBacks
+    );
         
     CFArrayRef modes = CGDisplayCopyAllDisplayModes(_virtualDisplay.displayID, options);
     if (modes == NULL) {
@@ -236,6 +276,7 @@ int VirtualMonitor::SetResolution(int width, int height, bool retinaMode) {
     
     if (retinaMode) {
         CFIndex cnt = CFArrayGetCount(modes);
+        // Retina (HiDPI) 가 먹힌 해상도를 먼저 찾기
         for (CFIndex i = 0; i < cnt; i++) {
             CGDisplayModeRef mode = (CGDisplayModeRef)CFArrayGetValueAtIndex(modes, i);
             
@@ -250,6 +291,7 @@ int VirtualMonitor::SetResolution(int width, int height, bool retinaMode) {
             }
         }
         
+        // Retina 해상도를 찾지 못한 경우 일반 해상도를 찾기
         if (bestMode == NULL) {
             CFIndex cnt = CFArrayGetCount(modes);
             for (CFIndex i = 0; i < cnt; i++) {
