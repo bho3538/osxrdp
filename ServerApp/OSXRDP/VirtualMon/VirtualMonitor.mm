@@ -1,12 +1,10 @@
 #include "VirtualMonitor.h"
-#include "DisplayReconfigWatcher.h"
 #include "DisplayUtils.h"
 
 #include <IOKit/pwr_mgt/IOPMLib.h>
 #include <unistd.h>
 
-static int kVirtualDetachTimeoutMs = 3000;
-static int kReconfigQuietMs = 200;
+// 디스플레이 복원 최대 wait time
 static int kRestoreVerifyTimeoutMs = 2000;
 
 VirtualMonitor::VirtualMonitor() :
@@ -51,6 +49,7 @@ int VirtualMonitor::Create(int width, int height) {
     CGVirtualDisplaySettings* settings = [[CGVirtualDisplaySettings alloc] init];
     if (settings == nil) return -1;
     
+    // 특정 해상도 이상일 경우 hidpi 모드
     if (width > 2300 && height > 1500) {
         settings.hiDPI = 1;
         _retina = true;
@@ -84,8 +83,7 @@ int VirtualMonitor::Create(int width, int height) {
     _virtualDisplay = [[CGVirtualDisplay alloc] initWithDescriptor:desc];
     if (_virtualDisplay == nil) return -1;
     
-    DisableOtherMonitors();
-    
+    // 가상 디스플레이 속성 적용
     [_virtualDisplay applySettings:settings];
     
     // 가상 디스플레이의 해상도 설정
@@ -104,36 +102,20 @@ int VirtualMonitor::Create(int width, int height) {
         return -1;
     }
     
+    // 모니터가 최소 1개 이상은 있어야 함. (그렇지 않는 경우 fallback 용 내부 디스플레이가 생성되며, 이것을 파괴할 경우 windowserver 가 크래시함)
+    DisableOtherMonitors();
+    
     return _virtualDisplay.displayID;
 }
 
 void VirtualMonitor::Destroy() {
-    CGDirectDisplayID virtualDisplayId = 0;
-    DisplayReconfigWatcher watcher;
-    uint64_t seqAtStart = 0;
-
-    // 가상 디스플레이를 뽀개기 전 마지막 상태를 저장
-    if (_virtualDisplay != nil) {
-        virtualDisplayId = _virtualDisplay.displayID;
-        if (watcher.Start()) {
-            seqAtStart = watcher.Sequence();
-        }
-    }
+    // 비활성화한 디스플레이 롤백 (반드시 먼저 해야함, 그렇지 않는 경우 위 설명처럼 windowserver 가 크래시할 수 있음)
+    RestoreOtherMonitors();
 
     // nil 로 설정하면 알아서 뽀개짐 (즉시 뽀개지는건 아님)
     _virtualDisplay = nil;
     _width = 0;
     _height = 0;
-
-    if (virtualDisplayId != 0) {
-        // 특정 pc에서 virtual display 제거가 완벽히 끝나기 전에 복원을 시도하면 WindowServer 가 크래시하는 현상이 발생
-        // 따라서 가상 디스플레이가 완전히 제거되고 crash 방지를 위해 WindowServer 이벤트가 잠잠해질때 까지 대기
-        DisplayUtils::WaitDisplayOnlineState(virtualDisplayId, false, kVirtualDetachTimeoutMs);
-        watcher.WaitForQuiet(seqAtStart, kReconfigQuietMs, kVirtualDetachTimeoutMs);
-    }
-    
-    // 비활성화한 디스플레이 롤백
-    RestoreOtherMonitors();
 }
 
 void VirtualMonitor::RestoreOtherMonitors() {
@@ -141,16 +123,10 @@ void VirtualMonitor::RestoreOtherMonitors() {
         return;
     }
     
-    // wakeup 없이 restore 시도
+    WakeupDisplay();
+    
     bool restored = DisplayUtils::ApplyDisplayEnabled(_disabledDisplayIds, _disabledDisplayIdsCnt, true) &&
-                    DisplayUtils::WaitAllDisplaysOnline(_disabledDisplayIds, _disabledDisplayIdsCnt, kRestoreVerifyTimeoutMs);
-
-    if (restored == false) {
-        // 필요할 때만 wakeup 후 재시도
-        WakeupDisplay();
-        restored = DisplayUtils::ApplyDisplayEnabled(_disabledDisplayIds, _disabledDisplayIdsCnt, true) &&
-                   DisplayUtils::WaitAllDisplaysOnline(_disabledDisplayIds, _disabledDisplayIdsCnt, kRestoreVerifyTimeoutMs);
-    }
+               DisplayUtils::WaitAllDisplaysOnline(_disabledDisplayIds, _disabledDisplayIdsCnt, kRestoreVerifyTimeoutMs);
 
     if (restored) {
         free(_disabledDisplayIds);

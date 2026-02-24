@@ -141,9 +141,6 @@ ScreenRecorder::~ScreenRecorder() {
         CFRelease(_implFallback);
         _implFallback = NULL;
     }
-    
-    // 가상 모니터 파괴
-    _virtualMonitor.Destroy();
 }
 
 bool ScreenRecorder::StartRecord(xstream_t* cmd) {
@@ -549,7 +546,7 @@ void ScreenRecorder::SendDisconnectMsgToClient() {
     
     // 가상 모니터를 먼저 파괴 (todo : 정확한 정리 타이밍을 다시 정하기)
     // 2개 이상의 클라이언트가 겹치면 충돌나서 원본 물리 화면이 안나오는 경우가 발생.
-    _virtualMonitor.Destroy();
+    //_virtualMonitor.Destroy();
     
     struct stop_msg msg = { OSXRDP_CMDTYPE_MSGFROMAGENT, OSXRDP_PACKETTYPE_TERMINATE };
     if (_client != NULL) {
