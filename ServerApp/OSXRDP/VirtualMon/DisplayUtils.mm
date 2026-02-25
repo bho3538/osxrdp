@@ -90,22 +90,22 @@ bool DisplayUtils::ApplyDisplayEnabled(uint32_t* displayIds, int displayCnt, boo
     return true;
 }
 
-bool DisplayUtils::WaitAllDisplaysOnline(uint32_t* displayIds, int displayCnt, int timeoutMs) {
+bool DisplayUtils::WaitAllDisplaysOnline(uint32_t* displayIds, int displayCnt, int timeoutMs, bool online) {
     if (displayIds == NULL || displayCnt <= 0) {
         return true;
     }
 
     uint64_t startMs = GetNowMs();
     while (true) {
-        bool allOnline = true;
+        bool success = true;
         for (int i = 0; i < displayCnt; i++) {
-            if (IsDisplayOnline(displayIds[i]) == false) {
-                allOnline = false;
+            if (IsDisplayOnline(displayIds[i]) != online) {
+                success = false;
                 break;
             }
         }
         
-        if (allOnline) {
+        if (success) {
             return true;
         }
 

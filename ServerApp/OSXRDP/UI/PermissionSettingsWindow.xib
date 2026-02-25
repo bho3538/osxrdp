@@ -10,7 +10,11 @@
         <customObject id="-2" userLabel="File's Owner" customClass="PermissionSettingsWindow">
             <connections>
                 <outlet property="accPermBtn" destination="kG0-YA-Ham" id="ydw-j3-MoT"/>
+                <outlet property="accessibilityPermLabel" destination="igF-Tl-jd6" id="zQM-zW-nb6"/>
+                <outlet property="closeBtn" destination="cxC-1k-PI6" id="xDc-SC-Rgz"/>
                 <outlet property="recordPermBtn" destination="zub-O9-joM" id="2PK-ko-Opa"/>
+                <outlet property="restartAppBtn" destination="AZx-1u-vKS" id="dqu-8F-yYh"/>
+                <outlet property="screenRecordPermLabel" destination="dTJ-ZC-c36" id="P1W-E8-9Ah"/>
                 <outlet property="window" destination="QvC-M9-y7g" id="4y3-1f-OnJ"/>
             </connections>
         </customObject>

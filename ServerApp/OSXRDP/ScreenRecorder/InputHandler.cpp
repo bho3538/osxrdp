@@ -116,6 +116,8 @@ InputHandler::InputHandler() :
     _lastMouseClickTime(0),
     _lastWheelEventTime(0),
     _wheelEventBurstCount(0),
+    _lastWheelDirection(0),
+    _wheelSmoothedAmount(0.0f),
     _lastWheelIsTrackpad(false)
 {
     _eventRef = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
@@ -199,7 +201,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
             break;
         }
         case XRDP_MOUSE_WHEELUP : {
-            int amount = GetMouseWheelMoveAmount();
+            int amount = GetMouseWheelMoveAmount(1);
             if (_lastWheelIsTrackpad) {
                 PostTrackpadScrollEvent(amount);
                 return;
@@ -208,7 +210,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
             return;
         }
         case XRDP_MOUSE_WHEELDOWN : {
-            int amount = GetMouseWheelMoveAmount() * -1;
+            int amount = GetMouseWheelMoveAmount(-1) * -1;
             if (_lastWheelIsTrackpad) {
                 PostTrackpadScrollEvent(amount);
                 return;
@@ -332,65 +334,128 @@ long long InputHandler::GetCurrentEventTime() {
     return te.tv_sec * 1000LL + te.tv_usec / 1000;
 }
 
-int InputHandler::GetMouseWheelMoveAmount() {
-    const int kGlobalScrollGain = 3;
-    const int kTrackpadScrollGain = 4;
-    const int kTrackpadWarmupAmount = 8 * kTrackpadScrollGain;
+int InputHandler::GetMouseWheelMoveAmount(int direction) {
+    const int kIdleGapMs = 180;
+    const int kTrackpadGapMs = 45;
+    const int kMouseConfirmGapMs = 95;
+    const int kTrackpadMinAmount = 6;
+    const int kTrackpadMaxAmount = 40;
+    const int kMouseMinAmount = 140;
+    const int kMouseMaxAmount = 520;
 
-    long long currentTime = GetCurrentEventTime();
-    if (_lastWheelEventTime == 0) {
-        _lastWheelEventTime = currentTime;
-        _wheelEventBurstCount = 0;
-        _lastWheelIsTrackpad = true;
-        return kTrackpadWarmupAmount;
+    if (direction > 0) {
+        direction = 1;
     }
-
-    long long gap = currentTime - _lastWheelEventTime;
-    _lastWheelEventTime = currentTime;
-
-    if (gap > 180) {
-        _wheelEventBurstCount = 0;
-        
-        if (_lastWheelIsTrackpad) {
-            return kTrackpadWarmupAmount;
+    else if (direction < 0) {
+        direction = -1;
+    }
+    else {
+        direction = 0;
+    }
+    
+    long long currentTime = GetCurrentEventTime();
+    long long gap = 0;
+    bool newGesture = false;
+    
+    if (_lastWheelEventTime == 0) {
+        newGesture = true;
+    }
+    else {
+        gap = currentTime - _lastWheelEventTime;
+        if (gap > kIdleGapMs) {
+            newGesture = true;
         }
-
-        _lastWheelIsTrackpad = false;
-        return 80 * kGlobalScrollGain;
+    }
+    
+    if (direction != 0 && _lastWheelDirection != 0 && direction != _lastWheelDirection) {
+        newGesture = true;
+    }
+    
+    if (newGesture) {
+        _wheelEventBurstCount = 0;
     }
     else {
         _wheelEventBurstCount++;
     }
-
-    // 이벤트가 45ms 이하로 연속으로 오면 트랙패드로 판단
-    _lastWheelIsTrackpad = (gap <= 45);
-
-    // 트랙패드의 연속 이벤트 간격을 측정하여 스크롤할 양을 결정
-    if (gap <= 14) {
-        return 2 * kTrackpadScrollGain;
-    }
-    if (gap <= 22) {
-        return 3 * kTrackpadScrollGain;
-    }
-    if (gap <= 32) {
-        return 6 * kTrackpadScrollGain;
-    }
-    if (gap <= 45) {
-        if (_wheelEventBurstCount > 12) {
-            return 4 * kTrackpadScrollGain;
+    
+    // device classification with hysteresis
+    if (_lastWheelEventTime != 0) {
+        if (gap <= kTrackpadGapMs) {
+            _lastWheelIsTrackpad = true;
         }
-        return 16 * kTrackpadScrollGain;
+        else if (gap >= kMouseConfirmGapMs) {
+            _lastWheelIsTrackpad = false;
+        }
     }
-
-    // 마우스 처리
-    if (gap <= 70) {
-        return 55 * kGlobalScrollGain;
+    
+    int target = 0;
+    if (_lastWheelIsTrackpad) {
+        if (gap <= 14) {
+            target = 32;
+        }
+        else if (gap <= 24) {
+            target = 24;
+        }
+        else if (gap <= kTrackpadGapMs) {
+            target = 18;
+        }
+        else {
+            target = 14;
+        }
+        
+        if (newGesture) {
+            target = 12;
+        }
+        
+        if (_wheelEventBurstCount > 18 && target > 16) {
+            target -= 4;
+        }
     }
-    if (gap <= 110) {
-        return 100 * kGlobalScrollGain;
+    else {
+        if (gap <= 55) {
+            target = 440;
+        }
+        else if (gap <= 95) {
+            target = 340;
+        }
+        else {
+            target = 260;
+        }
+        
+        if (newGesture) {
+            target = 220;
+        }
     }
-
-    return 140 * kGlobalScrollGain;
+    
+    if (newGesture) {
+        _wheelSmoothedAmount = ((float)target) * 0.55f;
+    }
+    else {
+        float alpha = _lastWheelIsTrackpad ? 0.35f : 0.45f;
+        _wheelSmoothedAmount = (_wheelSmoothedAmount * (1.0f - alpha)) + (((float)target) * alpha);
+    }
+    
+    int amount = (int)(_wheelSmoothedAmount + 0.5f);
+    if (_lastWheelIsTrackpad) {
+        if (amount < kTrackpadMinAmount) {
+            amount = kTrackpadMinAmount;
+        }
+        else if (amount > kTrackpadMaxAmount) {
+            amount = kTrackpadMaxAmount;
+        }
+    }
+    else {
+        if (amount < kMouseMinAmount) {
+            amount = kMouseMinAmount;
+        }
+        else if (amount > kMouseMaxAmount) {
+            amount = kMouseMaxAmount;
+        }
+    }
+    
+    _lastWheelEventTime = currentTime;
+    _lastWheelDirection = direction;
+    return amount;
 }
 
 void InputHandler::PostScrollEvent(int amount, bool continuous) {
@@ -414,12 +479,12 @@ void InputHandler::PostTrackpadScrollEvent(int amount) {
         return;
     }
 
-    int steps = absAmount / 8;
-    if (steps < 3) {
+    int steps = 1;
+    if (absAmount > 14) {
         steps = 3;
     }
-    else if (steps > 10) {
-        steps = 10;
+    else if (absAmount > 8) {
+        steps = 2;
     }
 
     int base = absAmount / steps;

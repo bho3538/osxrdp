@@ -170,95 +170,101 @@ void* MirrorAppServer::IoThreadEntry(void* arg) {
 }
 
 int MirrorAppServer::OnClientConnected(xipc_t* t, xipc_t* client) {
-    MirrorAppServer* _this = (MirrorAppServer*)t->user_data;
-    
-    NSLog(@"[MirrorAppServer::OnClientConnected] new client connected");
-    
-    if (_this->_client != NULL) {
-        struct MirrorAppClientCtx* oldCtx = (struct MirrorAppClientCtx*)_this->_client->user_data;
-        oldCtx->ScreenRecorder->SendDisconnectMsgToClient();
-        _this->_client = NULL;
-    }
-    
-    struct MirrorAppClientCtx* ctx = (struct MirrorAppClientCtx*)malloc(sizeof(struct MirrorAppClientCtx));
-    
-    ctx->ScreenRecorder = _this->CreateScreenRecorder();
-    
-    client->user_data = (void*)ctx;
-    
-    _this->_client = client;
+    @autoreleasepool {
+        MirrorAppServer* _this = (MirrorAppServer*)t->user_data;
+        
+        NSLog(@"[MirrorAppServer::OnClientConnected] new client connected");
+        
+        if (_this->_client != NULL) {
+            struct MirrorAppClientCtx* oldCtx = (struct MirrorAppClientCtx*)_this->_client->user_data;
+            oldCtx->ScreenRecorder->SendDisconnectMsgToClient();
+            _this->_client = NULL;
+        }
+        
+        struct MirrorAppClientCtx* ctx = (struct MirrorAppClientCtx*)malloc(sizeof(struct MirrorAppClientCtx));
+        
+        ctx->ScreenRecorder = _this->CreateScreenRecorder();
+        
+        client->user_data = (void*)ctx;
+        
+        _this->_client = client;
 
-    return 0;
+        return 0;
+    }
 }
 
 int MirrorAppServer::OnClientDisconnected(xipc_t* t, xipc_t* client) {
-    MirrorAppServer* _this = (MirrorAppServer*)t->user_data;
-    NSLog(@"[MirrorAppServer::OnClientDisconnected] client disconnected");
-    
-    if (_this->_client == client) {
-        _this->_client = NULL;
+    @autoreleasepool {
+        MirrorAppServer* _this = (MirrorAppServer*)t->user_data;
+        NSLog(@"[MirrorAppServer::OnClientDisconnected] client disconnected");
+        
+        if (_this->_client == client) {
+            _this->_client = NULL;
+        }
+
+        if (client->user_data == NULL)
+            return 0;
+        
+        struct MirrorAppClientCtx* ctx = (struct MirrorAppClientCtx*)client->user_data;
+        if (ctx == NULL)
+            return 0;
+        
+        ctx->ScreenRecorder->Stop();
+        delete ctx->ScreenRecorder;
+        free(ctx);
+        
+        client->user_data = NULL;
+
+        return 0;
     }
-
-    if (client->user_data == NULL)
-        return 0;
-    
-    struct MirrorAppClientCtx* ctx = (struct MirrorAppClientCtx*)client->user_data;
-    if (ctx == NULL)
-        return 0;
-    
-    ctx->ScreenRecorder->Stop();
-    delete ctx->ScreenRecorder;
-    free(ctx);
-    
-    client->user_data = NULL;
-
-    return 0;
 }
 
 int MirrorAppServer::OnMessageReceived(xipc_t* t, xipc_t* client, void* data, int len) {
-    if (t == NULL || data == NULL || len <= 0) {
-        return 0;
-    }
-    
-    if (client == NULL || client->user_data == NULL) {
-        return 0;
-    }
-    
-    struct MirrorAppClientCtx* ctx = (struct MirrorAppClientCtx*)client->user_data;
-    
-    xstream_t* cmd = xstream_create_for_read(data, len);
-    if (cmd == NULL) {
-        return 0;
-    }
-    
-    MirrorAppServer* _this = (MirrorAppServer*)t->user_data;
-    if (_this == NULL) {
-        xstream_free(cmd);
-        return 0;
-    }
-    
-    // Stopping/Stopped 상태에서는 명령 무시
-    bool canHandle = _this->IsState(State_Running);
-    if (!canHandle) {
-        NSLog(@"[MirrorAppServer::OnMessageReceived] invalid status");
-
-        xstream_free(cmd);
-        return 0;
-    }
-    
-    int cmdType = xstream_readInt32(cmd);
-        
-    switch (cmdType) {
-        case OSXRDP_CMDTYPE_SCREEN: {
-            ctx->ScreenRecorder->HandleCommand(client, cmd);
-            break;
+    @autoreleasepool {
+        if (t == NULL || data == NULL || len <= 0) {
+            return 0;
         }
-        default:
-            break;
+        
+        if (client == NULL || client->user_data == NULL) {
+            return 0;
+        }
+        
+        struct MirrorAppClientCtx* ctx = (struct MirrorAppClientCtx*)client->user_data;
+        
+        xstream_t* cmd = xstream_create_for_read(data, len);
+        if (cmd == NULL) {
+            return 0;
+        }
+        
+        MirrorAppServer* _this = (MirrorAppServer*)t->user_data;
+        if (_this == NULL) {
+            xstream_free(cmd);
+            return 0;
+        }
+        
+        // Stopping/Stopped 상태에서는 명령 무시
+        bool canHandle = _this->IsState(State_Running);
+        if (!canHandle) {
+            NSLog(@"[MirrorAppServer::OnMessageReceived] invalid status");
+
+            xstream_free(cmd);
+            return 0;
+        }
+        
+        int cmdType = xstream_readInt32(cmd);
+            
+        switch (cmdType) {
+            case OSXRDP_CMDTYPE_SCREEN: {
+                ctx->ScreenRecorder->HandleCommand(client, cmd);
+                break;
+            }
+            default:
+                break;
+        }
+        
+        xstream_free(cmd);
+        return 0;
     }
-    
-    xstream_free(cmd);
-    return 0;
 }
 
 // 상태 접근 헬퍼

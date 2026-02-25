@@ -15,11 +15,22 @@
         <customObject id="-3" userLabel="Application" customClass="NSObject"/>
         <customObject id="Voe-Tx-rLC" customClass="AppDelegate">
             <connections>
-                <outlet property="aboutLinkLabel" destination="J3e-gd-N2p" id="Pve-2o-fBj"/>
-                <outlet property="startRemoteConnectionBtn" destination="R0M-Dk-LTD" id="7zV-KK-wZX"/>
-                <outlet property="startupLabel" destination="Umh-VF-aFj" id="xQL-eW-onj"/>
-                <outlet property="startupSwitch" destination="hT6-xE-TQj" id="w8x-JM-YCy"/>
-                <outlet property="window" destination="QvC-M9-y7g" id="gIp-Ho-8D9"/>
+                <outlet property="mainWindowController" destination="N8f-0R-hpQ" id="cY8-rP-eUu"/>
+            </connections>
+        </customObject>
+        <customObject id="N8f-0R-hpQ" customClass="MainWindowController">
+            <connections>
+                <outlet property="mainViewController" destination="c2a-Xj-7nZ" id="5rD-2S-TfL"/>
+                <outlet property="window" destination="QvC-M9-y7g" id="sJP-0h-I9A"/>
+            </connections>
+        </customObject>
+        <customObject id="c2a-Xj-7nZ" customClass="MainViewController">
+            <connections>
+                <outlet property="aboutLinkLabel" destination="J3e-gd-N2p" id="Bz9-rd-2ae"/>
+                <outlet property="startRemoteConnectionBtn" destination="R0M-Dk-LTD" id="x7D-XQ-4Ue"/>
+                <outlet property="startupLabel" destination="Umh-VF-aFj" id="Q8q-Wd-4kW"/>
+                <outlet property="startupSwitch" destination="hT6-xE-TQj" id="Hh6-Wp-8cT"/>
+                <outlet property="view" destination="EiT-Mj-1SZ" id="dU4-5D-Zm7"/>
             </connections>
         </customObject>
         <customObject id="YLy-65-1bz" customClass="NSFontManager"/>
@@ -316,11 +327,11 @@
             </items>
             <point key="canvasLocation" x="200" y="121"/>
         </menu>
-        <window title="OSXRDP - XRDP for macOS" allowsToolTipsWhenApplicationIsInactive="NO" autorecalculatesKeyViewLoop="NO" releasedWhenClosed="NO" visibleAtLaunch="NO" animationBehavior="default" id="QvC-M9-y7g" userLabel="OSXRDP">
+        <window title="OSXRDP - XRDP for macOS" allowsToolTipsWhenApplicationIsInactive="NO" autorecalculatesKeyViewLoop="NO" releasedWhenClosed="NO" visibleAtLaunch="NO" animationBehavior="default" id="QvC-M9-y7g" userLabel="OSXRDP" customClass="MainWindow">
             <windowStyleMask key="styleMask" titled="YES" closable="YES" miniaturizable="YES" resizable="YES"/>
             <windowPositionMask key="initialPositionMask" leftStrut="YES" rightStrut="YES" topStrut="YES" bottomStrut="YES"/>
             <rect key="contentRect" x="335" y="390" width="521" height="306"/>
-            <rect key="screenRect" x="0.0" y="0.0" width="1512" height="949"/>
+            <rect key="screenRect" x="0.0" y="0.0" width="1855" height="968"/>
             <value key="minSize" type="size" width="521" height="306"/>
             <view key="contentView" id="EiT-Mj-1SZ">
                 <rect key="frame" x="0.0" y="0.0" width="521" height="306"/>
@@ -353,7 +364,7 @@
                                                 <font key="font" metaFont="system"/>
                                             </buttonCell>
                                             <connections>
-                                                <action selector="openPermissionWindowBtnClicked:" target="Voe-Tx-rLC" id="Fe9-8p-KXf"/>
+                                                <action selector="openPermissionWindowBtnClicked:" target="c2a-Xj-7nZ" id="Fe9-8p-KXf"/>
                                             </connections>
                                         </button>
                                         <textField focusRingType="none" horizontalHuggingPriority="251" verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="Umh-VF-aFj" userLabel="StartOnLogonLabel">
@@ -373,7 +384,7 @@
                                                 <font key="font" metaFont="system"/>
                                             </buttonCell>
                                             <connections>
-                                                <action selector="startRemoteConnectionBtnClicked:" target="Voe-Tx-rLC" id="OI4-bL-pBK"/>
+                                                <action selector="startRemoteConnectionBtnClicked:" target="c2a-Xj-7nZ" id="OI4-bL-pBK"/>
                                             </connections>
                                         </button>
                                         <textField focusRingType="none" horizontalHuggingPriority="251" verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="Z5W-hJ-0b5" userLabel="OSXRDPStatusLabel">
@@ -389,7 +400,7 @@
                                             <rect key="frame" x="414" y="175" width="54" height="24"/>
                                             <autoresizingMask key="autoresizingMask" flexibleMinX="YES" flexibleMinY="YES"/>
                                             <connections>
-                                                <action selector="onStartupChanged:" target="Voe-Tx-rLC" id="rLh-cV-Rho"/>
+                                                <action selector="onStartupChanged:" target="c2a-Xj-7nZ" id="rLh-cV-Rho"/>
                                             </connections>
                                         </switch>
                                     </subviews>
@@ -426,7 +437,7 @@
                 </subviews>
             </view>
             <connections>
-                <outlet property="delegate" destination="Voe-Tx-rLC" id="top-28-M4D"/>
+                <outlet property="delegate" destination="N8f-0R-hpQ" id="top-28-M4D"/>
             </connections>
             <point key="canvasLocation" x="220.5" y="373"/>
         </window>

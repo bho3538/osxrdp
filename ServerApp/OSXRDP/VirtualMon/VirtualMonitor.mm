@@ -86,24 +86,18 @@ int VirtualMonitor::Create(int width, int height) {
     // 가상 디스플레이 속성 적용
     [_virtualDisplay applySettings:settings];
     
-    // 가상 디스플레이의 해상도 설정
-    // 가상 디스플레이가 완전히 추가될때까지 모니터 해상도를 조회할 수 없음. 따라서 여러번 시도 후 그래도 적용실패시 가상모니터 사용을 안하도록 유도
-    int applyResolution = 0;
-    for (int i = 0; i < 5; i++) {
-        if (SetResolution(_width, _height, _retina) == 0) {
-            applyResolution = 1;
-            break;
-        }
-        
-        sleep(1);
-    }
+    // 모니터가 최소 1개 이상은 있어야 함. 가상 모니터가 켜질때까지 대기 (그렇지 않는 경우 fallback 용 내부 디스플레이가 생성되며, 이것을 파괴할 경우 windowserver 가 크래시함)
+    DisplayUtils::WaitDisplayOnlineState(_virtualDisplay.displayID, true, 10000);
     
-    if (applyResolution == 0) {
+    // 다른 모니터 비활성화
+    DisableOtherMonitors();
+    
+    // 가상 디스플레이의 해상도 설정
+    // 가끔 해상도 설정 후 다른 모니터를 비활성화하면 설정이 풀리는 경우가 있음. 따라서 순서를 이와 같이 수정
+    int applyResolution = 0;
+    if (SetResolution(_width, _height, _retina) != 0) {
         return -1;
     }
-    
-    // 모니터가 최소 1개 이상은 있어야 함. (그렇지 않는 경우 fallback 용 내부 디스플레이가 생성되며, 이것을 파괴할 경우 windowserver 가 크래시함)
-    DisableOtherMonitors();
     
     return _virtualDisplay.displayID;
 }
@@ -125,17 +119,12 @@ void VirtualMonitor::RestoreOtherMonitors() {
     
     WakeupDisplay();
     
-    bool restored = DisplayUtils::ApplyDisplayEnabled(_disabledDisplayIds, _disabledDisplayIdsCnt, true) &&
-               DisplayUtils::WaitAllDisplaysOnline(_disabledDisplayIds, _disabledDisplayIdsCnt, kRestoreVerifyTimeoutMs);
-
-    if (restored) {
-        free(_disabledDisplayIds);
-        _disabledDisplayIds = NULL;
-        _disabledDisplayIdsCnt = 0;
-    }
-    else {
-        NSLog(@"[VirtualMonitor::RestoreOtherMonitors] restore failed. keep disabled display list for retry.");
-    }
+    DisplayUtils::ApplyDisplayEnabled(_disabledDisplayIds, _disabledDisplayIdsCnt, true);
+    DisplayUtils::WaitAllDisplaysOnline(_disabledDisplayIds, _disabledDisplayIdsCnt, kRestoreVerifyTimeoutMs, true);
+    
+    free(_disabledDisplayIds);
+    _disabledDisplayIds = NULL;
+    _disabledDisplayIdsCnt = 0;
 }
 
 void VirtualMonitor::WakeupDisplay() {
@@ -146,6 +135,7 @@ void VirtualMonitor::WakeupDisplay() {
         assertionID = kIOPMNullAssertionID;
     }
 
+    // hack : 바로 안꺠어나는 경우가 있음
     usleep(150 * 1000);
 }
 
@@ -220,6 +210,9 @@ bool VirtualMonitor::DisableOtherMonitors() {
         _disabledDisplayIdsCnt = 0;
         return false;
     }
+    
+    // 꺼질대까지 대기
+    DisplayUtils::WaitAllDisplaysOnline(_disabledDisplayIds, _disabledDisplayIdsCnt, kRestoreVerifyTimeoutMs, false);
 
     free(displayIds);
     

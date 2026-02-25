@@ -1,0 +1,17 @@
+"statusbar.icon.accessibility" = "OSXRDP 메뉴 로고";
+"statusbar.menu.title" = "OSXRDP";
+"statusbar.menu.open" = "열기";
+"statusbar.menu.close" = "닫기";
+
+"main.alert.title" = "OSXRDP";
+"main.alert.permission_required" = "원격 연결을 시작하려면 모든 권한을 설정해 주세요.";
+"main.button.running" = "실행 중";
+"main.button.stopped" = "중지됨";
+
+"permission.window.title" = "권한 설정";
+"permission.label.accessibility" = "손쉬운 사용 권한";
+"permission.label.screen_record" = "화면 기록 권한";
+"permission.button.restart_app" = "앱 재시작";
+"permission.button.close" = "닫기";
+"permission.button.refresh" = "새로 고침";
+"permission.button.ok" = "확인";

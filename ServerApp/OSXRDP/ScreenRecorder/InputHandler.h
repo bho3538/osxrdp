@@ -31,6 +31,8 @@ private:
     long long _lastMouseClickTime;
     long long _lastWheelEventTime;
     int _wheelEventBurstCount;
+    int _lastWheelDirection;
+    float _wheelSmoothedAmount;
     bool _lastWheelIsTrackpad;
     
     CGEventFlags _keyboardModifierFlags;
@@ -38,7 +40,7 @@ private:
     CGEventSourceRef _eventRef;
     
     void HandleMouseDoubleClick(CGEventRef ev, bool mouseDown, int mouseX, int mouseY);
-    int GetMouseWheelMoveAmount();
+    int GetMouseWheelMoveAmount(int direction);
     void PostScrollEvent(int amount, bool continuous);
     void PostTrackpadScrollEvent(int amount);
     
