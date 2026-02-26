@@ -39,11 +39,18 @@
     CFDictionaryRef destRectDict = CGRectCreateDictionaryRepresentation(destRect);
     
     CGColorSpaceRef sRGB = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+    
+    // legacy recorder 의 성능이 그리 좋지 못해보임. 따라서 45fps 로 제한을 둔다.
+    if (framerate > 45) {
+        framerate = 45;
+    }
+    
+    float frameTime = 1.0f / framerate;
 
     _recordConfig = @{
         (__bridge NSString*)kCGDisplayStreamShowCursor : @NO,
         (__bridge NSString*)kCGDisplayStreamQueueDepth : @2,
-        (__bridge NSString*)kCGDisplayStreamMinimumFrameTime : @0.01666,     // 60fps
+        (__bridge NSString*)kCGDisplayStreamMinimumFrameTime : @(frameTime),
         (__bridge NSString*)kCGDisplayStreamDestinationRect : (__bridge_transfer NSDictionary*)destRectDict,
         (__bridge NSString*)kCGDisplayStreamPreserveAspectRatio : @NO,      // 비율 무시하고 녹화 (늘리기)
         (__bridge NSString*)kCGDisplayStreamColorSpace : (__bridge id)sRGB, // 이 설정이 없으면 물빠진 색감이 나옴

@@ -188,6 +188,11 @@ bool ScreenRecorder::ParseStartRecordParams(xstream_t* cmd, RecordStartParams* p
         NSLog(@"[ScreenRecorder::StartRecord] invalid request. too large display width: %d height: %d", params->width, params->height);
         return false;
     }
+    
+    // 해상도가 높아지면 병목이 생긴다. 이를 완화하기 위해 불안정한 60fps 보다는 그나마 부드러운 45fps 로 제한을 둔다.
+    if (params->width > 2300 && params->height > 1500) {
+        params->framerate = 45;
+    }
 
     params->width &= ~0x1;
     params->height &= ~0x1;

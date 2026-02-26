@@ -158,6 +158,17 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
     switch (key) {
         case XRDP_MOUSE_MOVE: {
             ev = CGEventCreateMouseEvent(_eventRef, _inMouseDown == 1 ? kCGEventLeftMouseDragged : kCGEventMouseMoved, point, kCGMouseButtonLeft);
+            
+            // xcode minimap 과 같은 일부 컨트롤을 움직이려면 아래와 같은 값들을 설정해야 함.
+            int dx = clientX - _lastMousePosX;
+            int dy = clientY - _lastMousePosY;
+            
+            CGEventSetIntegerValueField(ev, kCGMouseEventDeltaX, dx);
+            CGEventSetIntegerValueField(ev, kCGMouseEventDeltaY, dy);
+            
+            _lastMousePosX = clientX;
+            _lastMousePosY = clientY;
+            
             break;
         }
         case XRDP_MOUSE_LBTNDOWN: {
@@ -308,9 +319,6 @@ void InputHandler::HandleMouseDoubleClick(CGEventRef ev, bool mouseDown, int mou
         else {
             _mouseClickCnt = 1;
         }
-        
-        _lastMousePosX = mouseX;
-        _lastMousePosY = mouseY;
         
         _lastMouseClickTime = currentTime;
     }
