@@ -63,13 +63,13 @@ MaxFrameRate = 60.0
 
 [OpenH264.wan]
 EnableFrameSkip = true
-TargetBitrate = 19_000_000
-MaxBitrate =    22_000_000
+TargetBitrate = 17_000_000
+MaxBitrate =    20_000_000
 
 [OpenH264.broadband_high]
 EnableFrameSkip = true
-TargetBitrate = 15_000_000
-MaxBitrate =   18_000_000
+TargetBitrate = 13_000_000
+MaxBitrate =   16_000_000
 
 [OpenH264.satellite]
 EnableFrameSkip = true

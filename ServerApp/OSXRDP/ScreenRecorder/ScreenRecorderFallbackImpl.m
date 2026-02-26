@@ -40,11 +40,6 @@
     
     CGColorSpaceRef sRGB = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
     
-    // legacy recorder 의 성능이 그리 좋지 못해보임. 따라서 45fps 로 제한을 둔다.
-    if (framerate > 45) {
-        framerate = 45;
-    }
-    
     float frameTime = 1.0f / framerate;
 
     _recordConfig = @{

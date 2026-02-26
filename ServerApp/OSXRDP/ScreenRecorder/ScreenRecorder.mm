@@ -170,10 +170,11 @@ bool ScreenRecorder::ParseStartRecordParams(xstream_t* cmd, RecordStartParams* p
     // 잠금화면의 경우 virtual monitor 를 지원하지 않음.
     if (is_root_process() != 0) {
         params->useVirtualMon = 0;
+        params->framerate = 30;
     }
 
-    if (params->framerate > 60) {
-        params->framerate = 60;
+    if (params->framerate > 45) {
+        params->framerate = 45;
     }
     else if (params->framerate < 30) {
         params->framerate = 30;
@@ -190,9 +191,9 @@ bool ScreenRecorder::ParseStartRecordParams(xstream_t* cmd, RecordStartParams* p
     }
     
     // 해상도가 높아지면 병목이 생긴다. 이를 완화하기 위해 불안정한 60fps 보다는 그나마 부드러운 45fps 로 제한을 둔다.
-    if (params->width > 2300 && params->height > 1500) {
-        params->framerate = 45;
-    }
+    //if (params->width > 2300 && params->height > 1500) {
+    //    params->framerate = 45;
+    //}
 
     params->width &= ~0x1;
     params->height &= ~0x1;
