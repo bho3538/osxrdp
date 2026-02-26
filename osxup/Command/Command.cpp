@@ -78,7 +78,7 @@ void Command::SendSessionRequestMsg(xipc_t* sessionIpc, const char* username, in
     
     xstream_t* stream = xstream_create(512);
     xstream_writeInt32(stream, OSXRDP_SESSMAN_REQUEST_SESSION);
-    xstream_writeStr(stream, username, (int)usernameLen + 1);
+    xstream_writeStr(stream, username, (int)usernameLen);
     
     _SendMsg(sessionIpc, stream);
     

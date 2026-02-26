@@ -108,6 +108,11 @@ void ConnectionManager::KeepAlive() {
             // 파괴
             xipc_destroy(_sessionIpc);
             _sessionIpc = NULL;
+            
+            // 세션 ipc 가 끊긴 경우 접속 종료 처리
+            _statusManager.SetStopping();
+            
+            return;
         }
     }
     
@@ -117,7 +122,10 @@ void ConnectionManager::KeepAlive() {
         _sessionId = -1;
         
         // painter 와 커서 manager 는 재생성해야함 (agent 에 종속적)
-        _paintManager.Release();
+        // 단, in-flight 프레임 ACK가 끝나기 전에는 공유메모리를 즉시 해제하지 않는다.
+        if (_paintManager.TryReleaseForReconnect() == false) {
+            return;
+        }
         
         // 마지막 시도가 락스크린일 경우 재접속
         if (_statusManager.CheckReconnection() == false) {
@@ -251,9 +259,6 @@ bool ConnectionManager::_PreparePaint() {
         return false;
     }
     
-    // cursor manager
-    
-    
     _statusManager.SetAgentRecordStart(inLockscreen);
     
     return true;
@@ -332,10 +337,7 @@ int ConnectionManager::_OnReceivedAgentManagerMessage(xipc_t* t, xipc_t* client,
             int packetType = xstream_readInt32(stream);
             if (packetType == OSXRDP_PACKETTYPE_REP_SCREEN) {
                 int re = xstream_readInt32(stream);
-                if (re == 1) {
-                    _this->_PreparePaint();
-                }
-                else {
+                if (re != 1 || _this->_PreparePaint() == false) {
                     // log
                     _this->_statusManager.SetStopping();
                 }

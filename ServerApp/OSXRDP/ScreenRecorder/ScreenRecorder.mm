@@ -141,9 +141,6 @@ ScreenRecorder::~ScreenRecorder() {
         CFRelease(_implFallback);
         _implFallback = NULL;
     }
-    
-    // 가상 모니터 파괴
-    _virtualMonitor.Destroy();
 }
 
 bool ScreenRecorder::StartRecord(xstream_t* cmd) {
@@ -185,6 +182,16 @@ bool ScreenRecorder::ParseStartRecordParams(xstream_t* cmd, RecordStartParams* p
     if (params->width <= 0 || params->height <= 0) {
         NSLog(@"[ScreenRecorder::StartRecord] invalid request. width: %d height: %d", params->width, params->height);
         return false;
+    }
+    
+    if (params->width > 10000 || params->height > 10000) {
+        NSLog(@"[ScreenRecorder::StartRecord] invalid request. too large display width: %d height: %d", params->width, params->height);
+        return false;
+    }
+    
+    // 해상도가 높아지면 병목이 생긴다. 이를 완화하기 위해 불안정한 60fps 보다는 그나마 부드러운 45fps 로 제한을 둔다.
+    if (params->width > 2300 && params->height > 1500) {
+        params->framerate = 45;
     }
 
     params->width &= ~0x1;
@@ -544,7 +551,7 @@ void ScreenRecorder::SendDisconnectMsgToClient() {
     
     // 가상 모니터를 먼저 파괴 (todo : 정확한 정리 타이밍을 다시 정하기)
     // 2개 이상의 클라이언트가 겹치면 충돌나서 원본 물리 화면이 안나오는 경우가 발생.
-    _virtualMonitor.Destroy();
+    //_virtualMonitor.Destroy();
     
     struct stop_msg msg = { OSXRDP_CMDTYPE_MSGFROMAGENT, OSXRDP_PACKETTYPE_TERMINATE };
     if (_client != NULL) {

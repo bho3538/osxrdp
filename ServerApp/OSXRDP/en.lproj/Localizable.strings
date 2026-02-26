@@ -1,0 +1,17 @@
+"statusbar.icon.accessibility" = "OSXRDP menu logo";
+"statusbar.menu.title" = "OSXRDP";
+"statusbar.menu.open" = "Open";
+"statusbar.menu.close" = "Close";
+
+"main.alert.title" = "OSXRDP";
+"main.alert.permission_required" = "Please configure all permissions to start remote connection.";
+"main.button.running" = "Running";
+"main.button.stopped" = "Stopped";
+
+"permission.window.title" = "Permission Settings";
+"permission.label.accessibility" = "Accessibility Permission";
+"permission.label.screen_record" = "Screen Record Permission";
+"permission.button.restart_app" = "Restart App";
+"permission.button.close" = "Close";
+"permission.button.refresh" = "Refresh";
+"permission.button.ok" = "OK";

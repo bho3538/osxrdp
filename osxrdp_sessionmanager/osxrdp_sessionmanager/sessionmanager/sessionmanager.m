@@ -11,7 +11,7 @@
 #import <CoreGraphics/CoreGraphics.h>
 
 // private api
-extern NSArray<NSDictionary*>* CGSCopySessionList(void);
+extern CFArrayRef CGSCopySessionList(void) CF_RETURNS_RETAINED;
 extern CGError CGSCreateSessionWithDataAndOptions(CFStringRef, CFArrayRef, void*, void*, void*, int, int*, int*);
 extern CGError CGSReleaseSession(int session);
 
@@ -28,7 +28,7 @@ int osxrdp_sessionmanager_getsessioninfo(const char* username, session_info_t* s
         dzlog_info("[osxrdp_sessionmanager_getsessioninfo] username: %s", username);
         
         // 컴퓨터의 gui 세션을 enum
-        NSArray<NSDictionary*>* sessions = CGSCopySessionList();
+        NSArray<NSDictionary*>* sessions = CFBridgingRelease(CGSCopySessionList());
         if (sessions == nil || sessions.count == 0) {
             dzlog_error("[osxrdp_sessionmanager_getsessioninfo] enum sessions is null or empty");
 
@@ -155,7 +155,7 @@ void osxrdp_sessionmanager_releasesession(int sessionId) {
         dzlog_info("[osxrdp_sessionmanager_releasesession] release session %d", sessionId);
 
         // 컴퓨터의 gui 세션을 enum
-        NSArray<NSDictionary*>* sessions = CGSCopySessionList();
+        NSArray<NSDictionary*>* sessions = CFBridgingRelease(CGSCopySessionList());
         if (sessions == nil) {
             return;
         }

@@ -6,6 +6,10 @@
 
 @property (strong) IBOutlet NSButton* accPermBtn;
 @property (strong) IBOutlet NSButton* recordPermBtn;
+@property (strong) IBOutlet NSTextField* accessibilityPermLabel;
+@property (strong) IBOutlet NSTextField* screenRecordPermLabel;
+@property (strong) IBOutlet NSButton* restartAppBtn;
+@property (strong) IBOutlet NSButton* closeBtn;
 
 @end
 
@@ -13,7 +17,13 @@
 
 - (void)windowDidLoad {
     [super windowDidLoad];
-    
+
+    self.window.title = NSLocalizedString(@"permission.window.title", nil);
+    self.accessibilityPermLabel.stringValue = NSLocalizedString(@"permission.label.accessibility", nil);
+    self.screenRecordPermLabel.stringValue = NSLocalizedString(@"permission.label.screen_record", nil);
+    [self.restartAppBtn setTitle:NSLocalizedString(@"permission.button.restart_app", nil)];
+    [self.closeBtn setTitle:NSLocalizedString(@"permission.button.close", nil)];
+
     [self checkPermStatus];
 }
 
@@ -91,7 +101,7 @@
       return;
     }
   
-    [btn setTitle:@"Refresh"];
+    [btn setTitle:NSLocalizedString(@"permission.button.refresh", nil)];
     [btn setBezelColor:[NSColor systemRedColor]];
 }
 
@@ -101,7 +111,7 @@
       return;
     }
   
-    [btn setTitle:@"OK"];
+    [btn setTitle:NSLocalizedString(@"permission.button.ok", nil)];
     [btn setBezelColor:[NSColor systemGreenColor]];
 }
 

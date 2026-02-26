@@ -15,6 +15,8 @@ extern "C" {
 
     extern CGError CGSConfigureDisplayEnabled(CGDisplayConfigRef cfg, CGDirectDisplayID displayId, bool enabled);
 
+    extern CGError CGSGetDisplayList(int maxDisplays, CGDirectDisplayID* displays, int* displayCnt);
+
 #ifdef __cplusplus
 }
 #endif

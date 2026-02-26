@@ -28,6 +28,8 @@ void MultipleConnectionManager::AddConnection(struct mod* mod) {
         }
         sleep(1);
     }
+    
+    _CurrentConnected = mod;
 }
 
 void MultipleConnectionManager::RemoveConnection() {
