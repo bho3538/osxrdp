@@ -39,7 +39,9 @@ You can enable the Virtual Monitor feature by selecting the Session type on the 
   Starts remote control without using the Virtual Monitor. Use this option if you have issues when using the Virtual Monitor.
 
 ## Other
-* You must disable sleep mode and turn off monitor feature for continuous remote access.
+* For the best stability, it is recommended that the remote Mac be connected to a wired network.
+
+* You must disable sleep mode for continuous remote access.
 
 * If you cannot connect from an external computer using an RDP client,\
   check whether the `3389/tcp` port is blocked by the firewall.\
