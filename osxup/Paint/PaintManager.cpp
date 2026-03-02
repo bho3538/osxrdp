@@ -9,9 +9,6 @@
 
 static const char* OSXRDP_SCREENSHM_NAME = "/osxrdpshm";
 static const char* OSXRDP_CURSORSHM_NAME = "/osxrdpcursorshm";
-static const int OSXRDP_DEFAULT_MAX_IN_FLIGHT = 3;
-static const int OSXRDP_MIN_MAX_IN_FLIGHT = 1;
-static const int OSXRDP_MAX_MAX_IN_FLIGHT = 8;
 
 PaintManager::PaintManager() :
     _inited(false),
@@ -22,7 +19,6 @@ PaintManager::PaintManager() :
     _inPainting(false),
     _releasePending(false),
     _nextFrameId(1),
-    _maxInFlight(OSXRDP_DEFAULT_MAX_IN_FLIGHT),
     _inFlightHead(0),
     _inFlightCount(0)
 {}
@@ -103,14 +99,6 @@ int PaintManager::Initialize(const struct mod* mod, int recordFormat, int sessio
     
     _mod = mod;
     _releasePending = false;
-    _maxInFlight = OSXRDP_DEFAULT_MAX_IN_FLIGHT;
-    const char* maxInFlightEnv = getenv("OSXRDP_MAX_IN_FLIGHT");
-    if (maxInFlightEnv != NULL && *maxInFlightEnv != '\0') {
-        int maxInFlight = atoi(maxInFlightEnv);
-        if (maxInFlight >= OSXRDP_MIN_MAX_IN_FLIGHT && maxInFlight <= OSXRDP_MAX_MAX_IN_FLIGHT) {
-            _maxInFlight = maxInFlight;
-        }
-    }
     ResetInFlight();
     
     _inited = true;
@@ -179,7 +167,7 @@ void PaintManager::Paint() {
     // 마우스 커서 그리기
     PaintMouseCursor();
     
-    if (_inFlightCount >= _maxInFlight) {
+    if (_inFlightCount >= FRAME_SLOTS) {
         return;
     }
     
@@ -260,11 +248,11 @@ bool PaintManager::GetPaintData(screenrecord_frame_t** outFrameInfo, char** outI
 }
 
 bool PaintManager::PushInFlight(unsigned int frameId, unsigned int shmReadPos) {
-    if (_inFlightCount >= kInFlightCapacity) {
+    if (_inFlightCount >= FRAME_SLOTS) {
         return false;
     }
 
-    int tail = (_inFlightHead + _inFlightCount) % kInFlightCapacity;
+    int tail = (_inFlightHead + _inFlightCount) % FRAME_SLOTS;
     _inFlightFrameIds[tail] = frameId;
     _inFlightReadPos[tail] = shmReadPos;
     _inFlightCount++;
@@ -281,7 +269,7 @@ int PaintManager::PopAckedInFlight(int ackFrameId, unsigned int* outMaxReadPos) 
             int idx = _inFlightHead;
             maxReadPos = _inFlightReadPos[idx];
             hasMax = true;
-            _inFlightHead = (_inFlightHead + 1) % kInFlightCapacity;
+            _inFlightHead = (_inFlightHead + 1) % FRAME_SLOTS;
             _inFlightCount--;
             popped++;
         }
@@ -300,7 +288,7 @@ int PaintManager::PopAckedInFlight(int ackFrameId, unsigned int* outMaxReadPos) 
 
         maxReadPos = _inFlightReadPos[idx];
         hasMax = true;
-        _inFlightHead = (_inFlightHead + 1) % kInFlightCapacity;
+        _inFlightHead = (_inFlightHead + 1) % FRAME_SLOTS;
         _inFlightCount--;
         popped++;
     }
