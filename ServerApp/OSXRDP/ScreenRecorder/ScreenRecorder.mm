@@ -40,16 +40,16 @@ inline uint8_t ClampToByte(int value) {
     return (uint8_t)value;
 }
 
-bool ConvertBGRA8888ToV308(const uint8_t* srcBase, size_t srcStride, int width, int height, uint8_t* dstBase, size_t dstStride) {
-    if (srcBase == NULL || dstBase == NULL || width <= 0 || height <= 0) {
+bool ConvertBGRA8888ToRFXPlanarTilesSHM(const uint8_t* bgraBase, size_t bgraStride, int width, int height, uint8_t* shmBase) {
+    if (bgraBase == NULL || shmBase == NULL || width <= 0 || height <= 0) {
         return false;
     }
 
     static dispatch_once_t onceToken;
     static vImage_ARGBToYpCbCr conversionInfo;
     static bool hasConversionInfo = false;
+    
     dispatch_once(&onceToken, ^{
-        // video-range YUV444(v308: Cr,Y,Cb)
         const vImage_YpCbCrPixelRange pixelRange = { 16, 128, 235, 240, 255, 0, 255, 1 };
         vImage_Error err = vImageConvert_ARGBToYpCbCr_GenerateConversion(
             kvImage_ARGBToYpCbCrMatrix_ITU_R_709_2,
@@ -62,54 +62,79 @@ bool ConvertBGRA8888ToV308(const uint8_t* srcBase, size_t srcStride, int width, 
         hasConversionInfo = (err == kvImageNoError);
     });
 
-    if (hasConversionInfo) {
-        const vImage_Buffer src = {
-            (void*)srcBase,
-            (vImagePixelCount)height,
-            (vImagePixelCount)width,
-            srcStride
-        };
-        const vImage_Buffer dst = {
-            dstBase,
-            (vImagePixelCount)height,
-            (vImagePixelCount)width,
-            dstStride
-        };
-        const uint8_t bgraPermuteMap[4] = { 3, 2, 1, 0 };
-        vImage_Error err = vImageConvert_ARGB8888To444CrYpCb8(
-            &src,
-            &dst,
-            &conversionInfo,
-            bgraPermuteMap,
-            kvImageNoFlags
-        );
-        if (err == kvImageNoError) {
-            return true;
+    if (!hasConversionInfo) return false;
+
+    const int tileCols = (width + 63) / 64;
+    const int tileRows = (height + 63) / 64;
+    const size_t tileShmSize = 64 * 64 * 4; // 16KB (Y, U, V, A 각각 4096바이트)
+
+    dispatch_apply(tileRows, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^(size_t ty) {
+        const uint8_t bgraPermuteMap[4] = { 3, 2, 1, 0 }; // BGRA -> ARGB 매핑용
+
+        for (int tx = 0; tx < tileCols; ++tx) {
+            const int left = tx * 64;
+            const int top = (int)ty * 64;
+            const int validWidth = (width - left < 64) ? (width - left) : 64;
+            const int validHeight = (height - top < 64) ? (height - top) : 64;
+
+            // 타일 index 구하기
+            const int tileIdx = (int)ty * tileCols + tx;
+            uint8_t* shmTileBase = shmBase + (tileIdx * tileShmSize);
+            
+            uint8_t* yPlane = shmTileBase;              // Offset 0
+            uint8_t* uPlane = shmTileBase + 4096;       // Offset 4096
+            uint8_t* vPlane = shmTileBase + 8192;       // Offset 8192
+            uint8_t* aPlane = shmTileBase + 12288;      // Offset 12288
+
+            // Alpha 채널은 일괄 0xFF (투명도 없음) 처리
+            memset(aPlane, 0xFF, 4096);
+
+            // 입력 원본 BGRA의 64x64 구역 지정
+            vImage_Buffer srcBuffer = {
+                (void*)(bgraBase + ((size_t)top * bgraStride) + ((size_t)left * 4)),
+                (vImagePixelCount)validHeight,
+                (vImagePixelCount)validWidth,
+                bgraStride
+            };
+
+            uint8_t tempPackedCrYpCb[64 * 64 * 3];
+            vImage_Buffer packedBuffer = {
+                tempPackedCrYpCb,
+                (vImagePixelCount)validHeight,
+                (vImagePixelCount)validWidth,
+                (size_t)validWidth * 3
+            };
+
+            // BGRA -> Packed CrYpCb (V-Y-U) 변환
+            vImageConvert_ARGB8888To444CrYpCb8(&srcBuffer, &packedBuffer, &conversionInfo, bgraPermuteMap, kvImageNoFlags);
+
+            // 변환된 Packed 데이터를 분리하여 SHM Planar 영역에 바로 쓰기
+            // tempPacked의 순서가 Cr(V), Yp(Y), Cb(U) 이므로, Red/Green/Blue 목적지에 맞게 맵핑
+            vImage_Buffer destV = { vPlane, (vImagePixelCount)validHeight, (vImagePixelCount)validWidth, 64 };
+            vImage_Buffer destY = { yPlane, (vImagePixelCount)validHeight, (vImagePixelCount)validWidth, 64 };
+            vImage_Buffer destU = { uPlane, (vImagePixelCount)validHeight, (vImagePixelCount)validWidth, 64 };
+
+            // Packed (V, Y, U) -> 분리된 Planar 타일 (SHM 다이렉트 쓰기)
+            vImageConvert_RGB888toPlanar8(&packedBuffer, &destV, &destY, &destU, kvImageNoFlags);
+
+            // 우측/하단 모서리 타일의 잉여 영역(Padding) 처리
+            if (validWidth < 64 || validHeight < 64) {
+                for (int py = 0; py < 64; ++py) {
+                    for (int px = 0; px < 64; ++px) {
+                        if (py >= validHeight || px >= validWidth) {
+                            const size_t p = (size_t)py * 64 + (size_t)px;
+                            yPlane[p] = 0;
+                            uPlane[p] = 128;
+                            vPlane[p] = 128;
+                        }
+                    }
+                }
+            }
         }
-    }
-
-    // Fallback path: scalar conversion (Cr,Y,Cb order)
-    for (int y = 0; y < height; ++y) {
-        const uint8_t* srcRow = srcBase + ((size_t)y * srcStride);
-        uint8_t* dstRow = dstBase + ((size_t)y * dstStride);
-        for (int x = 0; x < width; ++x) {
-            const uint8_t b = srcRow[(size_t)x * 4 + 0];
-            const uint8_t g = srcRow[(size_t)x * 4 + 1];
-            const uint8_t r = srcRow[(size_t)x * 4 + 2];
-
-            const int yp = ((54 * (int)r + 183 * (int)g + 18 * (int)b + 128) >> 8);
-            const int cb = (((-29 * (int)r - 99 * (int)g + 128 * (int)b + 128) >> 8) + 128);
-            const int cr = (((128 * (int)r - 116 * (int)g - 12 * (int)b + 128) >> 8) + 128);
-
-            dstRow[(size_t)x * 3 + 0] = ClampToByte(cr);
-            dstRow[(size_t)x * 3 + 1] = ClampToByte(yp);
-            dstRow[(size_t)x * 3 + 2] = ClampToByte(cb);
-        }
-    }
+    });
 
     return true;
 }
-
 }
 
 ScreenRecorder::ScreenRecorder(bool useLegacyRecorder) :
@@ -172,12 +197,13 @@ bool ScreenRecorder::ParseStartRecordParams(xstream_t* cmd, RecordStartParams* p
         params->useVirtualMon = 0;
         params->framerate = 30;
     }
-
-    if (params->framerate > 45) {
-        params->framerate = 45;
-    }
-    else if (params->framerate < 30) {
-        params->framerate = 30;
+    else {
+        if (params->recordFormat == OSXRDP_RECORDFORMAT_NV12) {
+            params->framerate = 45;
+        }
+        else {
+            params->framerate = 30;
+        }
     }
 
     if (params->width <= 0 || params->height <= 0) {
@@ -694,13 +720,14 @@ bool ScreenRecorder::CopyYUV444Frame(void* imageBufferRef, char* screenrecord_da
         return false;
     }
 
-    // v308 format: Cr,Y,Cb (3 bytes per pixel)
-    const size_t rowBytes = width * 3;
-    const size_t imgSize = rowBytes * height;
+    const size_t tileCols = (width + 63) / 64;
+    const size_t tileRows = (height + 63) / 64;
+    const size_t imgSize = (size_t)tileCols * (size_t)tileRows * 16384;
+    
     memcpy(screenrecord_data, &imgSize, sizeof(size_t));
 
     uint8_t* dst = (uint8_t*)screenrecord_data + sizeof(size_t);
-    if (ConvertBGRA8888ToV308(srcBase, srcStride, (int)width, (int)height, dst, rowBytes) == false) {
+    if (ConvertBGRA8888ToRFXPlanarTilesSHM(srcBase, srcStride, (int)width, (int)height, dst) == false) {
         return false;
     }
 
@@ -972,8 +999,8 @@ inline void ScreenRecorder::ProcessDirtyArea(const CGRect* rect, int limX, int l
     const short orgH = rect->size.height;
 
     // padding 추가 (이것이 없을 경우 화면 해상도가 1:1 이 아닌 경우 창의 끝부분 잔상이 남는 경우가 있음)
-    int x0 = (int)orgX - 1;
-    int y0 = (int)orgY - 1;
+    int x0 = (int)orgX - 2;
+    int y0 = (int)orgY - 2;
     int x1 = (int)(orgX + orgW + 2);
     int y1 = (int)(orgY + orgH + 2);
 

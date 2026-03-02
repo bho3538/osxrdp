@@ -31,11 +31,9 @@ private:
     volatile bool _inPainting;
     volatile bool _releasePending;
     unsigned int _nextFrameId;
-    int _maxInFlight;
 
-    static const int kInFlightCapacity = 32;
-    unsigned int _inFlightFrameIds[kInFlightCapacity];
-    unsigned int _inFlightReadPos[kInFlightCapacity];
+    unsigned int _inFlightFrameIds[FRAME_SLOTS];
+    unsigned int _inFlightReadPos[FRAME_SLOTS];
     int _inFlightHead;
     int _inFlightCount;
     
