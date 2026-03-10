@@ -25,6 +25,9 @@ void _handle_sigterm(int signal);
 
     extern int g_Lockscreen;
     if (g_Lockscreen == 1) {
+        // hack
+        sleep(2);
+        
         StartRemoteConnectionServerService();
         return;
     }

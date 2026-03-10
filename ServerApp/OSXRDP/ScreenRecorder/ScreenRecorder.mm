@@ -4,6 +4,7 @@
 #include "osxrdp/packet.h"
 #import "ScreenRecorderImpl.h"
 #import "ScreenRecorderFallbackImpl.h"
+#import "../VirtualMon/DisplayUtils.h"
 #import <CoreMedia/CoreMedia.h>
 #include "utils.h"
 
@@ -198,7 +199,10 @@ bool ScreenRecorder::ParseStartRecordParams(xstream_t* cmd, RecordStartParams* p
         params->framerate = 30;
     }
     else {
-        if (params->recordFormat == OSXRDP_RECORDFORMAT_NV12) {
+        if (params->recordFormat == OSXRDP_RECORDFORMAT_NV12_ALIGNED) {
+            params->framerate = 45;
+        }
+        else if (params->recordFormat == OSXRDP_RECORDFORMAT_NV12_PACKED) {
             params->framerate = 45;
         }
         else {
@@ -297,6 +301,9 @@ bool ScreenRecorder::ResolveDisplayForNewRecorder(const RecordStartParams* param
 
         _inputHandler.UpdateDisplayRes((int)display.width, (int)display.height, params->width, params->height);
     }
+    
+    // hack
+    DisplayUtils::WaitDisplayOnlineState(display.displayID, true, 10000);
 
     *displayOut = (__bridge_retained void*)display;
     return true;
@@ -330,6 +337,11 @@ bool ScreenRecorder::ResolveDisplayForLegacyRecorder(const RecordStartParams* pa
         CGRect rect = CGDisplayBounds(displayId);
         _inputHandler.UpdateDisplayRes((int)rect.size.width, (int)rect.size.height, params->width, params->height);
     }
+    
+    // hack
+    DisplayUtils::WaitDisplayOnlineState(displayId, true, 10000);
+    
+    NSLog(@"[testtest] displayid %d", displayId);
 
     *displayIdOut = displayId;
     return true;
@@ -353,8 +365,11 @@ bool ScreenRecorder::StartRecordNew(xstream_t* cmd) {
 
     ScreenRecorderImpl* impl = (__bridge ScreenRecorderImpl*)_impl;
     on_record_data recordDataCb = HandleBGRA32RecordData;
-    if (params.recordFormat == OSXRDP_RECORDFORMAT_NV12) {
-        recordDataCb = HandleNV12RecordData;
+    if (params.recordFormat == OSXRDP_RECORDFORMAT_NV12_PACKED) {
+        recordDataCb = HandleNV12PackedRecordData;
+    }
+    else if (params.recordFormat == OSXRDP_RECORDFORMAT_NV12_ALIGNED) {
+        recordDataCb = HandleNV12AlignedRecordData;
     }
     else if (params.recordFormat == OSXRDP_RECORDFORMAT_RFX) {
         recordDataCb = HandleRFXRecordData;
@@ -392,8 +407,11 @@ bool ScreenRecorder::StartRecordLegacy(xstream_t* cmd) {
 
     ScreenRecorderFallbackImpl* fallbackImpl = (__bridge ScreenRecorderFallbackImpl*)_implFallback;
     on_record_data_fb recordDataCb = HandleFallbackBGRA32RecordData;
-    if (params.recordFormat == OSXRDP_RECORDFORMAT_NV12) {
-        recordDataCb = HandleFallbackNV12RecordData;
+    if (params.recordFormat == OSXRDP_RECORDFORMAT_NV12_PACKED) {
+        recordDataCb = HandleFallbackNV12PackedRecordData;
+    }
+    else if (params.recordFormat == OSXRDP_RECORDFORMAT_NV12_ALIGNED) {
+        recordDataCb = HandleFallbackNV12AlignedRecordData;
     }
     else if (params.recordFormat == OSXRDP_RECORDFORMAT_RFX) {
         recordDataCb = HandleFallbackRFXRecordData;
@@ -421,7 +439,7 @@ bool ScreenRecorder::CreateRecordShm(int width, int height, int framerate) {
         return false;
     }
     
-    int rawDataSize = width * height * 5;
+    int rawDataSize = width * height * 5 + (sizeof(size_t) * 2);
     
     char shm_name[512];
     if (get_object_name_by_sessionid("/osxrdpshm", shm_name, 512, is_root_process()) == 0) {
@@ -661,7 +679,7 @@ void ScreenRecorder::CommitFrameSlot(ScreenRecorder* recorder, screenrecord_shm_
     }
 }
 
-bool ScreenRecorder::CopyNV12Frame(void* imageBufferRef, char* screenrecord_data, int* widthOut, int* heightOut) {
+bool ScreenRecorder::CopyNV12PackedFrame(void* imageBufferRef, char* screenrecord_data, int* widthOut, int* heightOut) {
     if (imageBufferRef == NULL || screenrecord_data == NULL || widthOut == NULL || heightOut == NULL) {
         return false;
     }
@@ -694,6 +712,47 @@ bool ScreenRecorder::CopyNV12Frame(void* imageBufferRef, char* screenrecord_data
 
     *widthOut = (int)width;
     *heightOut = (int)height;
+    return true;
+}
+
+bool ScreenRecorder::CopyNV12AlignedFrame(void* imageBufferRef, char* screenrecord_data, int* widthOut, int* heightOut) {
+    if (imageBufferRef == NULL || screenrecord_data == NULL || widthOut == NULL || heightOut == NULL) {
+        return false;
+    }
+    
+    CVImageBufferRef imageBuffer = (CVImageBufferRef)imageBufferRef;
+    size_t width = CVPixelBufferGetWidth(imageBuffer);
+    size_t height = CVPixelBufferGetHeight(imageBuffer);
+    if (width == 0 || height == 0) {
+        return false;
+    }
+    
+    uint8_t* ySrcBase = (uint8_t*)CVPixelBufferGetBaseAddressOfPlane(imageBuffer, 0);
+    uint8_t* uvSrcBase = (uint8_t*)CVPixelBufferGetBaseAddressOfPlane(imageBuffer, 1);
+    if (ySrcBase == NULL || uvSrcBase == NULL) {
+        return false;
+    }
+    
+    size_t yStride = CVPixelBufferGetBytesPerRowOfPlane(imageBuffer, 0);
+    size_t uvStride = CVPixelBufferGetBytesPerRowOfPlane(imageBuffer, 1);
+    const size_t uvHeight = height / 2;
+    
+    size_t alignedImgSize = (yStride * height) + (uvStride * uvHeight) + sizeof(size_t); // stride value hack
+    
+    memcpy(screenrecord_data, &alignedImgSize, sizeof(size_t));
+    
+    // hack (to pass stride value to xrdp vtoolbox encorder)
+    memcpy((uint8_t*)screenrecord_data + sizeof(size_t), &yStride, sizeof(size_t));
+    
+    uint8_t* dstData = (uint8_t*)(screenrecord_data + (sizeof(size_t) * 2));
+    memcpy(dstData, ySrcBase, yStride * height);
+    
+    uint8_t* dstUV = dstData + (yStride * height);
+    memcpy(dstUV, uvSrcBase, uvStride * uvHeight);
+
+    *widthOut = (int)width;
+    *heightOut = (int)height;
+    
     return true;
 }
 
@@ -830,7 +889,7 @@ void ScreenRecorder::PopulateDirtyRectsFromArray(const CGRect* dirtyRects, int d
     }
 }
 
-void ScreenRecorder::HandleNV12RecordData(void* sampleBuffer, void* imgBuffer, void* userData) {
+void ScreenRecorder::HandleNV12PackedRecordData(void* sampleBuffer, void* imgBuffer, void* userData) {
     if (sampleBuffer == NULL || userData == NULL) return;
 
     ScreenRecorder* recorder = (ScreenRecorder*)userData;
@@ -843,7 +902,24 @@ void ScreenRecorder::HandleNV12RecordData(void* sampleBuffer, void* imgBuffer, v
         return;
     }
 
-    HandleNV12DirtyArea(sampleBuffer, imgBuffer, slot, screenrecord_data);
+    HandleNV12PackedDirtyArea(sampleBuffer, imgBuffer, slot, screenrecord_data);
+    CommitFrameSlot(recorder, recordInfo, writePos);
+}
+
+void ScreenRecorder::HandleNV12AlignedRecordData(void* sampleBuffer, void* imgBuffer, void* userData) {
+    if (sampleBuffer == NULL || userData == NULL) return;
+
+    ScreenRecorder* recorder = (ScreenRecorder*)userData;
+
+    screenrecord_shm_t* recordInfo = NULL;
+    screenrecord_frame* slot = NULL;
+    char* screenrecord_data = NULL;
+    unsigned int writePos = 0;
+    if (AcquireFrameSlot(recorder, &recordInfo, &slot, &screenrecord_data, &writePos) == false) {
+        return;
+    }
+
+    HandleNV12AlignedDirtyArea(sampleBuffer, imgBuffer, slot, screenrecord_data);
     CommitFrameSlot(recorder, recordInfo, writePos);
 }
 
@@ -881,10 +957,20 @@ void ScreenRecorder::HandleRFXRecordData(void* sampleBuffer, void* imgBuffer, vo
     CommitFrameSlot(recorder, recordInfo, writePos);
 }
 
-void ScreenRecorder::HandleNV12DirtyArea(void* sampleBuffer, void* imgBuffer, screenrecord_frame* current_frame, char* screenrecord_data) {
+void ScreenRecorder::HandleNV12PackedDirtyArea(void* sampleBuffer, void* imgBuffer, screenrecord_frame* current_frame, char* screenrecord_data) {
     int width = 0;
     int height = 0;
-    if (CopyNV12Frame(imgBuffer, screenrecord_data, &width, &height) == false) {
+    if (CopyNV12PackedFrame(imgBuffer, screenrecord_data, &width, &height) == false) {
+        return;
+    }
+
+    PopulateDirtyRectsFromSampleBuffer(sampleBuffer, width, height, current_frame);
+}
+
+void ScreenRecorder::HandleNV12AlignedDirtyArea(void* sampleBuffer, void* imgBuffer, screenrecord_frame* current_frame, char* screenrecord_data) {
+    int width = 0;
+    int height = 0;
+    if (CopyNV12AlignedFrame(imgBuffer, screenrecord_data, &width, &height) == false) {
         return;
     }
 
@@ -911,7 +997,7 @@ void ScreenRecorder::HandleRFXDirtyArea(void* sampleBuffer, void* imgBuffer, scr
     PopulateDirtyRectsFromSampleBuffer(sampleBuffer, width, height, current_frame);
 }
 
-void ScreenRecorder::HandleFallbackNV12RecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData){
+void ScreenRecorder::HandleFallbackNV12PackedRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData){
     if (pixelBuffer == NULL || userData == NULL) return;
 
     ScreenRecorder* recorder = (ScreenRecorder*)userData;
@@ -924,14 +1010,41 @@ void ScreenRecorder::HandleFallbackNV12RecordData(void* pixelBuffer, const CGRec
         return;
     }
 
-    HandleFallbackNV12DirtyArea(pixelBuffer, slot, dirtyRects, dirtyRectsCnt, screenrecord_data);
+    HandleFallbackNV12PackedDirtyArea(pixelBuffer, slot, dirtyRects, dirtyRectsCnt, screenrecord_data);
     CommitFrameSlot(recorder, recordInfo, writePos);
 }
 
-void ScreenRecorder::HandleFallbackNV12DirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data) {
+void ScreenRecorder::HandleFallbackNV12AlignedRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData){
+    if (pixelBuffer == NULL || userData == NULL) return;
+
+    ScreenRecorder* recorder = (ScreenRecorder*)userData;
+
+    screenrecord_shm_t* recordInfo = NULL;
+    screenrecord_frame* slot = NULL;
+    char* screenrecord_data = NULL;
+    unsigned int writePos = 0;
+    if (AcquireFrameSlot(recorder, &recordInfo, &slot, &screenrecord_data, &writePos) == false) {
+        return;
+    }
+
+    HandleFallbackNV12AlignedDirtyArea(pixelBuffer, slot, dirtyRects, dirtyRectsCnt, screenrecord_data);
+    CommitFrameSlot(recorder, recordInfo, writePos);
+}
+
+void ScreenRecorder::HandleFallbackNV12PackedDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data) {
     int width = 0;
     int height = 0;
-    if (CopyNV12Frame(pixelBuffer, screenrecord_data, &width, &height) == false) {
+    if (CopyNV12PackedFrame(pixelBuffer, screenrecord_data, &width, &height) == false) {
+        return;
+    }
+
+    PopulateDirtyRectsFromArray(dirtyRects, dirtyRectsCnt, width, height, current_frame);
+}
+
+void ScreenRecorder::HandleFallbackNV12AlignedDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data) {
+    int width = 0;
+    int height = 0;
+    if (CopyNV12AlignedFrame(pixelBuffer, screenrecord_data, &width, &height) == false) {
         return;
     }
 

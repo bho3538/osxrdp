@@ -195,6 +195,8 @@ bool ConnectionManager::_ConnectToSessionManager() {
 bool ConnectionManager::_ConnectToAgent(int sessionId, bool isLockScreen) {
     assert(sessionId > 0);
     
+    printf("Connect to agent %d %d\n", sessionId, isLockScreen);
+    
     // 상태 변경
     _statusManager.SetAgentConnecting(isLockScreen);
     

@@ -572,14 +572,36 @@ bool InputHandler::UpdateKeyboardModifierState(CGKeyCode key, bool isDown) {
 void InputHandler::SwitchIME() {
     // 아래 코드는 모두 메인 스레드에서 실행되어야 한다.
     dispatch_async(dispatch_get_main_queue(), ^{
-        // 모든 입력 소스 조회
-        CFArrayRef sourceList = TISCreateInputSourceList(NULL, false);
+        
+        // 처음부터 사용 가능한 입력기들만 조회
+        const void *keys[] = {
+            kTISPropertyInputSourceCategory,
+            kTISPropertyInputSourceIsSelectCapable
+        };
+        const void *values[] = {
+            kTISCategoryKeyboardInputSource,
+            kCFBooleanTrue
+        };
+        
+        CFDictionaryRef filter = CFDictionaryCreate(
+            kCFAllocatorDefault,
+            keys,
+            values,
+            2,
+            &kCFTypeDictionaryKeyCallBacks,
+            &kCFTypeDictionaryValueCallBacks
+        );
+        
+        CFArrayRef sourceList = TISCreateInputSourceList(filter, false);
+        if (filter) {
+            CFRelease(filter);
+        }
+        
         if (sourceList == NULL) {
             printf("Error: Failed to get input source list.\n");
             return;
         }
         
-        // 현재 입력 소스 조회
         TISInputSourceRef currentSource = TISCopyCurrentKeyboardInputSource();
         if (currentSource == NULL) {
             CFRelease(sourceList);
@@ -598,48 +620,25 @@ void InputHandler::SwitchIME() {
             }
         }
         
-        CFRelease(currentSource);
-        
         if (currentIndex == -1) {
             currentIndex = count - 1; // 못 찾으면 마지막에서 시작하도록 설정
         }
         
-        // 다음 유효한 입력 소스 찾기
-        CFIndex nextIndex = currentIndex;
-        TISInputSourceRef nextSource = NULL;
-        
         // 유효한 다음 입력 소스를 찾기
-        for (int i = 0; i < count; i++) {
-            nextIndex = (nextIndex + 1) % count;
-            TISInputSourceRef candidate = (TISInputSourceRef)CFArrayGetValueAtIndex(sourceList, nextIndex);
-            
-            // 사용 가능한건지 확인
-            CFBooleanRef isSelectable = (CFBooleanRef)TISGetInputSourceProperty(candidate, kTISPropertyInputSourceIsSelectCapable);
-            if (isSelectable == kCFBooleanFalse)
-                continue;
-            
-            // 이모지나 기타 입력소스 필터링
-            CFStringRef category = (CFStringRef)TISGetInputSourceProperty(candidate, kTISPropertyInputSourceCategory);
-            if (CFStringCompare(category, kTISCategoryKeyboardInputSource, 0) != kCFCompareEqualTo) {
-                continue;
-            }
-            
-            // 찾음
-            nextSource = candidate;
-            break;
-        }
+        CFIndex nextIndex = (currentIndex + 1) % count;
+        TISInputSourceRef nextSource = (TISInputSourceRef)CFArrayGetValueAtIndex(sourceList, nextIndex);
         
         if (nextSource) {
-            // 전환
             OSStatus status = TISSelectInputSource(nextSource);
             if (status != noErr) {
                 printf("Failed to switch. Error: %d\n", (int)status);
             }
-        } else {
+        }
+        else {
             printf("No valid next input source found.\n");
         }
         
+        CFRelease(currentSource);
         CFRelease(sourceList);
     });
-    
 }

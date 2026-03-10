@@ -151,6 +151,14 @@ lib_mod_set_param(struct mod *mod, const char *name, const char *value)
             mod->usevirtualmon = 0;
         }
     }
+    else if (strcasecmp(name, "usevtoolbox") == 0) {
+        if (strcasecmp(value, "yes") == 0) {
+            mod->usevtoolbox = 1;
+        }
+        else {
+            mod->usevtoolbox = 0;
+        }
+    }
 
     return 0;
 }

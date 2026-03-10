@@ -71,7 +71,7 @@
     _recordQue = dispatch_queue_create("osxrdp.fallback_record", attr);
     
     int format = kCVPixelFormatType_32BGRA; // 일반 bitmap
-    if (recordFormat == OSXRDP_RECORDFORMAT_NV12) {
+    if (recordFormat == OSXRDP_RECORDFORMAT_NV12_PACKED || recordFormat == OSXRDP_RECORDFORMAT_NV12_ALIGNED) {
         format = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange; // h264
     }
     else if (recordFormat == OSXRDP_RECORDFORMAT_RFX) {
@@ -79,6 +79,11 @@
     }
     
     _displayStream = CGDisplayStreamCreateWithDispatchQueue(displayId, width, height, format, (__bridge CFDictionaryRef)_recordConfig, _recordQue, handler);
+    if (_displayStream == NULL) {
+        // ????????
+        usleep(5000);
+        _displayStream = CGDisplayStreamCreateWithDispatchQueue(displayId, width, height, format, (__bridge CFDictionaryRef)_recordConfig, _recordQue, handler);
+    }
     
     _recordCb = recordCb;
     _recordCbUserData = userData;
