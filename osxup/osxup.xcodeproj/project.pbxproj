@@ -29,6 +29,11 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		393341462F67EB3E00853C60 /* Channel */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Channel;
+			sourceTree = "<group>";
+		};
 		39B992B22F06567500D455C4 /* xrdp */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = xrdp;
@@ -77,6 +82,7 @@
 		9B75BB892EFA2E9700A87D9E = {
 			isa = PBXGroup;
 			children = (
+				393341462F67EB3E00853C60 /* Channel */,
 				39F1233F2F3F565100A88DAF /* Command */,
 				39F123422F3F565100A88DAF /* Connection */,
 				39F123432F3F565100A88DAF /* Log */,
@@ -140,6 +146,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
+				393341462F67EB3E00853C60 /* Channel */,
 				39B992B22F06567500D455C4 /* xrdp */,
 				39F1233F2F3F565100A88DAF /* Command */,
 				39F123422F3F565100A88DAF /* Connection */,

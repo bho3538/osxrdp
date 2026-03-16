@@ -200,7 +200,7 @@ bool ScreenRecorder::ParseStartRecordParams(xstream_t* cmd, RecordStartParams* p
     }
     else {
         if (params->recordFormat == OSXRDP_RECORDFORMAT_NV12_ALIGNED) {
-            params->framerate = 45;
+            params->framerate = 60;
         }
         else if (params->recordFormat == OSXRDP_RECORDFORMAT_NV12_PACKED) {
             params->framerate = 45;
@@ -214,16 +214,11 @@ bool ScreenRecorder::ParseStartRecordParams(xstream_t* cmd, RecordStartParams* p
         NSLog(@"[ScreenRecorder::StartRecord] invalid request. width: %d height: %d", params->width, params->height);
         return false;
     }
-    
+
     if (params->width > 10000 || params->height > 10000) {
         NSLog(@"[ScreenRecorder::StartRecord] invalid request. too large display width: %d height: %d", params->width, params->height);
         return false;
     }
-    
-    // 해상도가 높아지면 병목이 생긴다. 이를 완화하기 위해 불안정한 60fps 보다는 그나마 부드러운 45fps 로 제한을 둔다.
-    //if (params->width > 2300 && params->height > 1500) {
-    //    params->framerate = 45;
-    //}
 
     params->width &= ~0x1;
     params->height &= ~0x1;
@@ -1112,10 +1107,10 @@ inline void ScreenRecorder::ProcessDirtyArea(const CGRect* rect, int limX, int l
     const short orgH = rect->size.height;
 
     // padding 추가 (이것이 없을 경우 화면 해상도가 1:1 이 아닌 경우 창의 끝부분 잔상이 남는 경우가 있음)
-    int x0 = (int)orgX - 2;
-    int y0 = (int)orgY - 2;
-    int x1 = (int)(orgX + orgW + 2);
-    int y1 = (int)(orgY + orgH + 2);
+    int x0 = (int)orgX - 20;
+    int y0 = (int)orgY - 20;
+    int x1 = (int)(orgX + orgW + 20);
+    int y1 = (int)(orgY + orgH + 20);
 
     // 4:2:0 정렬
     x0 = _ALIGN_DOWN_EVEN(x0);
@@ -1128,16 +1123,6 @@ inline void ScreenRecorder::ProcessDirtyArea(const CGRect* rect, int limX, int l
     y0 = MAX(0, y0);
     x1 = MIN(limX, x1);
     y1 = MIN(limY, y1);
-
-    if (x1 <= x0) {
-        x1 = MIN(limX, x0 + 2);
-        x0 = _ALIGN_DOWN_EVEN(MAX(0, x1 - 2));
-    }
-    
-    if (y1 <= y0) {
-        y1 = MIN(limY, y0 + 2);
-        y0 = _ALIGN_DOWN_EVEN(MAX(0, y1 - 2));
-    }
 
     dst->x = x0;
     dst->y = y0;

@@ -160,6 +160,10 @@ bool ConnectionManager::NeedTerminate() {
     return _statusManager.CheckNeedTerminate();
 }
 
+void ConnectionManager::SetSuppress(bool suppress) {
+    _statusManager.SetSuppressed(suppress);
+}
+
 void ConnectionManager::Terminate() {
     _statusManager.SetStopping();
 }
@@ -170,6 +174,26 @@ void ConnectionManager::Paint() {
 
 void ConnectionManager::PaintEnd(int ackFrameId) {
     _paintManager.PaintEnd(ackFrameId);
+}
+
+void ConnectionManager::HandleChannelMsg(long param1, long param2, long param3, long param4) {
+    // extract channel data
+    int channelId = (int)LOWORD(param1);
+    int channelFlags = (int)LOWORD(param1);
+    int dataLen = (int)param2;
+    const char* data = (const char*)param3;
+    int totalLen = (int)param4;
+    
+    // 유효한 (처리하는) 이벤트인지 확인
+    int channel_msg_type = _channelManager.IsValidChannelMsg(channelId, channelFlags, data, dataLen, totalLen);
+    if (channel_msg_type == OSXRDP_CHANNEL_INVALID) {
+        return;
+    }
+    
+    // 아직은 클립보드만 처리 (agent 로 전달)
+    if (channel_msg_type == OSXRDP_CHANNEL_CLIPBOARD) {
+        _command.SendClipboardMsg(_agentIpc, channelId, channelFlags, data, dataLen, totalLen);
+    }
 }
 
 bool ConnectionManager::_ConnectToSessionManager() {

@@ -2,6 +2,14 @@
 #ifndef utils_h
 #define utils_h
 
+#ifndef LOWORD
+#define LOWORD(l) ((unsigned short)((l) & 0xffff))
+#endif
+
+#ifndef HIWORD
+#define HIWORD(l) ((unsigned short)(((l) >> 16) & 0xffff))
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif

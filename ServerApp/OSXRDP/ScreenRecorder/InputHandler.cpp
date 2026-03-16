@@ -110,10 +110,14 @@ InputHandler::InputHandler() :
     _inMouseDown(0),
     _lastMousePosX(0),
     _lastMousePosY(0),
+    _lastMouseClickPosX(0),
+    _lastMouseClickPosY(0),
     _eventRef(0),
     _keyboardModifierFlags(0),
     _mouseClickCnt(0),
+    _lastMouseButton(-1),
     _lastMouseClickTime(0),
+    _lastMouseInputEventTime(0),
     _lastWheelEventTime(0),
     _wheelEventBurstCount(0),
     _lastWheelDirection(0),
@@ -148,6 +152,16 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
     int key = xstream_readInt32(cmd);
     int clientX = xstream_readInt32(cmd);
     int clientY = xstream_readInt32(cmd);
+    long long currentTime = GetCurrentEventTime();
+    
+    // 최소화/복원 등으로 입력 간격이 크게 벌어지면 이전 클릭 상태를 버린다.
+    if (_lastMouseInputEventTime != 0 && currentTime - _lastMouseInputEventTime > 1200) {
+        _inMouseDown = 0;
+        _mouseClickCnt = 0;
+        _lastMouseButton = -1;
+        _lastMouseClickTime = 0;
+    }
+    _lastMouseInputEventTime = currentTime;
     
     clientX = CalcPos(clientX, _scaleX);
     clientY = CalcPos(clientY, _scaleY);
@@ -174,7 +188,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         case XRDP_MOUSE_LBTNDOWN: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventLeftMouseDown, point, kCGMouseButtonLeft);
             
-            HandleMouseDoubleClick(ev, true, clientX, clientY);
+            HandleMouseDoubleClick(ev, true, clientX, clientY, kCGMouseButtonLeft);
             
             _inMouseDown = 1;
             break;
@@ -182,7 +196,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         case XRDP_MOUSE_LBTNUP: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventLeftMouseUp, point, kCGMouseButtonLeft);
             
-            HandleMouseDoubleClick(ev, false, clientX, clientY);
+            HandleMouseDoubleClick(ev, false, clientX, clientY, kCGMouseButtonLeft);
             
             _inMouseDown = 0;
             break;
@@ -190,17 +204,13 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         case XRDP_MOUSE_RBTNDOWN: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventRightMouseDown, point, kCGMouseButtonRight);
             
-            HandleMouseDoubleClick(ev, true, clientX, clientY);
-            
-            _inMouseDown = 1;
+            HandleMouseDoubleClick(ev, true, clientX, clientY, kCGMouseButtonRight);
             break;
         }
         case XRDP_MOUSE_RBTNUP: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventRightMouseUp, point, kCGMouseButtonRight);
             
-            HandleMouseDoubleClick(ev, false, clientX, clientY);
-            
-            _inMouseDown = 0;
+            HandleMouseDoubleClick(ev, false, clientX, clientY, kCGMouseButtonRight);
             break;
         }
         case XRDP_MOUSE_MBTNDOWN: {
@@ -304,11 +314,11 @@ void InputHandler::HandleKeyboardInputEvent(xstream_t* cmd) {
     CFRelease(ev);
 }
 
-void InputHandler::HandleMouseDoubleClick(CGEventRef ev, bool mouseDown, int mouseX, int mouseY) {
+void InputHandler::HandleMouseDoubleClick(CGEventRef ev, bool mouseDown, int mouseX, int mouseY, int mouseButton) {
     if (mouseDown) {
         long long currentTime = GetCurrentEventTime();
-        if (currentTime - _lastMouseClickTime < 500) {
-            int gap = abs(mouseX - _lastMousePosX) + abs(mouseY - _lastMousePosY);
+        if (mouseButton == _lastMouseButton && currentTime - _lastMouseClickTime < 400) {
+            int gap = abs(mouseX - _lastMouseClickPosX) + abs(mouseY - _lastMouseClickPosY);
             if (gap < 5) {
                 _mouseClickCnt++;
             }
@@ -320,6 +330,9 @@ void InputHandler::HandleMouseDoubleClick(CGEventRef ev, bool mouseDown, int mou
             _mouseClickCnt = 1;
         }
         
+        _lastMouseClickPosX = mouseX;
+        _lastMouseClickPosY = mouseY;
+        _lastMouseButton = mouseButton;
         _lastMouseClickTime = currentTime;
     }
     
@@ -348,8 +361,8 @@ int InputHandler::GetMouseWheelMoveAmount(int direction) {
     const int kMouseConfirmGapMs = 95;
     const int kTrackpadMinAmount = 6;
     const int kTrackpadMaxAmount = 40;
-    const int kMouseMinAmount = 140;
-    const int kMouseMaxAmount = 520;
+    const int kMouseMinAmount = 160;
+    const int kMouseMaxAmount = 480;
 
     if (direction > 0) {
         direction = 1;

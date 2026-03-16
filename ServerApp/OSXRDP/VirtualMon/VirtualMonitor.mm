@@ -94,7 +94,6 @@ int VirtualMonitor::Create(int width, int height) {
     
     // 가상 디스플레이의 해상도 설정
     // 가끔 해상도 설정 후 다른 모니터를 비활성화하면 설정이 풀리는 경우가 있음. 따라서 순서를 이와 같이 수정
-    int applyResolution = 0;
     if (SetResolution(_width, _height, _retina) != 0) {
         return -1;
     }

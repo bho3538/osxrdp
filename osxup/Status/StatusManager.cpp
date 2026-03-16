@@ -1,7 +1,8 @@
 #include "StatusManager.h"
 
 StatusManager::StatusManager()
-    : _status(OSXUPStatus::INIT)
+    : _status(OSXUPStatus::INIT),
+    _suppress(false)
 {
     
 }
@@ -16,6 +17,9 @@ bool StatusManager::CheckInitStatus() {
 
 bool StatusManager::CheckCanPaint() {
     // 명시적으로 출력 제한 요청이 온 경우 그리지 않음
+    if (_suppress == true) {
+        return false;
+    }
     
     // 잠금화면 혹은 메인 에이전트가 녹화를 시작한 경우 그리기
     if (_status == OSXUPStatus::AGENT_RECORD || _status == OSXUPStatus::AGENT_RECORD_LOCKSCREEN) {
@@ -74,5 +78,5 @@ void StatusManager::SetStopping() {
 }
 
 void StatusManager::SetSuppressed(bool suppress) {
-
+    _suppress = suppress;
 }
