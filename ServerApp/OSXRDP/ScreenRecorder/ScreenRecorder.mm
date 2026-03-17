@@ -1107,10 +1107,10 @@ inline void ScreenRecorder::ProcessDirtyArea(const CGRect* rect, int limX, int l
     const short orgH = rect->size.height;
 
     // padding 추가 (이것이 없을 경우 화면 해상도가 1:1 이 아닌 경우 창의 끝부분 잔상이 남는 경우가 있음)
-    int x0 = (int)orgX - 20;
-    int y0 = (int)orgY - 20;
-    int x1 = (int)(orgX + orgW + 20);
-    int y1 = (int)(orgY + orgH + 20);
+    int x0 = (int)orgX - 2;
+    int y0 = (int)orgY - 2;
+    int x1 = (int)(orgX + orgW + 2);
+    int y1 = (int)(orgY + orgH + 2);
 
     // 4:2:0 정렬
     x0 = _ALIGN_DOWN_EVEN(x0);

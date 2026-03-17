@@ -76,9 +76,7 @@ lib_mod_event(struct mod *mod, int msg, long param1, long param2,
               long param3, long param4)
 {
     assert(mod->connectionManager != NULL);
-    
-    if (mod->connectionManager->CanPaint() == false) return 0;
-    
+
     switch (msg) {
         case WM_CHANNEL_DATA: {
             mod->connectionManager->HandleChannelMsg(param1, param2, param3, param4);
@@ -87,6 +85,7 @@ lib_mod_event(struct mod *mod, int msg, long param1, long param2,
         }
         case XRDP_KEYBOARD_UP:
         case XRDP_KEYBOARD_DOWN: {
+            if (mod->connectionManager->CanPaint() == false) return 0;
             mod->connectionManager->SendKeyboardInput(msg, (int)param3, (int)param4);
             
             break;
@@ -105,6 +104,7 @@ lib_mod_event(struct mod *mod, int msg, long param1, long param2,
         case XRDP_MOUSE_BBTNDOWN:
         case XRDP_MOUSE_FBTNUP:
         case XRDP_MOUSE_FBTNDOWN:{
+            if (mod->connectionManager->CanPaint() == false) return 0;
             short x = (short)param1;
             short y = (short)param2;
             

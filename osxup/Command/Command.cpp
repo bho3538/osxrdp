@@ -100,7 +100,7 @@ void Command::SendSessionReleaseMsg(xipc_t* sessionIpc, int sessionId) {
 void Command::SendClipboardMsg(xipc_t* agentIpc, int channelId, int channelFlags, const char* data, int dataLen, int totalLen) {
     assert(agentIpc != NULL);
 
-    xstream_t* stream = xstream_create(totalLen + sizeof(int) * 2);
+    xstream_t* stream = xstream_create(dataLen + sizeof(int) * 6);
 
     xstream_writeInt32(stream, OSXRDP_CMDTYPE_CLIPBOARD);
     xstream_writeInt32(stream, OSXRDP_PACKETTYPE_REQ_SETCLIENTCLIP);

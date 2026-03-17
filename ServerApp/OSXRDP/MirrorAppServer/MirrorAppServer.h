@@ -3,10 +3,12 @@
 
 #include "ipc.h"
 #include "../ScreenRecorder/ScreenRecorder.h"
+#include "../Clipboard/ClipboardManager.h"
 #include <pthread.h>
 
 struct MirrorAppClientCtx {
     ScreenRecorder* ScreenRecorder; // currently only one.
+    ClipboardManager* Clipboard;
 };
 
 class MirrorAppServer {

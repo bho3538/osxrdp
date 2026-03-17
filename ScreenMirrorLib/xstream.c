@@ -120,6 +120,34 @@ int xstream_writeData(xstream_t* stream, void* data, int dataSize) {
     return 0;
 }
 
+int xstream_readInt8(xstream_t* stream) {
+    if (_xstream_sizecheck(stream, sizeof(char)) == 0) {
+        return 0;
+    }
+    
+    char data = 0;
+
+    memcpy(&data, stream->data_current, sizeof(char));
+    
+    stream->data_current += sizeof(char);
+    
+    return data;
+}
+
+int xstream_readInt16(xstream_t* stream) {
+    if (_xstream_sizecheck(stream, sizeof(short)) == 0) {
+        return 0;
+    }
+    
+    short data = 0;
+
+    memcpy(&data, stream->data_current, sizeof(short));
+    
+    stream->data_current += sizeof(short);
+    
+    return data;
+}
+
 int xstream_readInt32(xstream_t* stream) {
     if (_xstream_sizecheck(stream, sizeof(int)) == 0) {
         return 0;
@@ -130,6 +158,25 @@ int xstream_readInt32(xstream_t* stream) {
     memcpy(&data, stream->data_current, sizeof(int));
     
     stream->data_current += sizeof(int);
+    
+    return data;
+}
+
+const void* xstream_readData(xstream_t* stream, int dataSize) {
+    if (stream == NULL || dataSize < 0) {
+        return NULL;
+    }
+
+    if (dataSize == 0) {
+        return stream->data_current;
+    }
+
+    if (_xstream_sizecheck(stream, dataSize) == 0) {
+        return NULL;
+    }
+    
+    const void* data = stream->data_current;
+    stream->data_current += dataSize;
     
     return data;
 }
@@ -150,4 +197,12 @@ const char* xstream_readStr(xstream_t* stream, int* strLen) {
     }
     
     return str;
+}
+
+int xstream_getRemaining(xstream_t* stream) {
+    if (stream == NULL) {
+        return 0;
+    }
+    
+    return stream->size - (int)(stream->data_current - stream->data_start);
 }

@@ -1,0 +1,64 @@
+#ifndef ClipboardManager_hpp
+#define ClipboardManager_hpp
+
+#include "ipc.h"
+#include "xstream.h"
+#include <pthread.h>
+
+class ClipboardManager {
+public:
+    ClipboardManager();
+    ~ClipboardManager();
+
+    void HandleCommand(xipc_t* client, xstream_t* cmd);
+
+private:
+    enum PendingClipType {
+        PendingClipType_None = 0,
+        PendingClipType_Text
+    };
+
+    char* _clipDataBuffer;
+    int _clipDataBufferSize;
+    int _clipDataBufferCurrentLen;
+    
+    PendingClipType _pendingClipType;
+    xipc_t* _client;
+    int _lastChangeCount;
+    
+    pthread_mutex_t _lock;
+    pthread_t _monitorThread;
+    int _monitorThreadRunning;
+    int _monitorStopRequested;
+
+    void ResetChannelBuffer();
+    bool AssembleChannelData(int channelFlags, int totalLen, const void* data, int dataLen, const void** completeData, int* completeLen);
+    void UpdateRemoteClipboardContext(xipc_t* client);
+
+    void HandleClipData(xipc_t* client, const void* data, int dataLen);
+    void HandleMonitorReady(xipc_t* client);
+    void HandleFormatList(xipc_t* client, xstream_t* clipStream, int msgFlags, int msgLen);
+    void HandleDataRequest(xipc_t* client, xstream_t* clipStream, int msgFlags, int msgLen);
+    void HandleDataResponse(xstream_t* clipStream, int msgFlags, int msgLen);
+
+    int FindRequestedFormatId(int msgFlags, int msgLen, xstream_t* clipStream);
+    int FindRequestedFormatIdLongName(xstream_t* clipStream, int msgLen);
+    int FindRequestedFormatIdShortName(xstream_t* clipStream, int msgLen);
+
+    static void* MonitorThreadEntry(void* arg);
+    void MonitorClipboardLoop();
+    void ProcessLocalClipboardChange(int forceSend);
+
+    void SendFormatAck(xipc_t* client, bool success);
+    void SendFormatList(xipc_t* client);
+    void SendDataRequest(xipc_t* client, int formatId);
+    void SendDataResponseText(xipc_t* client, const char* utf8Text, int utf8Len);
+    void SendDataResponseFailed(xipc_t* client);
+    void SendChannelData(xipc_t* client, const void* data, int dataLen);
+
+    bool GetPasteboardText(char** utf8Text, int* utf8Len, int* changeCount);
+    bool BuildWindowsUnicodeText(const char* utf8Text, int utf8Len, char** outData, int* outDataLen);
+    bool SetTextToPasteboard(const void* data, int dataLen);
+};
+
+#endif /* ClipboardManager_hpp */

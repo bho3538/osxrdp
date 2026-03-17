@@ -184,6 +184,7 @@ int MirrorAppServer::OnClientConnected(xipc_t* t, xipc_t* client) {
         struct MirrorAppClientCtx* ctx = (struct MirrorAppClientCtx*)malloc(sizeof(struct MirrorAppClientCtx));
         
         ctx->ScreenRecorder = _this->CreateScreenRecorder();
+        ctx->Clipboard = new ClipboardManager();
         
         client->user_data = (void*)ctx;
         
@@ -211,6 +212,7 @@ int MirrorAppServer::OnClientDisconnected(xipc_t* t, xipc_t* client) {
         
         ctx->ScreenRecorder->Stop();
         delete ctx->ScreenRecorder;
+        delete ctx->Clipboard;
         free(ctx);
         
         client->user_data = NULL;
@@ -256,6 +258,10 @@ int MirrorAppServer::OnMessageReceived(xipc_t* t, xipc_t* client, void* data, in
         switch (cmdType) {
             case OSXRDP_CMDTYPE_SCREEN: {
                 ctx->ScreenRecorder->HandleCommand(client, cmd);
+                break;
+            }
+            case OSXRDP_CMDTYPE_CLIPBOARD: {
+                ctx->Clipboard->HandleCommand(client, cmd);
                 break;
             }
             default:
