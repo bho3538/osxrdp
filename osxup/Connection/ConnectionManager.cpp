@@ -58,6 +58,7 @@ bool ConnectionManager::Connect(const mod* mod) {
     }
     
     _mod = mod;
+    _channelManager.Initialize(mod);
     
     _command.SendSessionRequestMsg(_sessionIpc, mod->username, (int)usernameLen);
     
@@ -81,6 +82,7 @@ void ConnectionManager::Release() {
     }
     
     _paintManager.Release();
+    _channelManager.Release();
     
     _inited = false;
 }
@@ -160,6 +162,10 @@ bool ConnectionManager::NeedTerminate() {
     return _statusManager.CheckNeedTerminate();
 }
 
+void ConnectionManager::SetSuppress(bool suppress) {
+    _statusManager.SetSuppressed(suppress);
+}
+
 void ConnectionManager::Terminate() {
     _statusManager.SetStopping();
 }
@@ -170,6 +176,30 @@ void ConnectionManager::Paint() {
 
 void ConnectionManager::PaintEnd(int ackFrameId) {
     _paintManager.PaintEnd(ackFrameId);
+}
+
+void ConnectionManager::HandleChannelMsg(long param1, long param2, long param3, long param4) {
+    // extract channel data
+    int channelId = (int)LOWORD(param1);
+    int channelFlags = (int)HIWORD(param1);
+    int dataLen = (int)param2;
+    const char* data = (const char*)param3;
+    int totalLen = (int)param4;
+    
+    // 유효한 (처리하는) 이벤트인지 확인
+    int channel_msg_type = _channelManager.IsValidChannelMsg(channelId, channelFlags, data, dataLen, totalLen);
+    if (channel_msg_type == OSXRDP_CHANNEL_INVALID) {
+        return;
+    }
+
+    if (_agentIpc == NULL) {
+        return;
+    }
+    
+    // 아직은 클립보드만 처리 (agent 로 전달)
+    if (channel_msg_type == OSXRDP_CHANNEL_CLIPBOARD) {
+        _command.SendClipboardMsg(_agentIpc, channelId, channelFlags, data, dataLen, totalLen);
+    }
 }
 
 bool ConnectionManager::_ConnectToSessionManager() {
@@ -194,6 +224,8 @@ bool ConnectionManager::_ConnectToSessionManager() {
 
 bool ConnectionManager::_ConnectToAgent(int sessionId, bool isLockScreen) {
     assert(sessionId > 0);
+    
+    printf("Connect to agent %d %d\n", sessionId, isLockScreen);
     
     // 상태 변경
     _statusManager.SetAgentConnecting(isLockScreen);
@@ -244,6 +276,9 @@ bool ConnectionManager::_ConnectToAgent(int sessionId, bool isLockScreen) {
     
     // 화면 녹화 데이터 요청
     _command.SendRecordStartMsg(ipc, _mod->width, _mod->height, PaintManager::CheckRecordFormat(_mod), _mod->usevirtualmon);
+    
+    // 클립보드 활성화
+    _channelManager.SendClipboardServerInit();
     
     _agentIpc = ipc;
 
@@ -340,6 +375,23 @@ int ConnectionManager::_OnReceivedAgentManagerMessage(xipc_t* t, xipc_t* client,
                 if (re != 1 || _this->_PreparePaint() == false) {
                     // log
                     _this->_statusManager.SetStopping();
+                }
+            }
+            break;
+        }
+        case OSXRDP_CMDTYPE_CLIPBOARD: {
+            int packetType = xstream_readInt32(stream);
+            if (packetType == OSXRDP_PACKETTYPE_REP_SETCLIENTCLIP) {
+                int channelFlags = xstream_readInt32(stream);
+                int totalLen = xstream_readInt32(stream);
+                int dataLen = xstream_readInt32(stream);
+                const void* rawData = xstream_readData(stream, dataLen);
+
+                if (rawData != NULL) {
+                    _this->_channelManager.SendClipboardChannelData(rawData,
+                                                                    dataLen,
+                                                                    totalLen,
+                                                                    channelFlags);
                 }
             }
             break;

@@ -175,6 +175,7 @@ struct mod
     char password[MAX_PATH];
     int usevirtualmon;
     int recordFormat;
+    int usevtoolbox;
     
     struct xrdp_client_info client_info;
 

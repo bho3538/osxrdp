@@ -16,7 +16,7 @@ int osxup_auth_user(const char* username, const char* password) {
         return 1;
     }
     
-    if (!strcmp(username, "root")) {
+    if (!strcmp(username, "root") || !strcmp(username, "Unknown User")) {
         return 1;
     }
     

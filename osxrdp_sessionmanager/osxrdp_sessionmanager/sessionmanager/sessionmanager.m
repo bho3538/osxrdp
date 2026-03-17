@@ -72,7 +72,7 @@ int osxrdp_sessionmanager_getsessioninfo(const char* username, session_info_t* s
                 isMySessionLogined = isLogined.intValue;
                 isMySessionConsole = isConsoleSession.intValue;
             }
-            else if (session_username != nil && !strcmp(session_username.UTF8String, "root")) {
+            else if (session_username != nil && (!strcmp(session_username.UTF8String, "root") || !strcmp(session_username.UTF8String, "Unknown User"))) { // macOS 12 First boot??
                 NSString* isConsoleSession = session[@"kCGSSessionOnConsoleKey"];
                 
                 dzlog_info("[osxrdp_sessionmanager_getsessioninfo] found lockscreen session info. id: %d, console: %d", sessionId.intValue, isConsoleSession.intValue);
@@ -80,7 +80,6 @@ int osxrdp_sessionmanager_getsessioninfo(const char* username, session_info_t* s
                 loginWindowSessionId = sessionId.intValue;
                 isLoginWindowSessionConsole = isConsoleSession.intValue;
             }
-            
         }
         
         // 요청한 계정의 세션이 있고, 콘솔 세션인 경우

@@ -26,8 +26,12 @@ int xstream_writeInt32(xstream_t* stream, int data);
 int xstream_writeStr(xstream_t* stream, const char* str, int strLen);
 int xstream_writeData(xstream_t* stream, void* data, int dataSize);
 
+int xstream_readInt8(xstream_t* stream);
+int xstream_readInt16(xstream_t* stream);
 int xstream_readInt32(xstream_t* stream);
+const void* xstream_readData(xstream_t* stream, int dataSize);
 const char* xstream_readStr(xstream_t* stream, int* strLen);
+int xstream_getRemaining(xstream_t* stream);
 
 #ifdef __cplusplus
 }

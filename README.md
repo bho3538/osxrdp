@@ -13,9 +13,9 @@ osxrdp is an unofficial module of xrdp to support rdp server in macOS.
 |Smooth Remote Control (H.264)|✅|
 |Virtual monitor (for dynamic resolution)|✅|
 |Remote control for non logoned macOS user|✅|
-|Session Resizing|❌|
+|Basic Clipboard (Text)|✅|
+|Advanced Clipboard (Image, Rich Text)|❌|
 |Audio|❌|
-|Clipboard|❌|
 |File transfer|❌|
 |Multiple monitor|❌|
 
@@ -33,5 +33,5 @@ macOS 12.4 or higher version.\
 Support Apple Silicon & Intel mac.
 
 ## Etc
-osxrdp is compatible with original xrdp v0.10.4 version. (no modificated)
+osxrdp is compatible with original xrdp v0.10.5 version. (no modificated)
 

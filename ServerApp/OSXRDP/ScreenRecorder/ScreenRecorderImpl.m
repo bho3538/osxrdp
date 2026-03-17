@@ -49,10 +49,9 @@
     _recordConfig.height = height;
     _recordConfig.queueDepth = 2;
     
-    // 이 값이 없으면 물빠진 색감이 나옴
     _recordConfig.colorSpaceName = kCGColorSpaceSRGB;
     
-    if (recordFormat == OSXRDP_RECORDFORMAT_NV12) {
+    if (recordFormat == OSXRDP_RECORDFORMAT_NV12_PACKED || recordFormat == OSXRDP_RECORDFORMAT_NV12_ALIGNED) {
         // h264 사용 시
         _recordConfig.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
     }

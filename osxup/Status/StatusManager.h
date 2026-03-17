@@ -53,6 +53,7 @@ public:
     
 private:
     OSXUPStatus _status;
+    bool _suppress;
 };
 
 #endif /* StatusManager_h */

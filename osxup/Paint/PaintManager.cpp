@@ -34,7 +34,12 @@ int PaintManager::CheckRecordFormat(const struct mod* mod) {
     if (mod->client_info.gfx == 1) {
         if (mod->client_info.capture_code == CC_GFX_A2) {
             // using H.264
-            return OSXRDP_RECORDFORMAT_NV12;
+            if (mod->usevtoolbox == 1) {
+                return OSXRDP_RECORDFORMAT_NV12_ALIGNED;
+            }
+            else {
+                return OSXRDP_RECORDFORMAT_NV12_PACKED;
+            }
         }
         
         return OSXRDP_RECORDFORMAT_RFX;
@@ -84,7 +89,7 @@ int PaintManager::Initialize(const struct mod* mod, int recordFormat, int sessio
         return false;
     }
     
-    if (recordFormat == OSXRDP_RECORDFORMAT_NV12) {
+    if (recordFormat == OSXRDP_RECORDFORMAT_NV12_PACKED || recordFormat == OSXRDP_RECORDFORMAT_NV12_ALIGNED) {
         _paint = new PaintH264();
     }
     else if (recordFormat == OSXRDP_RECORDFORMAT_RFX) {

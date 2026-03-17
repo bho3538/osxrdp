@@ -78,8 +78,11 @@ private:
     static void HandleBGRA32RecordData(void* sampleBuffer, void* imgBuffer, void* userData);
     static void HandleBGRA32DirtyArea(void* sampleBuffer, void* imgBuffer, screenrecord_frame* current_frame, char* screenrecord_data);
     
-    static void HandleNV12RecordData(void* sampleBuffer, void* imgBuffer, void* userData);
-    static void HandleNV12DirtyArea(void* sampleBuffer, void* imgBuffer, screenrecord_frame* current_frame, char* screenrecord_data);
+    static void HandleNV12PackedRecordData(void* sampleBuffer, void* imgBuffer, void* userData);
+    static void HandleNV12PackedDirtyArea(void* sampleBuffer, void* imgBuffer, screenrecord_frame* current_frame, char* screenrecord_data);
+    
+    static void HandleNV12AlignedRecordData(void* sampleBuffer, void* imgBuffer, void* userData);
+    static void HandleNV12AlignedDirtyArea(void* sampleBuffer, void* imgBuffer, screenrecord_frame* current_frame, char* screenrecord_data);
 
     static void HandleRFXRecordData(void* sampleBuffer, void* imgBuffer, void* userData);
     static void HandleRFXDirtyArea(void* sampleBuffer, void* imgBuffer, screenrecord_frame* current_frame, char* screenrecord_data);
@@ -87,9 +90,12 @@ private:
     static void HandleFallbackBGRA32RecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData);
     static void HandleFallbackBGRA32DirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data);
     
-    static void HandleFallbackNV12RecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData);
-    static void HandleFallbackNV12DirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data);
-
+    static void HandleFallbackNV12PackedRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData);
+    static void HandleFallbackNV12PackedDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data);
+    
+    static void HandleFallbackNV12AlignedRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData);
+    static void HandleFallbackNV12AlignedDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data);
+    
     static void HandleFallbackRFXRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData);
     static void HandleFallbackRFXDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data);
     
@@ -99,8 +105,11 @@ private:
     // 데이터 작성 완료 flag 설정
     static void CommitFrameSlot(ScreenRecorder* recorder, screenrecord_shm_t* recordInfo, unsigned int writePos);
 
-    // NV12 데이터를 메모리에 기록
-    static bool CopyNV12Frame(void* imageBuffer, char* screenrecord_data, int* widthOut, int* heightOut);
+    // NV12Packed 데이터를 메모리에 기록
+    static bool CopyNV12PackedFrame(void* imageBuffer, char* screenrecord_data, int* widthOut, int* heightOut);
+    
+    // NV12Aligned 데이터를 메모리에 기록
+    static bool CopyNV12AlignedFrame(void* imageBuffer, char* screenrecord_data, int* widthOut, int* heightOut);
     
     // YUV444 데이터를 메모리에 기록
     static bool CopyYUV444Frame(void* imageBuffer, char* screenrecord_data, int* widthOut, int* heightOut);

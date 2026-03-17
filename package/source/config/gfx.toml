@@ -5,6 +5,7 @@ order = [ "H.264", "RFX" ]
 # This parameter takes effect only when more than one encoder is
 # enabled at compile time. If only one encoder is enabled, the encoder
 # will be used regardless the value of this parameter.
+
 h264_encoder = "OpenH264"
 
 #
@@ -48,12 +49,13 @@ preset = "fast"
 vbv_max_bitrate = 1_200
 vbv_buffer_size = 50
 
+
 #
 # Configurations for OpenH264
 #
 [OpenH264.default]
 # NOTE: OpenH264 specifies bitrate in unit of bps, not kbps.
-EnableFrameSkip = true
+EnableFrameSkip = false
 TargetBitrate = 18_000_000
 MaxBitrate =    0          # unspecified
 MaxFrameRate = 45.0
@@ -62,12 +64,12 @@ MaxFrameRate = 45.0
 # inherits default
 
 [OpenH264.wan]
-EnableFrameSkip = true
+EnableFrameSkip = false
 TargetBitrate = 14_000_000
 MaxBitrate =    16_000_000
 
 [OpenH264.broadband_high]
-EnableFrameSkip = true
+EnableFrameSkip = false
 TargetBitrate = 12_000_000
 MaxBitrate =   14_000_000
 

@@ -35,6 +35,11 @@ static int
 lib_mod_connect(struct mod *mod, int fd)
 {
     // 사용자 인증 (macOS 계정)
+    if (strlen(mod->username) == 0 || strlen(mod->password) == 0) {
+        mod->server_msg(mod, "Authentication failed.", 0);
+        return 1;
+    }
+    
     if (osxup_auth_user(mod->username, mod->password) != 0) {
         sleep(1);
         
@@ -71,12 +76,16 @@ lib_mod_event(struct mod *mod, int msg, long param1, long param2,
               long param3, long param4)
 {
     assert(mod->connectionManager != NULL);
-    
-    if (mod->connectionManager->CanPaint() == false) return 0;
-    
+
     switch (msg) {
+        case WM_CHANNEL_DATA: {
+            mod->connectionManager->HandleChannelMsg(param1, param2, param3, param4);
+            
+            break;
+        }
         case XRDP_KEYBOARD_UP:
         case XRDP_KEYBOARD_DOWN: {
+            if (mod->connectionManager->CanPaint() == false) return 0;
             mod->connectionManager->SendKeyboardInput(msg, (int)param3, (int)param4);
             
             break;
@@ -95,6 +104,7 @@ lib_mod_event(struct mod *mod, int msg, long param1, long param2,
         case XRDP_MOUSE_BBTNDOWN:
         case XRDP_MOUSE_FBTNUP:
         case XRDP_MOUSE_FBTNDOWN:{
+            if (mod->connectionManager->CanPaint() == false) return 0;
             short x = (short)param1;
             short y = (short)param2;
             
@@ -151,6 +161,17 @@ lib_mod_set_param(struct mod *mod, const char *name, const char *value)
             mod->usevirtualmon = 0;
         }
     }
+    /*
+    else if (strcasecmp(name, "usevtoolbox") == 0) {
+        if (strcasecmp(value, "yes") == 0) {
+            mod->usevtoolbox = 1;
+        }
+        else {
+            mod->usevtoolbox = 0;
+        }
+    }
+    */
+    mod->usevtoolbox = 0;
 
     return 0;
 }
@@ -163,7 +184,7 @@ lib_mod_get_wait_objs(struct mod *mod, void *read_objs, int *rcount,
 {
     mod->connectionManager->KeepAlive();
 
-    *timeout = 8;
+    *timeout = 10;
     
     return 0;
 }
@@ -205,11 +226,11 @@ lib_mod_frame_ack(struct mod *mod, int flags, int frame_id)
 /******************************************************************************/
 /* return error */
 static int
-lib_mod_suppress_output(struct mod *amod, int suppress,
+lib_mod_suppress_output(struct mod *mod, int suppress,
                         int left, int top, int right, int bottom)
 {
-
     // suppress
+    mod->connectionManager->SetSuppress(suppress == 0 ? false : true);
     
     return 0;
 }

@@ -110,10 +110,14 @@ InputHandler::InputHandler() :
     _inMouseDown(0),
     _lastMousePosX(0),
     _lastMousePosY(0),
+    _lastMouseClickPosX(0),
+    _lastMouseClickPosY(0),
     _eventRef(0),
     _keyboardModifierFlags(0),
     _mouseClickCnt(0),
+    _lastMouseButton(-1),
     _lastMouseClickTime(0),
+    _lastMouseInputEventTime(0),
     _lastWheelEventTime(0),
     _wheelEventBurstCount(0),
     _lastWheelDirection(0),
@@ -148,6 +152,16 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
     int key = xstream_readInt32(cmd);
     int clientX = xstream_readInt32(cmd);
     int clientY = xstream_readInt32(cmd);
+    long long currentTime = GetCurrentEventTime();
+    
+    // 최소화/복원 등으로 입력 간격이 크게 벌어지면 이전 클릭 상태를 버린다.
+    if (_lastMouseInputEventTime != 0 && currentTime - _lastMouseInputEventTime > 1200) {
+        _inMouseDown = 0;
+        _mouseClickCnt = 0;
+        _lastMouseButton = -1;
+        _lastMouseClickTime = 0;
+    }
+    _lastMouseInputEventTime = currentTime;
     
     clientX = CalcPos(clientX, _scaleX);
     clientY = CalcPos(clientY, _scaleY);
@@ -174,7 +188,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         case XRDP_MOUSE_LBTNDOWN: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventLeftMouseDown, point, kCGMouseButtonLeft);
             
-            HandleMouseDoubleClick(ev, true, clientX, clientY);
+            HandleMouseDoubleClick(ev, true, clientX, clientY, kCGMouseButtonLeft);
             
             _inMouseDown = 1;
             break;
@@ -182,7 +196,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         case XRDP_MOUSE_LBTNUP: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventLeftMouseUp, point, kCGMouseButtonLeft);
             
-            HandleMouseDoubleClick(ev, false, clientX, clientY);
+            HandleMouseDoubleClick(ev, false, clientX, clientY, kCGMouseButtonLeft);
             
             _inMouseDown = 0;
             break;
@@ -190,17 +204,13 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         case XRDP_MOUSE_RBTNDOWN: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventRightMouseDown, point, kCGMouseButtonRight);
             
-            HandleMouseDoubleClick(ev, true, clientX, clientY);
-            
-            _inMouseDown = 1;
+            HandleMouseDoubleClick(ev, true, clientX, clientY, kCGMouseButtonRight);
             break;
         }
         case XRDP_MOUSE_RBTNUP: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventRightMouseUp, point, kCGMouseButtonRight);
             
-            HandleMouseDoubleClick(ev, false, clientX, clientY);
-            
-            _inMouseDown = 0;
+            HandleMouseDoubleClick(ev, false, clientX, clientY, kCGMouseButtonRight);
             break;
         }
         case XRDP_MOUSE_MBTNDOWN: {
@@ -304,11 +314,11 @@ void InputHandler::HandleKeyboardInputEvent(xstream_t* cmd) {
     CFRelease(ev);
 }
 
-void InputHandler::HandleMouseDoubleClick(CGEventRef ev, bool mouseDown, int mouseX, int mouseY) {
+void InputHandler::HandleMouseDoubleClick(CGEventRef ev, bool mouseDown, int mouseX, int mouseY, int mouseButton) {
     if (mouseDown) {
         long long currentTime = GetCurrentEventTime();
-        if (currentTime - _lastMouseClickTime < 500) {
-            int gap = abs(mouseX - _lastMousePosX) + abs(mouseY - _lastMousePosY);
+        if (mouseButton == _lastMouseButton && currentTime - _lastMouseClickTime < 400) {
+            int gap = abs(mouseX - _lastMouseClickPosX) + abs(mouseY - _lastMouseClickPosY);
             if (gap < 5) {
                 _mouseClickCnt++;
             }
@@ -320,6 +330,9 @@ void InputHandler::HandleMouseDoubleClick(CGEventRef ev, bool mouseDown, int mou
             _mouseClickCnt = 1;
         }
         
+        _lastMouseClickPosX = mouseX;
+        _lastMouseClickPosY = mouseY;
+        _lastMouseButton = mouseButton;
         _lastMouseClickTime = currentTime;
     }
     
@@ -348,8 +361,8 @@ int InputHandler::GetMouseWheelMoveAmount(int direction) {
     const int kMouseConfirmGapMs = 95;
     const int kTrackpadMinAmount = 6;
     const int kTrackpadMaxAmount = 40;
-    const int kMouseMinAmount = 140;
-    const int kMouseMaxAmount = 520;
+    const int kMouseMinAmount = 160;
+    const int kMouseMaxAmount = 480;
 
     if (direction > 0) {
         direction = 1;
@@ -572,14 +585,36 @@ bool InputHandler::UpdateKeyboardModifierState(CGKeyCode key, bool isDown) {
 void InputHandler::SwitchIME() {
     // 아래 코드는 모두 메인 스레드에서 실행되어야 한다.
     dispatch_async(dispatch_get_main_queue(), ^{
-        // 모든 입력 소스 조회
-        CFArrayRef sourceList = TISCreateInputSourceList(NULL, false);
+        
+        // 처음부터 사용 가능한 입력기들만 조회
+        const void *keys[] = {
+            kTISPropertyInputSourceCategory,
+            kTISPropertyInputSourceIsSelectCapable
+        };
+        const void *values[] = {
+            kTISCategoryKeyboardInputSource,
+            kCFBooleanTrue
+        };
+        
+        CFDictionaryRef filter = CFDictionaryCreate(
+            kCFAllocatorDefault,
+            keys,
+            values,
+            2,
+            &kCFTypeDictionaryKeyCallBacks,
+            &kCFTypeDictionaryValueCallBacks
+        );
+        
+        CFArrayRef sourceList = TISCreateInputSourceList(filter, false);
+        if (filter) {
+            CFRelease(filter);
+        }
+        
         if (sourceList == NULL) {
             printf("Error: Failed to get input source list.\n");
             return;
         }
         
-        // 현재 입력 소스 조회
         TISInputSourceRef currentSource = TISCopyCurrentKeyboardInputSource();
         if (currentSource == NULL) {
             CFRelease(sourceList);
@@ -598,48 +633,25 @@ void InputHandler::SwitchIME() {
             }
         }
         
-        CFRelease(currentSource);
-        
         if (currentIndex == -1) {
             currentIndex = count - 1; // 못 찾으면 마지막에서 시작하도록 설정
         }
         
-        // 다음 유효한 입력 소스 찾기
-        CFIndex nextIndex = currentIndex;
-        TISInputSourceRef nextSource = NULL;
-        
         // 유효한 다음 입력 소스를 찾기
-        for (int i = 0; i < count; i++) {
-            nextIndex = (nextIndex + 1) % count;
-            TISInputSourceRef candidate = (TISInputSourceRef)CFArrayGetValueAtIndex(sourceList, nextIndex);
-            
-            // 사용 가능한건지 확인
-            CFBooleanRef isSelectable = (CFBooleanRef)TISGetInputSourceProperty(candidate, kTISPropertyInputSourceIsSelectCapable);
-            if (isSelectable == kCFBooleanFalse)
-                continue;
-            
-            // 이모지나 기타 입력소스 필터링
-            CFStringRef category = (CFStringRef)TISGetInputSourceProperty(candidate, kTISPropertyInputSourceCategory);
-            if (CFStringCompare(category, kTISCategoryKeyboardInputSource, 0) != kCFCompareEqualTo) {
-                continue;
-            }
-            
-            // 찾음
-            nextSource = candidate;
-            break;
-        }
+        CFIndex nextIndex = (currentIndex + 1) % count;
+        TISInputSourceRef nextSource = (TISInputSourceRef)CFArrayGetValueAtIndex(sourceList, nextIndex);
         
         if (nextSource) {
-            // 전환
             OSStatus status = TISSelectInputSource(nextSource);
             if (status != noErr) {
                 printf("Failed to switch. Error: %d\n", (int)status);
             }
-        } else {
+        }
+        else {
             printf("No valid next input source found.\n");
         }
         
+        CFRelease(currentSource);
         CFRelease(sourceList);
     });
-    
 }
