@@ -35,7 +35,9 @@ int VirtualMonitor::Create(int width, int height) {
     desc.name = @"OSXRDP Virtual Display";
     desc.maxPixelsWide = width;
     desc.maxPixelsHigh = height;
-    desc.sizeInMillimeters = CGSize(width, height);
+    desc.sizeInMillimeters = CGSizeMake(width * 25.4 / 96,
+                                        height * 25.4 / 96);
+    
     desc.productID = 0x5969;
     desc.vendorID = 0x1207;
     desc.serialNum = 0x0007;

@@ -34,19 +34,24 @@ lib_mod_start(struct mod *mod, int w, int h, int bpp)
 static int
 lib_mod_connect(struct mod *mod, int fd)
 {
+    char canonicalUsername[MAX_PATH] = {0,};
+
     // 사용자 인증 (macOS 계정)
     if (strlen(mod->username) == 0 || strlen(mod->password) == 0) {
         mod->server_msg(mod, "Authentication failed.", 0);
         return 1;
     }
     
-    if (osxup_auth_user(mod->username, mod->password) != 0) {
+    if (osxup_auth_user(mod->username, mod->password, canonicalUsername, sizeof(canonicalUsername)) != 0) {
         sleep(1);
         
         mod->server_msg(mod, "Authentication failed.", 0);
         
         return 1;
     }
+
+    strncpy(mod->username, canonicalUsername, MAX_PATH - 1);
+    mod->username[MAX_PATH - 1] = '\0';
     
     // erase password
     memset(mod->password, 0x01, MAX_PATH);
