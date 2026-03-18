@@ -1,5 +1,6 @@
 
 #include "auth.h"
+#include "Connection/UserIdentityResolver.h"
 
 #include <memory.h>
 #include <stdlib.h>
@@ -11,8 +12,8 @@ extern int CGSCreateLoginSession(int* outSessionId);
 int _pam_conv_handler(int num_msg, const struct pam_message **msg, struct pam_response **resp, void *appdata_ptr);
 int _verify_mac_user(const char *username, const char *password);
 
-int osxup_auth_user(const char* username, const char* password) {
-    if (username == NULL || password == NULL) {
+int osxup_auth_user(const char* username, const char* password, char* canonicalUsername, size_t canonicalUsernameSize) {
+    if (username == NULL || password == NULL || canonicalUsername == NULL || canonicalUsernameSize == 0) {
         return 1;
     }
     
@@ -20,7 +21,19 @@ int osxup_auth_user(const char* username, const char* password) {
         return 1;
     }
     
-    return _verify_mac_user(username, password);
+    if (_verify_mac_user(username, password) != 0) {
+        return 1;
+    }
+
+    if (osxup_copy_canonical_username(username, canonicalUsername, canonicalUsernameSize) != 0) {
+        return 1;
+    }
+
+    if (osxup_username_matches_canonical_case(username, canonicalUsername) == 0) {
+        return 1;
+    }
+
+    return 0;
 }
 
 int _pam_conv_handler(int num_msg, const struct pam_message **msg,

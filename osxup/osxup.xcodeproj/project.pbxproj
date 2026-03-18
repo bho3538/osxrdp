@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		3926389D2F0600F6009AA989 /* libpam.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 3926389C2F0600F0009AA989 /* libpam.tbd */; };
+		395794392F6A331300A1EFDE /* OpenDirectory.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 395794382F6A331300A1EFDE /* OpenDirectory.framework */; };
 		39F123562F3F565100A88DAF /* auth.h in Headers */ = {isa = PBXBuildFile; fileRef = 39F1233B2F3F565100A88DAF /* auth.h */; };
 		39F123582F3F565100A88DAF /* osxup.h in Headers */ = {isa = PBXBuildFile; fileRef = 39F123442F3F565100A88DAF /* osxup.h */; };
 		39F123592F3F565100A88DAF /* pch.h in Headers */ = {isa = PBXBuildFile; fileRef = 39F1234E2F3F565100A88DAF /* pch.h */; };
@@ -18,6 +19,7 @@
 
 /* Begin PBXFileReference section */
 		3926389C2F0600F0009AA989 /* libpam.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libpam.tbd; path = usr/lib/libpam.tbd; sourceTree = SDKROOT; };
+		395794382F6A331300A1EFDE /* OpenDirectory.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = OpenDirectory.framework; path = System/Library/Frameworks/OpenDirectory.framework; sourceTree = SDKROOT; };
 		39F1233B2F3F565100A88DAF /* auth.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = auth.h; sourceTree = "<group>"; };
 		39F1233C2F3F565100A88DAF /* auth.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = auth.cpp; sourceTree = "<group>"; };
 		39F123442F3F565100A88DAF /* osxup.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = osxup.h; sourceTree = "<group>"; };
@@ -73,6 +75,7 @@
 			files = (
 				9B75BB9F2EFA501F00A87D9E /* libScreenMirrorLib.a in Frameworks */,
 				3926389D2F0600F6009AA989 /* libpam.tbd in Frameworks */,
+				395794392F6A331300A1EFDE /* OpenDirectory.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -110,6 +113,7 @@
 		9B75BB9D2EFA501F00A87D9E /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				395794382F6A331300A1EFDE /* OpenDirectory.framework */,
 				3926389C2F0600F0009AA989 /* libpam.tbd */,
 				9B6A4D182F020B3400CEC9E6 /* librfxencode.a */,
 				9B75BB9E2EFA501F00A87D9E /* libScreenMirrorLib.a */,
