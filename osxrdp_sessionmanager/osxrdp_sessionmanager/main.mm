@@ -8,12 +8,16 @@
 #include "pch.h"
 #include "utils.h"
 #include "duprun.h"
+#include <sys/stat.h>
 
 #import "sessionmanager/sessionmanagerserver.h"
 
 #define _LOG_CONFIG_PATH "/etc/osxrdp/log_sessionmanager.conf"
 
 int main(int argc, const char * argv[]) {
+    
+    // OS 업데이트 시 /Library/Logs 하위의 모든 파일이 사라짐.... 뭐지
+    mkdir("/Library/Logs/osxrdp", 0755);
     
     // initialize log
     int re = dzlog_init(_LOG_CONFIG_PATH, "osxrdp_sessionmanager");

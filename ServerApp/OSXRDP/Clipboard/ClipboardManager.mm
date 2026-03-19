@@ -14,23 +14,259 @@ static const int CB_FORMAT_LIST = 2;
 static const int CB_FORMAT_LIST_RESPONSE = 3;
 static const int CB_FORMAT_DATA_REQUEST = 4;
 static const int CB_FORMAT_DATA_RESPONSE = 5;
-static const int CB_CLIP_CAPS = 7;
 
 static const int CB_RESPONSE_OK = 0x0001;
 static const int CB_RESPONSE_FAIL = 0x0002;
 static const int CB_ASCII_NAMES = 0x0004;
 
 static const int CF_TEXT = 1;
+static const int CF_DIB = 8;
 static const int CF_UNICODETEXT = 13;
-static const int CF_LOCALE = 16;
 static const int CF_OEMTEXT = 7;
+
+static const int LOCAL_RTF_FORMAT_ID = 0xC001;
+static const char* RTF_FORMAT_NAME = "Rich Text Format";
 
 // 클립보드 모니터링 주기
 static const useconds_t CLIPBOARD_MONITOR_INTERVAL_US = 500000;
 
 // 한번에 전송할 클립보드 데이터의 크기 (바이트)
 static const int IPC_CLIPBOARD_CHUNK_SIZE = 14 * 1024;
+static const int MAX_CLIPBOARD_DATA_SIZE = 30 * 1024 * 1024; // 30MB
 static const int INVALID_CHANGE_COUNT = -1;
+
+static void WriteFormatName(xstream_t* clipStream, const char* formatName) {
+    if (clipStream == NULL) {
+        return;
+    }
+
+    if (formatName == NULL) {
+        xstream_writeInt16(clipStream, 0);
+        return;
+    }
+
+    int nameLen = (int)strlen(formatName);
+    int i = 0;
+
+    for (i = 0; i < nameLen; i++) {
+        xstream_writeInt16(clipStream, (unsigned char)formatName[i]);
+    }
+
+    xstream_writeInt16(clipStream, 0);
+}
+
+static bool BuildDibFromImage(NSImage* image, char** outData, int* outDataLen) {
+    if (image == nil || outData == NULL || outDataLen == NULL) {
+        return false;
+    }
+
+    *outData = NULL;
+    *outDataLen = 0;
+
+    NSData* tiffData = [image TIFFRepresentation];
+    if (tiffData == nil || [tiffData length] <= 0) {
+        return false;
+    }
+
+    NSBitmapImageRep* sourceBitmapRep = [NSBitmapImageRep imageRepWithData:tiffData];
+    if (sourceBitmapRep == nil) {
+        return false;
+    }
+
+    int width = (int)[sourceBitmapRep pixelsWide];
+    int height = (int)[sourceBitmapRep pixelsHigh];
+    if (width <= 0 || height <= 0) {
+        return false;
+    }
+
+    int sourceBytesPerRow = width * 4;
+    NSBitmapImageRep* renderBitmapRep = [[NSBitmapImageRep alloc]
+                                         initWithBitmapDataPlanes:NULL
+                                         pixelsWide:width
+                                         pixelsHigh:height
+                                         bitsPerSample:8
+                                         samplesPerPixel:4
+                                         hasAlpha:YES
+                                         isPlanar:NO
+                                         colorSpaceName:NSCalibratedRGBColorSpace
+                                         bitmapFormat:0
+                                         bytesPerRow:sourceBytesPerRow
+                                         bitsPerPixel:32];
+    if (renderBitmapRep == nil) {
+        return false;
+    }
+
+    NSGraphicsContext* graphicsContext = [NSGraphicsContext graphicsContextWithBitmapImageRep:renderBitmapRep];
+    if (graphicsContext == nil) {
+        return false;
+    }
+
+    [NSGraphicsContext saveGraphicsState];
+    [NSGraphicsContext setCurrentContext:graphicsContext];
+    [image drawInRect:NSMakeRect(0, 0, width, height)
+             fromRect:NSZeroRect
+            operation:NSCompositingOperationCopy
+             fraction:1.0];
+    [graphicsContext flushGraphics];
+    [NSGraphicsContext restoreGraphicsState];
+
+    unsigned char* bitmapData = [renderBitmapRep bitmapData];
+    if (bitmapData == NULL) {
+        return false;
+    }
+
+    int pixelDataLen = sourceBytesPerRow * height;
+    int dibLen = 40 + pixelDataLen;
+    char* pixelData = (char*)malloc(pixelDataLen);
+    if (pixelData == NULL) {
+        return false;
+    }
+
+    char* pixelWritePtr = pixelData;
+    int row = 0;
+    for (row = height - 1; row >= 0; row--) {
+        unsigned char* srcRow = bitmapData + (row * sourceBytesPerRow);
+        int col = 0;
+
+        for (col = 0; col < width; col++) {
+            pixelWritePtr[0] = srcRow[col * 4 + 2];
+            pixelWritePtr[1] = srcRow[col * 4 + 1];
+            pixelWritePtr[2] = srcRow[col * 4 + 0];
+            pixelWritePtr[3] = 0;
+            pixelWritePtr += 4;
+        }
+    }
+
+    xstream_t* dibStream = xstream_create(dibLen);
+    if (dibStream == NULL) {
+        free(pixelData);
+        return false;
+    }
+
+    xstream_writeInt32(dibStream, 40);
+    xstream_writeInt32(dibStream, width);
+    xstream_writeInt32(dibStream, height);
+    xstream_writeInt16(dibStream, 1);
+    xstream_writeInt16(dibStream, 32);
+    xstream_writeInt32(dibStream, 0);
+    xstream_writeInt32(dibStream, pixelDataLen);
+    xstream_writeInt32(dibStream, 0);
+    xstream_writeInt32(dibStream, 0);
+    xstream_writeInt32(dibStream, 0);
+    xstream_writeInt32(dibStream, 0);
+
+    xstream_writeData(dibStream, pixelData, pixelDataLen);
+    free(pixelData);
+
+    int bufferLen = 0;
+    const void* dibRawBuffer = xstream_get_raw_buffer(dibStream, &bufferLen);
+    if (dibRawBuffer == NULL || bufferLen != dibLen) {
+        xstream_free(dibStream);
+        return false;
+    }
+
+    char* buffer = (char*)malloc(bufferLen);
+    if (buffer == NULL) {
+        xstream_free(dibStream);
+        return false;
+    }
+
+    memcpy(buffer, dibRawBuffer, bufferLen);
+    xstream_free(dibStream);
+
+    *outData = buffer;
+    *outDataLen = bufferLen;
+    return true;
+}
+
+static bool BuildBmpFromDibData(const void* dibData, int dibLen, char** outData, int* outDataLen) {
+    if ((dibData == NULL && dibLen > 0) || dibLen < 40 || outData == NULL || outDataLen == NULL) {
+        return false;
+    }
+
+    *outData = NULL;
+    *outDataLen = 0;
+
+    xstream_t* dibStream = xstream_create_for_read((void*)dibData, dibLen);
+    if (dibStream == NULL) {
+        return false;
+    }
+
+    int headerSize = xstream_readInt32(dibStream);
+    if (headerSize < 40 || headerSize > dibLen) {
+        xstream_free(dibStream);
+        return false;
+    }
+
+    if (xstream_readData(dibStream, 10) == NULL) {
+        xstream_free(dibStream);
+        return false;
+    }
+
+    int bitCount = xstream_readInt16(dibStream);
+    int compression = xstream_readInt32(dibStream);
+    if (xstream_readData(dibStream, 12) == NULL) {
+        xstream_free(dibStream);
+        return false;
+    }
+
+    int colorsUsed = xstream_readInt32(dibStream);
+    xstream_free(dibStream);
+
+    int paletteEntries = 0;
+    int extraMaskSize = 0;
+
+    if (colorsUsed > 0) {
+        paletteEntries = colorsUsed;
+    } else if (bitCount > 0 && bitCount <= 8) {
+        paletteEntries = 1 << bitCount;
+    }
+
+    if (compression == 3 && headerSize == 40) {
+        extraMaskSize = 12;
+    } else if (compression == 6 && headerSize == 40) {
+        extraMaskSize = 16;
+    }
+
+    int pixelOffset = 14 + headerSize + extraMaskSize + (paletteEntries * 4);
+    int bmpLen = dibLen + 14;
+    if (pixelOffset < 14 || pixelOffset > bmpLen) {
+        return false;
+    }
+
+    xstream_t* bmpStream = xstream_create(bmpLen);
+    if (bmpStream == NULL) {
+        return false;
+    }
+
+    xstream_writeInt8(bmpStream, 'B');
+    xstream_writeInt8(bmpStream, 'M');
+    xstream_writeInt32(bmpStream, bmpLen);
+    xstream_writeInt16(bmpStream, 0);
+    xstream_writeInt16(bmpStream, 0);
+    xstream_writeInt32(bmpStream, pixelOffset);
+    xstream_writeData(bmpStream, (void*)dibData, dibLen);
+
+    int bufferLen = 0;
+    const void* bmpRawBuffer = xstream_get_raw_buffer(bmpStream, &bufferLen);
+    if (bmpRawBuffer == NULL || bufferLen != bmpLen) {
+        xstream_free(bmpStream);
+        return false;
+    }
+
+    char* buffer = (char*)malloc(bufferLen);
+    if (buffer == NULL) {
+        xstream_free(bmpStream);
+        return false;
+    }
+
+    memcpy(buffer, bmpRawBuffer, bufferLen);
+    xstream_free(bmpStream);
+
+    *outData = buffer;
+    *outDataLen = bufferLen;
+    return true;
+}
 
 ClipboardManager::ClipboardManager()
 : _clipDataBuffer(NULL)
@@ -52,6 +288,21 @@ ClipboardManager::ClipboardManager()
     if (pthread_create(&_monitorThread, NULL, MonitorThreadEntry, this) == 0) {
         _monitorThreadRunning = 1;
     }
+}
+
+int ClipboardManager::GetRequestedFormatPriority(PendingClipType clipType) {
+    switch (clipType) {
+        case PendingClipType_RichText:
+            return 3;
+        case PendingClipType_Image:
+            return 2;
+        case PendingClipType_Text:
+            return 1;
+        default:
+            break;
+    }
+
+    return 0;
 }
 
 ClipboardManager::~ClipboardManager() {
@@ -80,13 +331,20 @@ void ClipboardManager::HandleCommand(xipc_t* client, xstream_t* cmd) {
         return;
     }
 
-    int channelId = xstream_readInt32(cmd);
+    if (xstream_readInt32(cmd) < 0) {
+        return;
+    }
+
     int channelFlags = xstream_readInt32(cmd);
     int totalLen = xstream_readInt32(cmd);
     int dataLen = xstream_readInt32(cmd);
     const void* data = xstream_readData(cmd, dataLen);
 
-    if (channelId < 0 || totalLen <= 0 || dataLen < 0 || data == NULL) {
+    if (totalLen <= 0 ||
+        totalLen > MAX_CLIPBOARD_DATA_SIZE ||
+        dataLen < 0 ||
+        dataLen > totalLen ||
+        data == NULL) {
         return;
     }
 
@@ -139,6 +397,11 @@ bool ClipboardManager::AssembleChannelData(int channelFlags, int totalLen, const
 
     *completeData = NULL;
     *completeLen = 0;
+
+    if (totalLen <= 0 || totalLen > MAX_CLIPBOARD_DATA_SIZE || dataLen < 0 || dataLen > totalLen) {
+        ResetChannelBuffer();
+        return false;
+    }
 
     if ((channelFlags & XR_CHANNEL_FLAG_FIRST) != 0 &&
         (channelFlags & XR_CHANNEL_FLAG_LAST) != 0) {
@@ -199,7 +462,7 @@ void ClipboardManager::HandleClipData(xipc_t* client, const void* data, int data
 
     switch (msgType) {
         case CB_MONITOR_READY:
-            HandleMonitorReady(client);
+            UpdateRemoteClipboardContext(client);
             break;
         case CB_FORMAT_LIST:
             HandleFormatList(client, clipStream, msgFlags, msgLen);
@@ -217,21 +480,20 @@ void ClipboardManager::HandleClipData(xipc_t* client, const void* data, int data
     xstream_free(clipStream);
 }
 
-void ClipboardManager::HandleMonitorReady(xipc_t* client) {
-    UpdateRemoteClipboardContext(client);
-}
-
 void ClipboardManager::HandleFormatList(xipc_t* client, xstream_t* clipStream, int msgFlags, int msgLen) {
-    int formatId = FindRequestedFormatId(msgFlags, msgLen, clipStream);
+    int formatId = 0;
+    PendingClipType clipType = PendingClipType_None;
+
+    FindRequestedFormat(msgFlags, msgLen, clipStream, &formatId, &clipType);
 
     SendFormatAck(client, true);
 
-    if (formatId == 0) {
+    _pendingClipType = clipType;
+
+    if (formatId == 0 || clipType == PendingClipType_None) {
         _pendingClipType = PendingClipType_None;
         return;
     }
-
-    _pendingClipType = PendingClipType_Text;
 
     SendDataRequest(client, formatId);
 }
@@ -245,24 +507,52 @@ void ClipboardManager::HandleDataRequest(xipc_t* client, xstream_t* clipStream, 
     }
 
     int requestedFormatId = xstream_readInt32(clipStream);
-    if (requestedFormatId != CF_UNICODETEXT &&
-        requestedFormatId != CF_TEXT &&
-        requestedFormatId != CF_OEMTEXT) {
-        SendDataResponseFailed(client);
+    if (requestedFormatId == LOCAL_RTF_FORMAT_ID) {
+        char* rtfData = NULL;
+        int rtfLen = 0;
+
+        if (GetPasteboardRtf(&rtfData, &rtfLen) == false || rtfData == NULL || rtfLen <= 0) {
+            SendDataResponseFailed(client);
+            return;
+        }
+
+        SendDataResponse(client, rtfData, rtfLen);
+        free(rtfData);
         return;
     }
 
-    char* utf8Text = NULL;
-    int utf8Len = 0;
-    int changeCount = 0;
+    if (requestedFormatId == CF_DIB) {
+        char* dibData = NULL;
+        int dibLen = 0;
 
-    if (GetPasteboardText(&utf8Text, &utf8Len, &changeCount) == false || utf8Text == NULL) {
-        SendDataResponseFailed(client);
+        if (GetPasteboardImage(&dibData, &dibLen) == false || dibData == NULL || dibLen <= 0) {
+            SendDataResponseFailed(client);
+            return;
+        }
+
+        SendDataResponse(client, dibData, dibLen);
+        free(dibData);
         return;
     }
 
-    SendDataResponseText(client, utf8Text, utf8Len);
-    free(utf8Text);
+    if (requestedFormatId == CF_UNICODETEXT ||
+        requestedFormatId == CF_TEXT ||
+        requestedFormatId == CF_OEMTEXT) {
+        char* utf8Text = NULL;
+        int utf8Len = 0;
+        int changeCount = 0;
+
+        if (GetPasteboardText(&utf8Text, &utf8Len, &changeCount) == false || utf8Text == NULL) {
+            SendDataResponseFailed(client);
+            return;
+        }
+
+        SendDataResponseText(client, utf8Text, utf8Len);
+        free(utf8Text);
+        return;
+    }
+
+    SendDataResponseFailed(client);
 }
 
 void ClipboardManager::HandleDataResponse(xstream_t* clipStream, int msgFlags, int msgLen) {
@@ -283,20 +573,32 @@ void ClipboardManager::HandleDataResponse(xstream_t* clipStream, int msgFlags, i
 
     if (_pendingClipType == PendingClipType_Text) {
         SetTextToPasteboard(data, msgLen);
+    } else if (_pendingClipType == PendingClipType_RichText) {
+        SetRtfToPasteboard(data, msgLen);
+    } else if (_pendingClipType == PendingClipType_Image) {
+        SetImageToPasteboard(data, msgLen);
     }
 
     _pendingClipType = PendingClipType_None;
 }
 
-int ClipboardManager::FindRequestedFormatId(int msgFlags, int msgLen, xstream_t* clipStream) {
+void ClipboardManager::FindRequestedFormat(int msgFlags, int msgLen, xstream_t* clipStream, int* formatId, PendingClipType* clipType) {
+    if (clipStream == NULL || formatId == NULL || clipType == NULL) {
+        return;
+    }
+
+    *formatId = 0;
+    *clipType = PendingClipType_None;
+
     if ((msgFlags & CB_ASCII_NAMES) != 0) {
-        return FindRequestedFormatIdShortName(clipStream, msgLen);
+        FindRequestedFormatShortName(clipStream, msgLen, formatId, clipType);
+        return;
     }
 
     if (msgLen > 0 && msgLen % 36 == 0) {
-        int formatId = FindRequestedFormatIdShortName(clipStream, msgLen);
-        if (formatId != 0) {
-            return formatId;
+        FindRequestedFormatShortName(clipStream, msgLen, formatId, clipType);
+        if (*formatId != 0 && *clipType != PendingClipType_None) {
+            return;
         }
 
         xstream_resetPos(clipStream);
@@ -305,22 +607,34 @@ int ClipboardManager::FindRequestedFormatId(int msgFlags, int msgLen, xstream_t*
         xstream_readInt32(clipStream);
     }
 
-    return FindRequestedFormatIdLongName(clipStream, msgLen);
+    FindRequestedFormatLongName(clipStream, msgLen, formatId, clipType);
 }
 
-int ClipboardManager::FindRequestedFormatIdLongName(xstream_t* clipStream, int msgLen) {
+void ClipboardManager::FindRequestedFormatLongName(xstream_t* clipStream, int msgLen, int* formatId, PendingClipType* clipType) {
+    if (clipStream == NULL || formatId == NULL || clipType == NULL) {
+        return;
+    }
+
     int readLen = 0;
-    bool hasTextFormat = false;
+    int bestPriority = 0;
 
     while (readLen + 4 <= msgLen) {
-        int formatId = xstream_readInt32(clipStream);
+        int currentFormatId = xstream_readInt32(clipStream);
+        int currentClipType = PendingClipType_None;
+        char formatName[64];
+        int namePos = 0;
+        bool foundTerminator = false;
+
         readLen += 4;
 
-        if (formatId == CF_UNICODETEXT || formatId == CF_TEXT || formatId == CF_OEMTEXT) {
-            hasTextFormat = true;
+        if (currentFormatId == CF_UNICODETEXT ||
+            currentFormatId == CF_TEXT ||
+            currentFormatId == CF_OEMTEXT) {
+            currentClipType = PendingClipType_Text;
+        } else if (currentFormatId == CF_DIB) {
+            currentClipType = PendingClipType_Image;
         }
 
-        bool foundTerminator = false;
         while (readLen + 2 <= msgLen) {
             int ch = xstream_readInt16(clipStream);
             readLen += 2;
@@ -329,47 +643,74 @@ int ClipboardManager::FindRequestedFormatIdLongName(xstream_t* clipStream, int m
                 foundTerminator = true;
                 break;
             }
+
+            if (namePos + 1 < (int)sizeof(formatName) && ch >= 0 && ch <= 0x7F) {
+                formatName[namePos++] = (char)ch;
+            }
         }
 
         if (foundTerminator == false) {
-            return 0;
+            return;
+        }
+
+        formatName[namePos] = 0;
+
+        if (strcmp(formatName, RTF_FORMAT_NAME) == 0) {
+            currentClipType = PendingClipType_RichText;
+        }
+
+        int priority = GetRequestedFormatPriority((PendingClipType)currentClipType);
+        if (priority > bestPriority) {
+            bestPriority = priority;
+            *formatId = currentFormatId;
+            *clipType = (PendingClipType)currentClipType;
         }
     }
-
-    if (hasTextFormat) {
-        return CF_UNICODETEXT;
-    }
-
-    return 0;
 }
 
-int ClipboardManager::FindRequestedFormatIdShortName(xstream_t* clipStream, int msgLen) {
+void ClipboardManager::FindRequestedFormatShortName(xstream_t* clipStream, int msgLen, int* formatId, PendingClipType* clipType) {
+    if (clipStream == NULL || formatId == NULL || clipType == NULL) {
+        return;
+    }
+
     int readLen = 0;
-    bool hasTextFormat = false;
+    int bestPriority = 0;
 
     while (readLen + 36 <= msgLen) {
-        int formatId = xstream_readInt32(clipStream);
-        const void* dummy = xstream_readData(clipStream, 32);
-        if (dummy == NULL) {
-            return 0;
+        int currentFormatId = xstream_readInt32(clipStream);
+        const char* formatName = (const char*)xstream_readData(clipStream, 32);
+        int currentClipType = PendingClipType_None;
+
+        if (formatName == NULL) {
+            return;
         }
 
         readLen += 36;
 
-        if (formatId == CF_UNICODETEXT || formatId == CF_TEXT || formatId == CF_OEMTEXT) {
-            hasTextFormat = true;
+        if (currentFormatId == CF_UNICODETEXT ||
+            currentFormatId == CF_TEXT ||
+            currentFormatId == CF_OEMTEXT) {
+            currentClipType = PendingClipType_Text;
+        } else if (currentFormatId == CF_DIB) {
+            currentClipType = PendingClipType_Image;
+        }
+
+        if (strncmp(formatName, RTF_FORMAT_NAME, 32) == 0) {
+            currentClipType = PendingClipType_RichText;
+        }
+
+        int priority = GetRequestedFormatPriority((PendingClipType)currentClipType);
+        if (priority > bestPriority) {
+            bestPriority = priority;
+            *formatId = currentFormatId;
+            *clipType = (PendingClipType)currentClipType;
         }
     }
 
     if (readLen != msgLen) {
-        return 0;
+        *formatId = 0;
+        *clipType = PendingClipType_None;
     }
-
-    if (hasTextFormat) {
-        return CF_UNICODETEXT;
-    }
-
-    return 0;
 }
 
 void* ClipboardManager::MonitorThreadEntry(void* arg) {
@@ -450,24 +791,61 @@ void ClipboardManager::SendFormatAck(xipc_t* client, bool success) {
 }
 
 void ClipboardManager::SendFormatList(xipc_t* client) {
-    xstream_t* clipStream = xstream_create(40);
+    NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+    if (pasteboard == nil) {
+        return;
+    }
+
+    NSString* text = [pasteboard stringForType:NSPasteboardTypeString];
+    NSData* rtfData = [pasteboard dataForType:NSPasteboardTypeRTF];
+    NSImage* image = [[NSImage alloc] initWithPasteboard:pasteboard];
+
+    bool hasText = (text != nil && [text length] > 0);
+    bool hasRtf = (rtfData != nil && [rtfData length] > 0);
+    bool hasImage = (image != nil);
+
+    if (hasText == false && hasRtf == false && hasImage == false) {
+        return;
+    }
+
+    int dataLen = 0;
+    if (hasRtf) {
+        dataLen += 4 + (((int)strlen(RTF_FORMAT_NAME) + 1) * 2);
+    }
+    if (hasText) {
+        dataLen += 18;
+    }
+    if (hasImage) {
+        dataLen += 6;
+    }
+
+    xstream_t* clipStream = xstream_create(dataLen + 8);
     if (clipStream == NULL) {
         return;
     }
 
     xstream_writeInt16(clipStream, CB_FORMAT_LIST);
     xstream_writeInt16(clipStream, 0);
-    xstream_writeInt32(clipStream, 24);
+    xstream_writeInt32(clipStream, dataLen);
 
-    xstream_writeInt32(clipStream, CF_UNICODETEXT);
-    xstream_writeInt16(clipStream, 0);
-    xstream_writeInt32(clipStream, CF_LOCALE);
-    xstream_writeInt16(clipStream, 0);
-    xstream_writeInt32(clipStream, CF_TEXT);
-    xstream_writeInt16(clipStream, 0);
-    xstream_writeInt32(clipStream, CF_OEMTEXT);
-    xstream_writeInt16(clipStream, 0);
-    xstream_writeInt32(clipStream, 0);
+    if (hasRtf) {
+        xstream_writeInt32(clipStream, LOCAL_RTF_FORMAT_ID);
+        WriteFormatName(clipStream, RTF_FORMAT_NAME);
+    }
+
+    if (hasText) {
+        xstream_writeInt32(clipStream, CF_UNICODETEXT);
+        WriteFormatName(clipStream, NULL);
+        xstream_writeInt32(clipStream, CF_TEXT);
+        WriteFormatName(clipStream, NULL);
+        xstream_writeInt32(clipStream, CF_OEMTEXT);
+        WriteFormatName(clipStream, NULL);
+    }
+
+    if (hasImage) {
+        xstream_writeInt32(clipStream, CF_DIB);
+        WriteFormatName(clipStream, NULL);
+    }
 
     int bufferLen = 0;
     const void* buffer = xstream_get_raw_buffer(clipStream, &bufferLen);
@@ -494,6 +872,40 @@ void ClipboardManager::SendDataRequest(xipc_t* client, int formatId) {
     xstream_free(clipStream);
 }
 
+void ClipboardManager::SendDataResponse(xipc_t* client, const void* data, int dataLen) {
+    if ((data == NULL && dataLen > 0) || dataLen < 0) {
+        SendDataResponseFailed(client);
+        return;
+    }
+
+    if (dataLen > MAX_CLIPBOARD_DATA_SIZE) {
+        SendDataResponseFailed(client);
+        return;
+    }
+
+    xstream_t* headerStream = xstream_create(8);
+    if (headerStream == NULL) {
+        SendDataResponseFailed(client);
+        return;
+    }
+
+    xstream_writeInt16(headerStream, CB_FORMAT_DATA_RESPONSE);
+    xstream_writeInt16(headerStream, CB_RESPONSE_OK);
+    xstream_writeInt32(headerStream, dataLen);
+
+    int headerLen = 0;
+    const char* header = (const char*)xstream_get_raw_buffer(headerStream, &headerLen);
+    if (header == NULL || headerLen != 8) {
+        xstream_free(headerStream);
+        SendDataResponseFailed(client);
+        return;
+    }
+
+    static const char footer[4] = { 0, 0, 0, 0 };
+    SendChannelDataParts(client, header, headerLen, data, dataLen, footer, 4);
+    xstream_free(headerStream);
+}
+
 void ClipboardManager::SendDataResponseText(xipc_t* client, const char* utf8Text, int utf8Len) {
     if (utf8Text == NULL || utf8Len < 0) {
         SendDataResponseFailed(client);
@@ -507,24 +919,7 @@ void ClipboardManager::SendDataResponseText(xipc_t* client, const char* utf8Text
         return;
     }
 
-    xstream_t* clipStream = xstream_create(textDataLen + 12);
-    if (clipStream == NULL) {
-        free(textData);
-        SendDataResponseFailed(client);
-        return;
-    }
-
-    xstream_writeInt16(clipStream, CB_FORMAT_DATA_RESPONSE);
-    xstream_writeInt16(clipStream, CB_RESPONSE_OK);
-    xstream_writeInt32(clipStream, textDataLen);
-    xstream_writeData(clipStream, textData, textDataLen);
-    xstream_writeInt32(clipStream, 0);
-
-    int bufferLen = 0;
-    const void* buffer = xstream_get_raw_buffer(clipStream, &bufferLen);
-    SendChannelData(client, buffer, bufferLen);
-
-    xstream_free(clipStream);
+    SendDataResponse(client, textData, textDataLen);
     free(textData);
 }
 
@@ -546,24 +941,83 @@ void ClipboardManager::SendDataResponseFailed(xipc_t* client) {
 }
 
 void ClipboardManager::SendChannelData(xipc_t* client, const void* data, int dataLen) {
-    if (client == NULL || data == NULL || dataLen <= 0) {
+    SendChannelDataParts(client, NULL, 0, data, dataLen, NULL, 0);
+}
+
+void ClipboardManager::SendChannelDataParts(xipc_t* client, const void* header, int headerLen, const void* data, int dataLen, const void* footer, int footerLen) {
+    if (client == NULL) {
         return;
     }
 
+    if ((header == NULL && headerLen > 0) ||
+        (data == NULL && dataLen > 0) ||
+        (footer == NULL && footerLen > 0)) {
+        return;
+    }
+
+    const int totalLen = headerLen + dataLen + footerLen;
+    if (totalLen <= 0 || totalLen > MAX_CLIPBOARD_DATA_SIZE) {
+        return;
+    }
+
+    const char* rawHeader = (const char*)header;
     const char* rawData = (const char*)data;
+    const char* rawFooter = (const char*)footer;
     int offset = 0;
 
-    while (offset < dataLen) {
-        int chunkLen = dataLen - offset;
+    while (offset < totalLen) {
+        int chunkLen = totalLen - offset;
         if (chunkLen > IPC_CLIPBOARD_CHUNK_SIZE) {
             chunkLen = IPC_CLIPBOARD_CHUNK_SIZE;
+        }
+
+        char* chunkBuffer = (char*)malloc(chunkLen);
+        if (chunkBuffer == NULL) {
+            return;
+        }
+
+        int chunkOffset = 0;
+        int currentOffset = offset;
+
+        if (currentOffset < headerLen) {
+            int copyLen = headerLen - currentOffset;
+            if (copyLen > chunkLen - chunkOffset) {
+                copyLen = chunkLen - chunkOffset;
+            }
+
+            memcpy(chunkBuffer + chunkOffset, rawHeader + currentOffset, copyLen);
+            chunkOffset += copyLen;
+            currentOffset += copyLen;
+        }
+
+        if (chunkOffset < chunkLen && currentOffset < headerLen + dataLen) {
+            int dataOffset = currentOffset - headerLen;
+            int copyLen = dataLen - dataOffset;
+            if (copyLen > chunkLen - chunkOffset) {
+                copyLen = chunkLen - chunkOffset;
+            }
+
+            memcpy(chunkBuffer + chunkOffset, rawData + dataOffset, copyLen);
+            chunkOffset += copyLen;
+            currentOffset += copyLen;
+        }
+
+        if (chunkOffset < chunkLen && currentOffset < totalLen) {
+            int footerOffset = currentOffset - (headerLen + dataLen);
+            int copyLen = footerLen - footerOffset;
+            if (copyLen > chunkLen - chunkOffset) {
+                copyLen = chunkLen - chunkOffset;
+            }
+
+            memcpy(chunkBuffer + chunkOffset, rawFooter + footerOffset, copyLen);
+            chunkOffset += copyLen;
         }
 
         int channelFlags = 0;
         if (offset == 0) {
             channelFlags |= XR_CHANNEL_FLAG_FIRST;
         }
-        if (offset + chunkLen >= dataLen) {
+        if (offset + chunkLen >= totalLen) {
             channelFlags |= XR_CHANNEL_FLAG_LAST;
         }
 
@@ -575,15 +1029,16 @@ void ClipboardManager::SendChannelData(xipc_t* client, const void* data, int dat
         xstream_writeInt32(stream, OSXRDP_CMDTYPE_CLIPBOARD);
         xstream_writeInt32(stream, OSXRDP_PACKETTYPE_REP_SETCLIENTCLIP);
         xstream_writeInt32(stream, channelFlags);
-        xstream_writeInt32(stream, dataLen);
+        xstream_writeInt32(stream, totalLen);
         xstream_writeInt32(stream, chunkLen);
-        xstream_writeData(stream, (void*)(rawData + offset), chunkLen);
+        xstream_writeData(stream, chunkBuffer, chunkLen);
 
         int bufferLen = 0;
         const void* buffer = xstream_get_raw_buffer(stream, &bufferLen);
         xipc_send_data(client, buffer, bufferLen);
 
         xstream_free(stream);
+        free(chunkBuffer);
         offset += chunkLen;
     }
 }
@@ -601,11 +1056,11 @@ bool ClipboardManager::GetPasteboardText(char** utf8Text, int* utf8Len, int* cha
     }
 
     *changeCount = (int)[pasteboard changeCount];
-    
+
     if (utf8Text != NULL && utf8Len != NULL) {
         *utf8Text = NULL;
         *utf8Len = 0;
-        
+
         NSString* text = [pasteboard stringForType:NSPasteboardTypeString];
         if (text == nil || [text length] == 0) {
             return true;
@@ -631,6 +1086,57 @@ bool ClipboardManager::GetPasteboardText(char** utf8Text, int* utf8Len, int* cha
     }
 
     return true;
+}
+
+bool ClipboardManager::GetPasteboardRtf(char** rtfData, int* rtfLen) {
+    if (rtfData == NULL || rtfLen == NULL) {
+        return false;
+    }
+
+    *rtfData = NULL;
+    *rtfLen = 0;
+
+    NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+    if (pasteboard == nil) {
+        return false;
+    }
+
+    NSData* data = [pasteboard dataForType:NSPasteboardTypeRTF];
+    if (data == nil || [data length] <= 0) {
+        return false;
+    }
+
+    int dataLen = (int)[data length];
+    char* buffer = (char*)malloc(dataLen);
+    if (buffer == NULL) {
+        return false;
+    }
+
+    memcpy(buffer, [data bytes], dataLen);
+    *rtfData = buffer;
+    *rtfLen = dataLen;
+    return true;
+}
+
+bool ClipboardManager::GetPasteboardImage(char** dibData, int* dibLen) {
+    if (dibData == NULL || dibLen == NULL) {
+        return false;
+    }
+
+    *dibData = NULL;
+    *dibLen = 0;
+
+    NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+    if (pasteboard == nil) {
+        return false;
+    }
+
+    NSImage* image = [[NSImage alloc] initWithPasteboard:pasteboard];
+    if (image == nil) {
+        return false;
+    }
+
+    return BuildDibFromImage(image, dibData, dibLen);
 }
 
 bool ClipboardManager::BuildWindowsUnicodeText(const char* utf8Text, int utf8Len, char** outData, int* outDataLen) {
@@ -713,6 +1219,80 @@ bool ClipboardManager::SetTextToPasteboard(const void* data, int dataLen) {
     NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
     [pasteboard clearContents];
     BOOL result = [pasteboard setString:normalizedText forType:NSPasteboardTypeString];
+
+    if (result == YES) {
+        pthread_mutex_lock(&_lock);
+        _lastChangeCount = (int)[pasteboard changeCount];
+        pthread_mutex_unlock(&_lock);
+    }
+
+    return result == YES;
+}
+
+bool ClipboardManager::SetRtfToPasteboard(const void* data, int dataLen) {
+    if ((data == NULL && dataLen > 0) || dataLen < 0) {
+        return false;
+    }
+
+    NSData* rtfData = [NSData dataWithBytes:data length:dataLen];
+    if (rtfData == nil) {
+        return false;
+    }
+
+    NSAttributedString* attributedText = [[NSAttributedString alloc] initWithRTF:rtfData documentAttributes:NULL];
+    NSString* plainText = nil;
+    if (attributedText != nil) {
+        plainText = [attributedText string];
+    }
+
+    NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+    NSMutableArray* types = [NSMutableArray arrayWithObject:NSPasteboardTypeRTF];
+    if (plainText != nil && [plainText length] > 0) {
+        [types addObject:NSPasteboardTypeString];
+    }
+
+    [pasteboard declareTypes:types owner:nil];
+    BOOL result = [pasteboard setData:rtfData forType:NSPasteboardTypeRTF];
+    if (result == YES && plainText != nil && [plainText length] > 0) {
+        [pasteboard setString:plainText forType:NSPasteboardTypeString];
+    }
+
+    if (result == YES) {
+        pthread_mutex_lock(&_lock);
+        _lastChangeCount = (int)[pasteboard changeCount];
+        pthread_mutex_unlock(&_lock);
+    }
+
+    return result == YES;
+}
+
+bool ClipboardManager::SetImageToPasteboard(const void* data, int dataLen) {
+    char* bmpData = NULL;
+    int bmpLen = 0;
+
+    if (BuildBmpFromDibData(data, dataLen, &bmpData, &bmpLen) == false || bmpData == NULL || bmpLen <= 0) {
+        return false;
+    }
+
+    NSData* imageData = [NSData dataWithBytesNoCopy:bmpData length:bmpLen freeWhenDone:YES];
+    if (imageData == nil) {
+        free(bmpData);
+        return false;
+    }
+
+    NSImage* image = [[NSImage alloc] initWithData:imageData];
+    if (image == nil) {
+        return false;
+    }
+
+    NSData* tiffData = [image TIFFRepresentation];
+    if (tiffData == nil) {
+        return false;
+    }
+
+    NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+    [pasteboard declareTypes:[NSArray arrayWithObject:NSPasteboardTypeTIFF] owner:nil];
+    BOOL result = [pasteboard setData:tiffData forType:NSPasteboardTypeTIFF];
 
     if (result == YES) {
         pthread_mutex_lock(&_lock);

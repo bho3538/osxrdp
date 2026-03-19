@@ -31,16 +31,6 @@ inline void CopyRows(uint8_t* dst, const uint8_t* src, size_t rowBytes, size_t s
     }
 }
 
-inline uint8_t ClampToByte(int value) {
-    if (value < 0) {
-        return 0;
-    }
-    if (value > 255) {
-        return 255;
-    }
-    return (uint8_t)value;
-}
-
 bool ConvertBGRA8888ToRFXPlanarTilesSHM(const uint8_t* bgraBase, size_t bgraStride, int width, int height, uint8_t* shmBase) {
     if (bgraBase == NULL || shmBase == NULL || width <= 0 || height <= 0) {
         return false;
