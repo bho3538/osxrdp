@@ -47,6 +47,9 @@ private:
     int GetMouseWheelMoveAmount(int direction);
     void PostScrollEvent(int amount, bool continuous);
     void PostTrackpadScrollEvent(int amount);
+    void ResetMouseInputState(CGPoint point);
+    void RecreateEventSource();
+    void ReleaseModifierKeys();
     
     static int CalcPos(int clientPos, float scale);
     
