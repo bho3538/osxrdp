@@ -124,7 +124,7 @@ InputHandler::InputHandler() :
     _wheelSmoothedAmount(0.0f),
     _lastWheelIsTrackpad(false)
 {
-    RecreateEventSource();
+    _eventRef = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
 }
 
 InputHandler::~InputHandler() {
@@ -154,15 +154,12 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
     int clientY = xstream_readInt32(cmd);
     long long currentTime = GetCurrentEventTime();
     
-    // hack : 최소화/복원 등으로 입력 간격이 크게 벌어지면 이전 클릭 상태를 버린다.
-    // 특정 상황 (마우스 휠 down + 마우스 드래그) 를 같이 발생시키면 드래그 상태가 유지되는 버그가 있다.
-    // 원인을 모르겠어서 일단은 hack 으로 처리.
-    // input manager 코드가 매우 지저분해서 재구현해야함.
-    if (_lastMouseInputEventTime != 0 && currentTime - _lastMouseInputEventTime > 2000) {
-        clientX = CalcPos(clientX, _scaleX);
-        clientY = CalcPos(clientY, _scaleY);
-        
-        ResetMouseInputState(CGPointMake(clientX, clientY));
+    // 최소화/복원 등으로 입력 간격이 크게 벌어지면 이전 클릭 상태를 버린다.
+    if (_lastMouseInputEventTime != 0 && currentTime - _lastMouseInputEventTime > 1200) {
+        _inMouseDown = 0;
+        _mouseClickCnt = 0;
+        _lastMouseButton = -1;
+        _lastMouseClickTime = 0;
     }
     _lastMouseInputEventTime = currentTime;
     
@@ -483,7 +480,7 @@ int InputHandler::GetMouseWheelMoveAmount(int direction) {
 }
 
 void InputHandler::PostScrollEvent(int amount, bool continuous) {
-    CGEventRef ev = CGEventCreateScrollWheelEvent(_eventRef, kCGScrollEventUnitPixel, 1, amount, 0);
+    CGEventRef ev = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitPixel, 1, amount, 0);
     if (ev == NULL) {
         return;
     }
@@ -522,92 +519,6 @@ void InputHandler::PostTrackpadScrollEvent(int amount) {
         }
         PostScrollEvent(part * sign, true);
     }
-}
-
-void InputHandler::RecreateEventSource() {
-    if (_eventRef != 0) {
-        CFRelease(_eventRef);
-        _eventRef = 0;
-    }
-    
-    _eventRef = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
-    if (_eventRef != 0) {
-        CGEventSourceSetLocalEventsSuppressionInterval(_eventRef, 0.0);
-    }
-}
-
-void InputHandler::ReleaseModifierKeys() {
-    struct modifier_key_t {
-        CGKeyCode key;
-        CGEventFlags flag;
-    };
-    
-    const modifier_key_t modifierKeys[] = {
-        { kVK_Shift, kCGEventFlagMaskShift },
-        { kVK_Control, kCGEventFlagMaskControl },
-        { kVK_Option, kCGEventFlagMaskAlternate },
-        { kVK_Command, kCGEventFlagMaskCommand }
-    };
-    
-    for (int i = 0; i < (int)(sizeof(modifierKeys) / sizeof(modifierKeys[0])); i++) {
-        if ((_keyboardModifierFlags & modifierKeys[i].flag) == 0) {
-            continue;
-        }
-        
-        CGEventRef ev = CGEventCreateKeyboardEvent(_eventRef, modifierKeys[i].key, false);
-        if (ev != NULL) {
-            CGEventSetFlags(ev, _keyboardModifierFlags & ~modifierKeys[i].flag);
-            CGEventPost(kCGSessionEventTap, ev);
-            CFRelease(ev);
-        }
-    }
-    
-    _keyboardModifierFlags = 0;
-}
-
-void InputHandler::ResetMouseInputState(CGPoint point) {
-    RecreateEventSource();
-    ReleaseModifierKeys();
-    
-    struct mouse_button_reset_t {
-        CGEventType type;
-        CGMouseButton button;
-    };
-    
-    const mouse_button_reset_t mouseUps[] = {
-        { kCGEventLeftMouseUp, kCGMouseButtonLeft },
-        { kCGEventRightMouseUp, kCGMouseButtonRight }
-    };
-    
-    for (int i = 0; i < (int)(sizeof(mouseUps) / sizeof(mouseUps[0])); i++) {
-        CGEventRef ev = CGEventCreateMouseEvent(_eventRef, mouseUps[i].type, point, mouseUps[i].button);
-        if (ev != NULL) {
-            CGEventSetFlags(ev, 0);
-            CGEventPost(kCGSessionEventTap, ev);
-            CFRelease(ev);
-        }
-    }
-    
-    CGEventRef moveEv = CGEventCreateMouseEvent(_eventRef, kCGEventMouseMoved, point, kCGMouseButtonLeft);
-    if (moveEv != NULL) {
-        CGEventSetFlags(moveEv, 0);
-        CGEventSetIntegerValueField(moveEv, kCGMouseEventDeltaX, 0);
-        CGEventSetIntegerValueField(moveEv, kCGMouseEventDeltaY, 0);
-        CGEventPost(kCGSessionEventTap, moveEv);
-        CFRelease(moveEv);
-    }
-    
-    _inMouseDown = 0;
-    _mouseClickCnt = 0;
-    _lastMouseButton = -1;
-    _lastMouseClickTime = 0;
-    _lastWheelEventTime = 0;
-    _wheelEventBurstCount = 0;
-    _lastWheelDirection = 0;
-    _wheelSmoothedAmount = 0.0f;
-    _lastWheelIsTrackpad = false;
-    _lastMousePosX = (int)point.x;
-    _lastMousePosY = (int)point.y;
 }
 
 CGKeyCode InputHandler::MapExtendedKey(int scancode) {
