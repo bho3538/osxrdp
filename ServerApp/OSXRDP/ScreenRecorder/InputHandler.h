@@ -35,6 +35,7 @@ private:
     long long _lastMouseInputEventTime;
     long long _lastWheelEventTime;
     int _wheelEventBurstCount;
+    int _fastWheelEventCount;
     int _lastWheelDirection;
     float _wheelSmoothedAmount;
     bool _lastWheelIsTrackpad;

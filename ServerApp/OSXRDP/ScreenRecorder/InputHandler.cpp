@@ -120,6 +120,7 @@ InputHandler::InputHandler() :
     _lastMouseInputEventTime(0),
     _lastWheelEventTime(0),
     _wheelEventBurstCount(0),
+    _fastWheelEventCount(0),
     _lastWheelDirection(0),
     _wheelSmoothedAmount(0.0f),
     _lastWheelIsTrackpad(false)
@@ -357,12 +358,13 @@ long long InputHandler::GetCurrentEventTime() {
 
 int InputHandler::GetMouseWheelMoveAmount(int direction) {
     const int kIdleGapMs = 180;
+    const int kFastWheelGapMs = 18;
     const int kTrackpadGapMs = 45;
-    const int kMouseConfirmGapMs = 95;
+    const int kMouseConfirmGapMs = 80;
     const int kTrackpadMinAmount = 6;
-    const int kTrackpadMaxAmount = 40;
-    const int kMouseMinAmount = 160;
-    const int kMouseMaxAmount = 480;
+    const int kTrackpadMaxAmount = 32;
+    const int kMouseMinAmount = 1;
+    const int kMouseMaxAmount = 7;
 
     if (direction > 0) {
         direction = 1;
@@ -394,14 +396,27 @@ int InputHandler::GetMouseWheelMoveAmount(int direction) {
     
     if (newGesture) {
         _wheelEventBurstCount = 0;
+        _fastWheelEventCount = 0;
     }
     else {
         _wheelEventBurstCount++;
     }
     
-    // device classification with hysteresis
+    // 아주 짧은 간격이 연속으로 들어올 때만 트랙패드로 본다.
+    if (!newGesture && gap <= kFastWheelGapMs) {
+        _fastWheelEventCount++;
+    }
+    else if (newGesture || gap >= kMouseConfirmGapMs) {
+        _fastWheelEventCount = 0;
+    }
+
     if (_lastWheelEventTime != 0) {
-        if (gap <= kTrackpadGapMs) {
+        if (_lastWheelIsTrackpad) {
+            if (gap >= kMouseConfirmGapMs) {
+                _lastWheelIsTrackpad = false;
+            }
+        }
+        else if (!newGesture && gap <= kTrackpadGapMs && _fastWheelEventCount >= 2) {
             _lastWheelIsTrackpad = true;
         }
         else if (gap >= kMouseConfirmGapMs) {
@@ -433,26 +448,31 @@ int InputHandler::GetMouseWheelMoveAmount(int direction) {
         }
     }
     else {
-        if (gap <= 55) {
-            target = 440;
+        if (newGesture) {
+            target = 2;
         }
-        else if (gap <= 95) {
-            target = 340;
+        else if (gap <= 40) {
+            target = 12;
+        }
+        else if (gap <= 60) {
+            target = 8;
+        }
+        else if (gap <= 90) {
+            target = 6;
+        }
+        else if (gap <= 130) {
+            target = 5;
         }
         else {
-            target = 260;
-        }
-        
-        if (newGesture) {
-            target = 220;
+            target = 3;
         }
     }
     
     if (newGesture) {
-        _wheelSmoothedAmount = ((float)target) * 0.55f;
+        _wheelSmoothedAmount = (float)target;
     }
     else {
-        float alpha = _lastWheelIsTrackpad ? 0.35f : 0.45f;
+        float alpha = _lastWheelIsTrackpad ? 0.35f : 0.65f;
         _wheelSmoothedAmount = (_wheelSmoothedAmount * (1.0f - alpha)) + (((float)target) * alpha);
     }
     
@@ -480,7 +500,8 @@ int InputHandler::GetMouseWheelMoveAmount(int direction) {
 }
 
 void InputHandler::PostScrollEvent(int amount, bool continuous) {
-    CGEventRef ev = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitPixel, 1, amount, 0);
+    CGScrollEventUnit unit = continuous ? kCGScrollEventUnitPixel : kCGScrollEventUnitLine;
+    CGEventRef ev = CGEventCreateScrollWheelEvent(NULL, unit, 1, amount, 0);
     if (ev == NULL) {
         return;
     }
