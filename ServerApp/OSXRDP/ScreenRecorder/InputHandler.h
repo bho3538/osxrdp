@@ -35,6 +35,7 @@ private:
     long long _lastMouseInputEventTime;
     long long _lastWheelEventTime;
     int _wheelEventBurstCount;
+    int _fastWheelEventCount;
     int _lastWheelDirection;
     float _wheelSmoothedAmount;
     bool _lastWheelIsTrackpad;
@@ -47,9 +48,6 @@ private:
     int GetMouseWheelMoveAmount(int direction);
     void PostScrollEvent(int amount, bool continuous);
     void PostTrackpadScrollEvent(int amount);
-    void ResetMouseInputState(CGPoint point);
-    void RecreateEventSource();
-    void ReleaseModifierKeys();
     
     static int CalcPos(int clientPos, float scale);
     
