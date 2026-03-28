@@ -57,6 +57,8 @@ private:
     bool IsState(State s);
     
     // xipc 콜백
+    static int OnClientAuthorize(xipc_t* t, xipc_t* client);
+    static int OnClientRejected(xipc_t* t, xipc_t* client);
     static int OnClientConnected(xipc_t* t, xipc_t* client);
     static int OnClientDisconnected(xipc_t* t, xipc_t* client);
     static int OnMessageReceived(xipc_t* t, xipc_t* client, void* data, int len);

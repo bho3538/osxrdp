@@ -4,6 +4,7 @@
 #define MAX_BUFFER 1024 * 16
 
 #include <pthread.h>
+#include <sys/types.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -13,6 +14,10 @@ struct xipc;
 
 typedef int (*xipc_client_onconnected)(struct xipc* ipc, struct xipc* client);
 typedef int (*xipc_client_ondisconnected)(struct xipc* ipc, struct xipc* client);
+/* return 0 to allow the client, otherwise the server closes the connection */
+typedef int (*xipc_client_onauthorize)(struct xipc* ipc, struct xipc* client);
+/* called only when onauthorize rejects the client */
+typedef int (*xipc_client_onrejected)(struct xipc* ipc, struct xipc* client);
 typedef int (*xipc_data_callback)(struct xipc* ipc, struct xipc* client, void* data, int len);
 
 typedef struct xipc_msg {
@@ -42,6 +47,8 @@ typedef struct xipc {
     xipc_data_callback on_data;
     xipc_client_onconnected on_client_connected;
     xipc_client_ondisconnected on_client_disconnected;
+    xipc_client_onauthorize on_client_authorize;
+    xipc_client_onrejected on_client_rejected;
     void* user_data;
     struct xipc* next;
 } xipc_t;
@@ -49,8 +56,10 @@ typedef struct xipc {
 xipc_t* xipc_ctx_create(xipc_data_callback on_data, void* userData);
 void xipc_destroy(xipc_t* ipc);
 
-int xipc_create_server(xipc_t* ipc, const char* path, xipc_client_onconnected on_client_connected, xipc_client_ondisconnected on_client_disconnected);
+int xipc_create_server(xipc_t* ipc, const char* path, xipc_client_onconnected on_client_connected, xipc_client_ondisconnected on_client_disconnected, xipc_client_onauthorize on_client_authorize, xipc_client_onrejected on_client_rejected);
 int xipc_connect_server(xipc_t* ipc, const char* path);
+int xipc_get_peer_pid(xipc_t* client, pid_t* pid);
+int xipc_is_client_signed_by(xipc_t* client, const char* expectedTeamId, const char* expectedSigningIdentifier);
 
 int xipc_send_data(xipc_t* ipc, const void* data, int len);
 void xipc_loop(xipc_t* ipc);

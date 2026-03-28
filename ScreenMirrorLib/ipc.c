@@ -9,8 +9,28 @@
 #include <poll.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <Security/Security.h>
 
 #define MAX_CONNECTION 512
+
+static int cfstring_equals_cstring(CFStringRef value, const char* expected)
+{
+    if (value == NULL || expected == NULL)
+    {
+        return 0;
+    }
+
+    CFStringRef expectedValue = CFStringCreateWithCString(kCFAllocatorDefault, expected, kCFStringEncodingUTF8);
+    if (expectedValue == NULL)
+    {
+        return 0;
+    }
+
+    int isEqual = CFStringCompare(value, expectedValue, 0) == kCFCompareEqualTo;
+    CFRelease(expectedValue);
+
+    return isEqual;
+}
 
 void set_nonBlocking(int fd)
 {
@@ -155,7 +175,7 @@ void xipc_destroy(xipc_t* ipc)
     free(ipc);
 }
 
-int xipc_create_server(xipc_t* ipc, const char* path, xipc_client_onconnected on_client_connected, xipc_client_ondisconnected on_client_disconnected)
+int xipc_create_server(xipc_t* ipc, const char* path, xipc_client_onconnected on_client_connected, xipc_client_ondisconnected on_client_disconnected, xipc_client_onauthorize on_client_authorize, xipc_client_onrejected on_client_rejected)
 {
     if (ipc == NULL || path == NULL)
     {
@@ -192,6 +212,8 @@ int xipc_create_server(xipc_t* ipc, const char* path, xipc_client_onconnected on
     ipc->isServer = 1;
     ipc->on_client_connected = on_client_connected;
     ipc->on_client_disconnected = on_client_disconnected;
+    ipc->on_client_authorize = on_client_authorize;
+    ipc->on_client_rejected = on_client_rejected;
     ipc->server_name = strdup(path);
 
     set_nonBlocking(ipc->fd);
@@ -231,6 +253,125 @@ int xipc_connect_server(xipc_t* ipc, const char* path)
     set_nonBlocking(ipc->fd);
     
     return 0;
+}
+
+int xipc_get_peer_pid(xipc_t* client, pid_t* pid)
+{
+    if (client == NULL || pid == NULL || client->fd <= 0)
+    {
+        return EINVAL;
+    }
+
+    pid_t peerPid = 0;
+    socklen_t peerPidLen = sizeof(peerPid);
+    if (getsockopt(client->fd, SOL_LOCAL, LOCAL_PEERPID, &peerPid, &peerPidLen) != 0)
+    {
+        return errno != 0 ? errno : -1;
+    }
+
+    if (peerPidLen != sizeof(peerPid) || peerPid <= 0)
+    {
+        return EINVAL;
+    }
+
+    *pid = peerPid;
+    return 0;
+}
+
+int xipc_is_client_signed_by(xipc_t* client, const char* expectedTeamId, const char* expectedSigningIdentifier)
+{
+    if (client == NULL || expectedTeamId == NULL || expectedSigningIdentifier == NULL)
+    {
+        return EINVAL;
+    }
+
+    pid_t peerPid = 0;
+    if (xipc_get_peer_pid(client, &peerPid) != 0)
+    {
+        return -1;
+    }
+
+    int result = -1;
+    CFNumberRef pidNumber = NULL;
+    CFDictionaryRef attributes = NULL;
+    SecCodeRef peerCode = NULL;
+    CFDictionaryRef signingInfo = NULL;
+
+    pidNumber = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &peerPid);
+    if (pidNumber == NULL)
+    {
+        goto cleanup;
+    }
+
+    const void* keys[] = { kSecGuestAttributePid };
+    const void* values[] = { pidNumber };
+    attributes = CFDictionaryCreate(kCFAllocatorDefault, keys, values, 1, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    if (attributes == NULL)
+    {
+        goto cleanup;
+    }
+
+    if (SecCodeCopyGuestWithAttributes(NULL, attributes, kSecCSDefaultFlags, &peerCode) != errSecSuccess)
+    {
+        goto cleanup;
+    }
+
+    if (SecCodeCheckValidity(peerCode, kSecCSDefaultFlags, NULL) != errSecSuccess)
+    {
+        goto cleanup;
+    }
+
+    if (SecCodeCopySigningInformation(peerCode, kSecCSSigningInformation, &signingInfo) != errSecSuccess)
+    {
+        goto cleanup;
+    }
+
+    CFStringRef teamId = CFDictionaryGetValue(signingInfo, kSecCodeInfoTeamIdentifier);
+    CFStringRef signingIdentifier = CFDictionaryGetValue(signingInfo, kSecCodeInfoIdentifier);
+    if (teamId == NULL || signingIdentifier == NULL)
+    {
+        goto cleanup;
+    }
+
+    if (CFGetTypeID(teamId) != CFStringGetTypeID() || CFGetTypeID(signingIdentifier) != CFStringGetTypeID())
+    {
+        goto cleanup;
+    }
+
+    if (cfstring_equals_cstring(teamId, expectedTeamId) == 0)
+    {
+        goto cleanup;
+    }
+
+    if (cfstring_equals_cstring(signingIdentifier, expectedSigningIdentifier) == 0)
+    {
+        goto cleanup;
+    }
+
+    result = 0;
+
+cleanup:
+    if (signingInfo != NULL)
+    {
+        CFRelease(signingInfo);
+    }
+
+    if (peerCode != NULL)
+    {
+        CFRelease(peerCode);
+    }
+
+    if (attributes != NULL)
+    {
+        CFRelease(attributes);
+    }
+
+    if (pidNumber != NULL)
+    {
+        CFRelease(pidNumber);
+    }
+
+    return result;
 }
 
 int xipc_send_data(xipc_t* ipc, const void* data, int len)
@@ -698,6 +839,17 @@ int accept_new_client(xipc_t* ipc)
         {
             client->fd = clientFd;
             set_nonBlocking(client->fd);
+
+            if (ipc->on_client_authorize != NULL && ipc->on_client_authorize(ipc, client) != 0)
+            {
+                if (ipc->on_client_rejected != NULL)
+                {
+                    ipc->on_client_rejected(ipc, client);
+                }
+
+                xipc_destroy(client);
+                return 0;
+            }
             
             if (ipc->next == NULL)
             {
@@ -717,6 +869,10 @@ int accept_new_client(xipc_t* ipc)
             
             if (ipc->on_client_connected)
                 ipc->on_client_connected(ipc, client);
+        }
+        else
+        {
+            close(clientFd);
         }
     }
     

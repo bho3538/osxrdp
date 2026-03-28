@@ -7,6 +7,9 @@
 #include "utils.h"
 #include "sessionmanager.h"
 
+static const char* kTrustedClientTeamId = "33X7M69J4B";
+static const char* kTrustedClientSigningIdentifier = "xrdp";
+
 SessionManagerServer::SessionManagerServer()
 : _cmdPipe(NULL)
 , _ioThreadStarted(0)
@@ -87,7 +90,7 @@ bool SessionManagerServer::CreateCommandPipeServer() {
         return false;
     }
     
-    if (xipc_create_server(cmdPipe, "/tmp/osxrdpsessionmanager", NULL, NULL) != 0) {
+    if (xipc_create_server(cmdPipe, "/tmp/osxrdpsessionmanager", NULL, NULL, OnClientAuthorize, OnClientRejected) != 0) {
         xipc_destroy(cmdPipe);
         dzlog_error("[SessionManagerServer]::CreateCommandPipeServer xipc_create_server failed.");
         return false;
@@ -225,6 +228,25 @@ int SessionManagerServer::OnMessageReceived(xipc_t* t, xipc_t* client, void* dat
     }
     
     xstream_free(cmd);
+    return 0;
+}
+
+int SessionManagerServer::OnClientAuthorize(xipc_t* t, xipc_t* client) {
+    (void)t;
+    return xipc_is_client_signed_by(client, kTrustedClientTeamId, kTrustedClientSigningIdentifier);
+}
+
+int SessionManagerServer::OnClientRejected(xipc_t* t, xipc_t* client) {
+    (void)t;
+
+    pid_t peerPid = 0;
+    if (xipc_get_peer_pid(client, &peerPid) == 0) {
+        dzlog_error("[SessionManagerServer::OnClientRejected] rejected unauthorized client pid=%d", (int)peerPid);
+    }
+    else {
+        dzlog_error("[SessionManagerServer::OnClientRejected] rejected unauthorized client");
+    }
+
     return 0;
 }
 
