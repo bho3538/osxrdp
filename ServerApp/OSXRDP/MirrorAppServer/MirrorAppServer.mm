@@ -7,6 +7,9 @@
 #include "osxrdp/packet.h"
 #include "utils.h"
 
+static const char* kTrustedClientTeamId = "33X7M69J4B";
+static const char* kTrustedClientSigningIdentifier = "xrdp";
+
 MirrorAppServer::MirrorAppServer()
 : _cmdPipe(NULL)
 , _ioThreadStarted(0)
@@ -100,7 +103,7 @@ bool MirrorAppServer::CreateCommandPipeServer() {
         return false;
     }
 
-    if (xipc_create_server(cmdPipe, server_path, OnClientConnected, OnClientDisconnected) != 0) {
+    if (xipc_create_server(cmdPipe, server_path, OnClientConnected, OnClientDisconnected, OnClientAuthorize, OnClientRejected) != 0) {
         xipc_destroy(cmdPipe);
         NSLog(@"[MirrorAppServer]::CreateCommandPipeServer xipc_create_server failed. serverName %s", server_path);
         return false;
@@ -192,6 +195,26 @@ int MirrorAppServer::OnClientConnected(xipc_t* t, xipc_t* client) {
 
         return 0;
     }
+}
+
+int MirrorAppServer::OnClientAuthorize(xipc_t* t, xipc_t* client) {
+    (void)t;
+    // 클라이언트가 유효한 서명을 가지고 있는지 확인. (악의적인 프로세스의 접속 방지)
+    return xipc_is_client_signed_by(client, kTrustedClientTeamId, kTrustedClientSigningIdentifier);
+}
+
+int MirrorAppServer::OnClientRejected(xipc_t* t, xipc_t* client) {
+    (void)t;
+
+    pid_t peerPid = 0;
+    if (xipc_get_peer_pid(client, &peerPid) == 0) {
+        NSLog(@"[MirrorAppServer::OnClientRejected] rejected unauthorized client pid=%d", (int)peerPid);
+    }
+    else {
+        NSLog(@"[MirrorAppServer::OnClientRejected] rejected unauthorized client");
+    }
+
+    return 0;
 }
 
 int MirrorAppServer::OnClientDisconnected(xipc_t* t, xipc_t* client) {

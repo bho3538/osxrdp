@@ -268,7 +268,12 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../../osxrdp_private/extern_lib/zlog/lib";
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
-				OTHER_LDFLAGS = "-lzlog";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lzlog",
+					"-framework",
+					Security,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.byungho.osxrdp.sessionmanager;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				USER_HEADER_SEARCH_PATHS = "$(SRCROOT)/../ScreenMirrorLib";
@@ -283,7 +288,12 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../../osxrdp_private/extern_lib/zlog/lib";
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
-				OTHER_LDFLAGS = "-lzlog";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-lzlog",
+					"-framework",
+					Security,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.byungho.osxrdp.sessionmanager;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				USER_HEADER_SEARCH_PATHS = "$(SRCROOT)/../ScreenMirrorLib";
