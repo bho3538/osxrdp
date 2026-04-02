@@ -22,12 +22,7 @@ osxrdp 는 macOS에서 rdp 서버를 사용할 수 있게 해주는 xrdp의 비�
 <h6><a href="Manual_ko.md">링크</h6>
 
 ## 제한 사항
-* osxrdp 는 아직 알파 버전 상태입니다. 오동작할 수 있으며, 상업적 용도로 사용하기 부적절합니다.
-
-## 알려진 이슈
-* Windows 11 에서 mstsc 를 사용하여 접속 시, 최초 접속 이후 mstsc 창을 최소화한 후 다시 열면 화질이 약간 떨어지는 경우가 있습니다.\
-  이 현상은 mstsc 의 '하드웨어 가속 디코딩' 을 비활성화하면 해결됩니다. (프레임이 저하될 수 있음)
-  <img width="1439" height="347" alt="image" src="https://github.com/user-attachments/assets/fc6a863a-09de-4156-a7db-b349cca3110b" />
+* osxrdp 는 아직 베타 버전 상태입니다. 오동작할 수 있으며, 상업적 용도로 사용하기 부적절합니다.
 
 ## 지원 OS
 macOS 12.4 이상\
