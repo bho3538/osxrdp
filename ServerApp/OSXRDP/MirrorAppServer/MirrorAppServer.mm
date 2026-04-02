@@ -199,8 +199,12 @@ int MirrorAppServer::OnClientConnected(xipc_t* t, xipc_t* client) {
 
 int MirrorAppServer::OnClientAuthorize(xipc_t* t, xipc_t* client) {
     (void)t;
+#if DEBUG
+    return 0;
+#else
     // 클라이언트가 유효한 서명을 가지고 있는지 확인. (악의적인 프로세스의 접속 방지)
     return xipc_is_client_signed_by(client, kTrustedClientTeamId, kTrustedClientSigningIdentifier);
+#endif
 }
 
 int MirrorAppServer::OnClientRejected(xipc_t* t, xipc_t* client) {

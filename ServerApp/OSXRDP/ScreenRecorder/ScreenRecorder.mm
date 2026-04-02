@@ -193,7 +193,7 @@ bool ScreenRecorder::ParseStartRecordParams(xstream_t* cmd, RecordStartParams* p
             params->framerate = 60;
         }
         else if (params->recordFormat == OSXRDP_RECORDFORMAT_NV12_PACKED) {
-            params->framerate = 45;
+            params->framerate = 60;
         }
         else {
             params->framerate = 30;
