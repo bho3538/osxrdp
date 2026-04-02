@@ -23,12 +23,7 @@ osxrdp is an unofficial module of xrdp to support rdp server in macOS.
 <h6><a href="Manual.md">Link</a></h6>
 
 ## Limitation
-* osxrdp is still in alpha version. It may contain numerous bugs and is not suitable for production use.
-
-## Known Issuses
-* Using mstsc on Windows 11, if you minimize the mstsc window and then reopen it, the image quality deteriorates slightly.\
-  This issue can be resolved by disabling 'Hardware Accelerated Decoding' in mstsc. (Frame rate may drop.)
-  <img width="1439" height="347" alt="image" src="https://github.com/user-attachments/assets/e6bf66cd-0caa-4259-8d5a-3410c440a2f6" />
+* osxrdp is still in beta version. It may contain numerous bugs and is not suitable for production use.
 
 ## Supported OS
 macOS 12.4 or higher version.\
