@@ -49,6 +49,7 @@ typedef struct _XRDP_EGFX_RESET_GRAPHICS_PDU {
 } __attribute__((packed)) XRDP_EGFX_RESET_GRAPHICS_PDU;
 
 void PaintH264::Initialize(const struct mod* mod) {
+    /*
     XRDP_EGFX_RESET_GRAPHICS_PDU reset;
     reset.header.cmdId = 0x0E;
     reset.header.flags = 0;
@@ -89,13 +90,12 @@ void PaintH264::Initialize(const struct mod* mod) {
     output.outputY = 0;
     
     mod->server_egfx_cmd((struct mod*)mod, (char*)&output, sizeof(output), NULL, 0);
+     */
     
     _drawCmd = xstream_create(8192);
 }
 
 void PaintH264::Release() {
-    // 어떤 명령을 보내야하나?
-    
     if (_drawCmd != NULL) {
         xstream_free(_drawCmd);
         _drawCmd = NULL;

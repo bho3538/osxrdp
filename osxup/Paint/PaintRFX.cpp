@@ -65,6 +65,7 @@ clamp_int(int value, int min_value, int max_value) {
 }
 
 void PaintRFX::Initialize(const struct mod* mod) {
+    /*
     XRDP_EGFX_RESET_GRAPHICS_PDU reset;
     reset.header.cmdId = 0x0E;
     reset.header.flags = 0;
@@ -103,7 +104,7 @@ void PaintRFX::Initialize(const struct mod* mod) {
     output.outputY = 0;
     
     mod->server_egfx_cmd((struct mod*)mod, (char*)&output, sizeof(output), NULL, 0);
-    
+    */
     _width = mod->width;
     _height = mod->height;
     _tileCols = (_width + 63) / 64;

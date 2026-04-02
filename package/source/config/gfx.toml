@@ -56,17 +56,17 @@ vbv_buffer_size = 50
 [OpenH264.default]
 # NOTE: OpenH264 specifies bitrate in unit of bps, not kbps.
 EnableFrameSkip = false
-TargetBitrate = 18_000_000
+TargetBitrate = 19_000_000
 MaxBitrate =    0          # unspecified
-MaxFrameRate = 45.0
+MaxFrameRate = 60.0
 
 [OpenH264.lan]
 # inherits default
 
 [OpenH264.wan]
 EnableFrameSkip = false
-TargetBitrate = 14_000_000
-MaxBitrate =    16_000_000
+TargetBitrate = 15_000_000
+MaxBitrate =    17_000_000
 
 [OpenH264.broadband_high]
 EnableFrameSkip = false

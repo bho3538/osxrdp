@@ -233,7 +233,11 @@ int SessionManagerServer::OnMessageReceived(xipc_t* t, xipc_t* client, void* dat
 
 int SessionManagerServer::OnClientAuthorize(xipc_t* t, xipc_t* client) {
     (void)t;
+#if DEBUG
+    return 0;
+#else
     return xipc_is_client_signed_by(client, kTrustedClientTeamId, kTrustedClientSigningIdentifier);
+#endif
 }
 
 int SessionManagerServer::OnClientRejected(xipc_t* t, xipc_t* client) {
