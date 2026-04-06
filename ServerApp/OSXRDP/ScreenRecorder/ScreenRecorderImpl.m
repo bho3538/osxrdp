@@ -53,7 +53,7 @@
     
     if (recordFormat == OSXRDP_RECORDFORMAT_NV12_PACKED || recordFormat == OSXRDP_RECORDFORMAT_NV12_ALIGNED) {
         // h264 사용 시
-        _recordConfig.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange;
+        _recordConfig.pixelFormat = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange;
     }
     else if (recordFormat == OSXRDP_RECORDFORMAT_RFX) {
         // rfx 사용 시 (ScreenCaptureKit 호환성을 위해 BGRA 캡처 후 상위에서 YUV444 변환)

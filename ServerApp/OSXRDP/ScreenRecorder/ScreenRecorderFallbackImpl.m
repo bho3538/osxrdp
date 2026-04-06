@@ -72,7 +72,7 @@
     
     int format = kCVPixelFormatType_32BGRA; // 일반 bitmap
     if (recordFormat == OSXRDP_RECORDFORMAT_NV12_PACKED || recordFormat == OSXRDP_RECORDFORMAT_NV12_ALIGNED) {
-        format = kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange; // h264
+        format = kCVPixelFormatType_420YpCbCr8BiPlanarFullRange; // h264
     }
     else if (recordFormat == OSXRDP_RECORDFORMAT_RFX) {
         format = kCVPixelFormatType_32BGRA; // rfx (BGRA 캡처 후 상위에서 YUV444 변환)
