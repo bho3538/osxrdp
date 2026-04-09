@@ -44,7 +44,7 @@
 
     _recordConfig = @{
         (__bridge NSString*)kCGDisplayStreamShowCursor : @NO,
-        (__bridge NSString*)kCGDisplayStreamQueueDepth : @2,
+        (__bridge NSString*)kCGDisplayStreamQueueDepth : @3,
         (__bridge NSString*)kCGDisplayStreamMinimumFrameTime : @(frameTime),
         (__bridge NSString*)kCGDisplayStreamDestinationRect : (__bridge_transfer NSDictionary*)destRectDict,
         (__bridge NSString*)kCGDisplayStreamPreserveAspectRatio : @NO,      // 비율 무시하고 녹화 (늘리기)

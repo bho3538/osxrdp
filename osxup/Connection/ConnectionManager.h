@@ -24,6 +24,7 @@ public:
     
     // ipc 메시지 펌프 및 연결 상태 확인
     void KeepAlive();
+    void GetWaitObjects(void* read_objs, int* rcount);
     
     // 마우스 입력 전달
     void SendMouseInput(int inputType, short x, short y);

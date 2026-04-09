@@ -424,6 +424,7 @@ bool ScreenRecorder::CreateRecordShm(int width, int height, int framerate) {
         return false;
     }
     
+    // todo : format 마다 정확한 크기 설정하기
     int rawDataSize = width * height * 5 + (sizeof(size_t) * 2);
     
     char shm_name[512];
