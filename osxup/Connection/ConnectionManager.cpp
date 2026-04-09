@@ -10,6 +10,17 @@ static const char* OSXRDP_AGENT_NAME = "/tmp/osxrdp";
 
 static const int OSXRDP_RECONNECT_WAITCNT = 25;
 
+namespace {
+inline void AddWaitObject(void* read_objs, int* rcount, int fd) {
+    if (read_objs == NULL || rcount == NULL || fd < 0) {
+        return;
+    }
+
+    ((intptr_t*)read_objs)[*rcount] = (intptr_t)fd;
+    (*rcount)++;
+}
+}
+
 ConnectionManager::ConnectionManager() :
     _inited(false),
     _sessionIpc(NULL),
@@ -139,6 +150,22 @@ void ConnectionManager::KeepAlive() {
             _statusManager.SetRequestSession();
             _command.SendSessionRequestMsg(_sessionIpc, _mod->username, (int)strlen(_mod->username));
         }
+    }
+}
+
+void ConnectionManager::GetWaitObjects(void* read_objs, int* rcount) {
+    if (read_objs == NULL || rcount == NULL) {
+        return;
+    }
+
+    if (_agentIpc != NULL) {
+        AddWaitObject(read_objs, rcount, _agentIpc->fd);
+        AddWaitObject(read_objs, rcount, _agentIpc->wakeup_pipe[0]);
+    }
+
+    if (_sessionIpc != NULL) {
+        AddWaitObject(read_objs, rcount, _sessionIpc->fd);
+        AddWaitObject(read_objs, rcount, _sessionIpc->wakeup_pipe[0]);
     }
 }
 

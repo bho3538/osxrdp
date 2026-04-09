@@ -47,7 +47,7 @@
     _recordConfig = [[SCStreamConfiguration alloc] init];
     _recordConfig.width = width;
     _recordConfig.height = height;
-    _recordConfig.queueDepth = 2;
+    _recordConfig.queueDepth = 3;
     
     _recordConfig.colorSpaceName = kCGColorSpaceSRGB;
     

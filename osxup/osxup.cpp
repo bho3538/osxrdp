@@ -5,6 +5,7 @@
 #include "Connection/MultipleConnectionManager.h"
 
 #include <unistd.h>
+#include <stdint.h>
 
 #ifndef EXPORT_CC
 #define EXPORT_CC __attribute__((visibility("default")))
@@ -187,9 +188,9 @@ static int
 lib_mod_get_wait_objs(struct mod *mod, void *read_objs, int *rcount,
                       void *write_objs, int *wcount, int *timeout)
 {
-    mod->connectionManager->KeepAlive();
+    mod->connectionManager->GetWaitObjects(read_objs, rcount);
 
-    *timeout = 10;
+    *timeout = 100;
     
     return 0;
 }
@@ -200,6 +201,7 @@ static int
 lib_mod_check_wait_objs(struct mod *mod)
 {
     // main loop
+    mod->connectionManager->KeepAlive();
     
     // 연결을 종료해야하는지 확인
     if (mod->connectionManager->NeedTerminate() == true) {
