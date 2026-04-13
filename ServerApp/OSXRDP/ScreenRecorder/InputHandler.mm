@@ -1,11 +1,12 @@
 #include "InputHandler.h"
 
 #include "osxrdp/packet.h"
+#import <AppKit/AppKit.h>
 #include <stdlib.h>
 #include <sys/time.h>
 #include <Carbon/Carbon.h>
 
-#define _IME_SWITCH_CODE 56
+#define _IME_SWITCH_CODE kVK_RightOption
 
 static const CGKeyCode keymap[] = {
     /* 0x00 */ kVK_ANSI_A,                      // Placeholder (No key)
@@ -99,6 +100,122 @@ static const CGKeyCode keymap[] = {
     /* 0x58 */ kVK_F12,
     /* 0x59 */ kVK_ANSI_KeypadEquals, // Keypad =
 };
+
+NSString* CopyInputSourceIdentifier(TISInputSourceRef source) {
+    if (source == nullptr) {
+        return nil;
+    }
+
+    CFTypeRef value = TISGetInputSourceProperty(source, kTISPropertyInputSourceID);
+    if (value == nullptr || CFGetTypeID(value) != CFStringGetTypeID()) {
+        return nil;
+    }
+
+    return [(__bridge NSString*)value copy];
+}
+
+bool SwitchUsingCurrentTextInputContext() {
+    NSTextInputContext* context = NSTextInputContext.currentInputContext;
+    if (context == nil) {
+        return false;
+    }
+
+    NSArray<NSTextInputSourceIdentifier>* sourceIds = context.keyboardInputSources;
+    if (sourceIds.count < 2) {
+        return false;
+    }
+
+    NSTextInputSourceIdentifier currentId = context.selectedKeyboardInputSource;
+    NSUInteger currentIndex = NSNotFound;
+    if (currentId != nil) {
+        currentIndex = [sourceIds indexOfObject:currentId];
+    }
+
+    NSUInteger nextIndex = (currentIndex == NSNotFound) ? 0 : ((currentIndex + 1) % sourceIds.count);
+    NSTextInputSourceIdentifier nextId = sourceIds[nextIndex];
+    if (nextId == nil || [nextId isEqualToString:currentId]) {
+        return false;
+    }
+
+    // Hangul IME가 조합 중이면 메뉴바 상태와 실제 입력 상태가 어긋날 수 있어 조합 상태를 먼저 비운다.
+    [context discardMarkedText];
+    context.selectedKeyboardInputSource = nextId;
+    return true;
+}
+
+void SwitchUsingTextInputSourceServices() {
+    const void* keys[] = {
+        kTISPropertyInputSourceCategory,
+        kTISPropertyInputSourceIsSelectCapable
+    };
+    const void* values[] = {
+        kTISCategoryKeyboardInputSource,
+        kCFBooleanTrue
+    };
+
+    CFDictionaryRef filter = CFDictionaryCreate(
+        kCFAllocatorDefault,
+        keys,
+        values,
+        2,
+        &kCFTypeDictionaryKeyCallBacks,
+        &kCFTypeDictionaryValueCallBacks
+    );
+
+    CFArrayRef sourceList = TISCreateInputSourceList(filter, false);
+    if (filter != nullptr) {
+        CFRelease(filter);
+    }
+
+    if (sourceList == nullptr) {
+        printf("Error: Failed to get input source list.\n");
+        return;
+    }
+
+    const CFIndex count = CFArrayGetCount(sourceList);
+    if (count < 2) {
+        CFRelease(sourceList);
+        return;
+    }
+
+    TISInputSourceRef currentSource = TISCopyCurrentKeyboardInputSource();
+    NSString* currentId = CopyInputSourceIdentifier(currentSource);
+
+    CFIndex currentIndex = -1;
+    for (CFIndex i = 0; i < count; ++i) {
+        TISInputSourceRef source = (TISInputSourceRef)CFArrayGetValueAtIndex(sourceList, i);
+        NSString* sourceId = CopyInputSourceIdentifier(source);
+        if (sourceId != nil && currentId != nil && [sourceId isEqualToString:currentId]) {
+            currentIndex = i;
+            break;
+        }
+    }
+
+    const CFIndex nextIndex = (currentIndex < 0) ? 0 : ((currentIndex + 1) % count);
+    TISInputSourceRef nextSource = (TISInputSourceRef)CFArrayGetValueAtIndex(sourceList, nextIndex);
+    if (nextSource != nullptr) {
+        OSStatus status = TISSelectInputSource(nextSource);
+        if (status != noErr) {
+            printf("Failed to switch. Error: %d\n", (int)status);
+        }
+    }
+
+    if (currentSource != nullptr) {
+        CFRelease(currentSource);
+    }
+
+    CFRelease(sourceList);
+}
+
+void PerformInputSourceSwitch() {
+    @autoreleasepool {
+        if (SwitchUsingCurrentTextInputContext()) {
+            return;
+        }
+
+        SwitchUsingTextInputSourceServices();
+    }
+}
 
 InputHandler::InputHandler() :
     _originalDisplayWidth(0),
@@ -270,14 +387,7 @@ void InputHandler::HandleKeyboardInputEvent(xstream_t* cmd) {
     int inputType = xstream_readInt32(cmd);
     int keyCode = xstream_readInt32(cmd);
     int flags = xstream_readInt32(cmd);
-    
-    if (keyCode == _IME_SWITCH_CODE) {
-        if (inputType == XRDP_KEYBOARD_DOWN) {
-            SwitchIME();
-        }
-        
-        return;
-    }
+
     
     if (flags & 0x100) {
         // convert xrdp extended key code to macOS keycode
@@ -291,6 +401,15 @@ void InputHandler::HandleKeyboardInputEvent(xstream_t* cmd) {
         
         // convert xrdp key code to macOS keycode
         keyCode = keymap[keyCode];
+    }
+    
+    
+    if (keyCode == _IME_SWITCH_CODE) {
+        if (inputType == XRDP_KEYBOARD_DOWN) {
+            SwitchIME();
+        }
+        
+        return;
     }
         
     CGEventRef ev;
@@ -549,6 +668,7 @@ CGKeyCode InputHandler::MapExtendedKey(int scancode) {
         case 0x35: return kVK_ANSI_KeypadDivide;
         case 0x37: return kVK_F13; // PrintScreen
         case 0x38: return kVK_RightOption; // R Alt
+        case 0x72: return kVK_RightOption;
         case 0x47: return kVK_Home;
         case 0x48: return kVK_UpArrow;
         case 0x49: return kVK_PageUp;
@@ -604,75 +724,7 @@ bool InputHandler::UpdateKeyboardModifierState(CGKeyCode key, bool isDown) {
 }
 
 void InputHandler::SwitchIME() {
-    // 아래 코드는 모두 메인 스레드에서 실행되어야 한다.
-    dispatch_async(dispatch_get_main_queue(), ^{
-        
-        // 처음부터 사용 가능한 입력기들만 조회
-        const void *keys[] = {
-            kTISPropertyInputSourceCategory,
-            kTISPropertyInputSourceIsSelectCapable
-        };
-        const void *values[] = {
-            kTISCategoryKeyboardInputSource,
-            kCFBooleanTrue
-        };
-        
-        CFDictionaryRef filter = CFDictionaryCreate(
-            kCFAllocatorDefault,
-            keys,
-            values,
-            2,
-            &kCFTypeDictionaryKeyCallBacks,
-            &kCFTypeDictionaryValueCallBacks
-        );
-        
-        CFArrayRef sourceList = TISCreateInputSourceList(filter, false);
-        if (filter) {
-            CFRelease(filter);
-        }
-        
-        if (sourceList == NULL) {
-            printf("Error: Failed to get input source list.\n");
-            return;
-        }
-        
-        TISInputSourceRef currentSource = TISCopyCurrentKeyboardInputSource();
-        if (currentSource == NULL) {
-            CFRelease(sourceList);
-            printf("Error: Failed to get current input source.\n");
-            return;
-        }
-        
-        CFIndex count = CFArrayGetCount(sourceList);
-        CFIndex currentIndex = -1;
-        
-        for (CFIndex i = 0; i < count; i++) {
-            TISInputSourceRef source = (TISInputSourceRef)CFArrayGetValueAtIndex(sourceList, i);
-            if (CFEqual(source, currentSource)) {
-                currentIndex = i;
-                break;
-            }
-        }
-        
-        if (currentIndex == -1) {
-            currentIndex = count - 1; // 못 찾으면 마지막에서 시작하도록 설정
-        }
-        
-        // 유효한 다음 입력 소스를 찾기
-        CFIndex nextIndex = (currentIndex + 1) % count;
-        TISInputSourceRef nextSource = (TISInputSourceRef)CFArrayGetValueAtIndex(sourceList, nextIndex);
-        
-        if (nextSource) {
-            OSStatus status = TISSelectInputSource(nextSource);
-            if (status != noErr) {
-                printf("Failed to switch. Error: %d\n", (int)status);
-            }
-        }
-        else {
-            printf("No valid next input source found.\n");
-        }
-        
-        CFRelease(currentSource);
-        CFRelease(sourceList);
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        PerformInputSourceSwitch();
     });
 }

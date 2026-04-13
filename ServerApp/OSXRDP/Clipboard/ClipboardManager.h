@@ -25,6 +25,8 @@ private:
     int _clipDataBufferCurrentLen;
 
     PendingClipType _pendingClipType;
+    int _pendingTextFormatId;
+    int _pendingTextRetryCount;
     xipc_t* _client;
     int _lastChangeCount;
 
@@ -36,7 +38,7 @@ private:
     void ResetChannelBuffer();
     bool AssembleChannelData(int channelFlags, int totalLen, const void* data, int dataLen, const void** completeData, int* completeLen);
     void UpdateRemoteClipboardContext(xipc_t* client);
-    static int GetRequestedFormatPriority(PendingClipType clipType);
+    static int GetRequestedFormatPriority(PendingClipType clipType, int formatId);
 
     void HandleClipData(xipc_t* client, const void* data, int dataLen);
     void HandleFormatList(xipc_t* client, xstream_t* clipStream, int msgFlags, int msgLen);
@@ -55,7 +57,7 @@ private:
     void SendFormatList(xipc_t* client);
     void SendDataRequest(xipc_t* client, int formatId);
     void SendDataResponse(xipc_t* client, const void* data, int dataLen);
-    void SendDataResponseText(xipc_t* client, const char* utf8Text, int utf8Len);
+    void SendDataResponseText(xipc_t* client, const char* utf8Text, int utf8Len, int formatId);
     void SendDataResponseFailed(xipc_t* client);
     void SendChannelData(xipc_t* client, const void* data, int dataLen);
     void SendChannelDataParts(xipc_t* client, const void* header, int headerLen, const void* data, int dataLen, const void* footer, int footerLen);
@@ -63,8 +65,8 @@ private:
     bool GetPasteboardText(char** utf8Text, int* utf8Len, int* changeCount);
     bool GetPasteboardRtf(char** rtfData, int* rtfLen);
     bool GetPasteboardImage(char** dibData, int* dibLen);
-    bool BuildWindowsUnicodeText(const char* utf8Text, int utf8Len, char** outData, int* outDataLen);
-    bool SetTextToPasteboard(const void* data, int dataLen);
+    bool BuildWindowsText(const char* utf8Text, int utf8Len, int formatId, char** outData, int* outDataLen);
+    bool SetTextToPasteboard(const void* data, int dataLen, int formatId);
     bool SetRtfToPasteboard(const void* data, int dataLen);
     bool SetImageToPasteboard(const void* data, int dataLen);
 };
