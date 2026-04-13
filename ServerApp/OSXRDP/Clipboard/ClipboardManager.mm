@@ -273,6 +273,8 @@ ClipboardManager::ClipboardManager()
 , _clipDataBufferSize(0)
 , _clipDataBufferCurrentLen(0)
 , _pendingClipType(PendingClipType_None)
+, _pendingTextFormatId(0)
+, _pendingTextRetryCount(0)
 , _monitorThreadRunning(0)
 , _monitorStopRequested(0)
 , _client(NULL)
@@ -290,14 +292,17 @@ ClipboardManager::ClipboardManager()
     }
 }
 
-int ClipboardManager::GetRequestedFormatPriority(PendingClipType clipType) {
+int ClipboardManager::GetRequestedFormatPriority(PendingClipType clipType, int formatId) {
     switch (clipType) {
         case PendingClipType_RichText:
-            return 3;
+            return 40;
         case PendingClipType_Image:
-            return 2;
+            return 30;
         case PendingClipType_Text:
-            return 1;
+            if (formatId == CF_UNICODETEXT) {
+                return 20;
+            }
+            return 0;
         default:
             break;
     }
@@ -489,9 +494,13 @@ void ClipboardManager::HandleFormatList(xipc_t* client, xstream_t* clipStream, i
     SendFormatAck(client, true);
 
     _pendingClipType = clipType;
+    _pendingTextFormatId = (clipType == PendingClipType_Text) ? formatId : 0;
+    _pendingTextRetryCount = 0;
 
     if (formatId == 0 || clipType == PendingClipType_None) {
         _pendingClipType = PendingClipType_None;
+        _pendingTextFormatId = 0;
+        _pendingTextRetryCount = 0;
         return;
     }
 
@@ -535,9 +544,7 @@ void ClipboardManager::HandleDataRequest(xipc_t* client, xstream_t* clipStream, 
         return;
     }
 
-    if (requestedFormatId == CF_UNICODETEXT ||
-        requestedFormatId == CF_TEXT ||
-        requestedFormatId == CF_OEMTEXT) {
+    if (requestedFormatId == CF_UNICODETEXT) {
         char* utf8Text = NULL;
         int utf8Len = 0;
         int changeCount = 0;
@@ -547,8 +554,13 @@ void ClipboardManager::HandleDataRequest(xipc_t* client, xstream_t* clipStream, 
             return;
         }
 
-        SendDataResponseText(client, utf8Text, utf8Len);
+        SendDataResponseText(client, utf8Text, utf8Len, requestedFormatId);
         free(utf8Text);
+        return;
+    }
+
+    if (requestedFormatId == CF_TEXT || requestedFormatId == CF_OEMTEXT) {
+        SendDataResponseFailed(client);
         return;
     }
 
@@ -561,18 +573,30 @@ void ClipboardManager::HandleDataResponse(xstream_t* clipStream, int msgFlags, i
     }
 
     if ((msgFlags & CB_RESPONSE_FAIL) != 0 || (msgFlags & CB_RESPONSE_OK) == 0) {
+        if (_pendingClipType == PendingClipType_Text &&
+            _pendingTextFormatId == CF_UNICODETEXT &&
+            _pendingTextRetryCount == 0 &&
+            _client != NULL) {
+            _pendingTextRetryCount = 1;
+            SendDataRequest(_client, CF_UNICODETEXT);
+            return;
+        }
         _pendingClipType = PendingClipType_None;
+        _pendingTextFormatId = 0;
+        _pendingTextRetryCount = 0;
         return;
     }
 
     const void* data = xstream_readData(clipStream, msgLen);
     if (data == NULL && msgLen > 0) {
         _pendingClipType = PendingClipType_None;
+        _pendingTextFormatId = 0;
+        _pendingTextRetryCount = 0;
         return;
     }
 
     if (_pendingClipType == PendingClipType_Text) {
-        SetTextToPasteboard(data, msgLen);
+        SetTextToPasteboard(data, msgLen, _pendingTextFormatId);
     } else if (_pendingClipType == PendingClipType_RichText) {
         SetRtfToPasteboard(data, msgLen);
     } else if (_pendingClipType == PendingClipType_Image) {
@@ -580,6 +604,8 @@ void ClipboardManager::HandleDataResponse(xstream_t* clipStream, int msgFlags, i
     }
 
     _pendingClipType = PendingClipType_None;
+    _pendingTextFormatId = 0;
+    _pendingTextRetryCount = 0;
 }
 
 void ClipboardManager::FindRequestedFormat(int msgFlags, int msgLen, xstream_t* clipStream, int* formatId, PendingClipType* clipType) {
@@ -659,7 +685,7 @@ void ClipboardManager::FindRequestedFormatLongName(xstream_t* clipStream, int ms
             currentClipType = PendingClipType_RichText;
         }
 
-        int priority = GetRequestedFormatPriority((PendingClipType)currentClipType);
+        int priority = GetRequestedFormatPriority((PendingClipType)currentClipType, currentFormatId);
         if (priority > bestPriority) {
             bestPriority = priority;
             *formatId = currentFormatId;
@@ -699,7 +725,7 @@ void ClipboardManager::FindRequestedFormatShortName(xstream_t* clipStream, int m
             currentClipType = PendingClipType_RichText;
         }
 
-        int priority = GetRequestedFormatPriority((PendingClipType)currentClipType);
+        int priority = GetRequestedFormatPriority((PendingClipType)currentClipType, currentFormatId);
         if (priority > bestPriority) {
             bestPriority = priority;
             *formatId = currentFormatId;
@@ -813,7 +839,7 @@ void ClipboardManager::SendFormatList(xipc_t* client) {
         dataLen += 4 + (((int)strlen(RTF_FORMAT_NAME) + 1) * 2);
     }
     if (hasText) {
-        dataLen += 18;
+        dataLen += 6;
     }
     if (hasImage) {
         dataLen += 6;
@@ -835,10 +861,6 @@ void ClipboardManager::SendFormatList(xipc_t* client) {
 
     if (hasText) {
         xstream_writeInt32(clipStream, CF_UNICODETEXT);
-        WriteFormatName(clipStream, NULL);
-        xstream_writeInt32(clipStream, CF_TEXT);
-        WriteFormatName(clipStream, NULL);
-        xstream_writeInt32(clipStream, CF_OEMTEXT);
         WriteFormatName(clipStream, NULL);
     }
 
@@ -906,7 +928,7 @@ void ClipboardManager::SendDataResponse(xipc_t* client, const void* data, int da
     xstream_free(headerStream);
 }
 
-void ClipboardManager::SendDataResponseText(xipc_t* client, const char* utf8Text, int utf8Len) {
+void ClipboardManager::SendDataResponseText(xipc_t* client, const char* utf8Text, int utf8Len, int formatId) {
     if (utf8Text == NULL || utf8Len < 0) {
         SendDataResponseFailed(client);
         return;
@@ -914,7 +936,7 @@ void ClipboardManager::SendDataResponseText(xipc_t* client, const char* utf8Text
 
     char* textData = NULL;
     int textDataLen = 0;
-    if (BuildWindowsUnicodeText(utf8Text, utf8Len, &textData, &textDataLen) == false || textData == NULL) {
+    if (BuildWindowsText(utf8Text, utf8Len, formatId, &textData, &textDataLen) == false || textData == NULL) {
         SendDataResponseFailed(client);
         return;
     }
@@ -1139,8 +1161,12 @@ bool ClipboardManager::GetPasteboardImage(char** dibData, int* dibLen) {
     return BuildDibFromImage(image, dibData, dibLen);
 }
 
-bool ClipboardManager::BuildWindowsUnicodeText(const char* utf8Text, int utf8Len, char** outData, int* outDataLen) {
+bool ClipboardManager::BuildWindowsText(const char* utf8Text, int utf8Len, int formatId, char** outData, int* outDataLen) {
     if (utf8Text == NULL || utf8Len < 0 || outData == NULL || outDataLen == NULL) {
+        return false;
+    }
+
+    if (formatId != CF_UNICODETEXT) {
         return false;
     }
 
@@ -1188,16 +1214,24 @@ bool ClipboardManager::BuildWindowsUnicodeText(const char* utf8Text, int utf8Len
     return true;
 }
 
-bool ClipboardManager::SetTextToPasteboard(const void* data, int dataLen) {
-    if (data == NULL && dataLen > 0) {
+bool ClipboardManager::SetTextToPasteboard(const void* data, int dataLen, int formatId) {
+    if ((data == NULL && dataLen > 0) || dataLen < 0) {
         return false;
     }
 
-    int textLen = dataLen;
+    if (formatId != CF_UNICODETEXT) {
+        return false;
+    }
+
+    int textLen = 0;
     const unsigned char* bytes = (const unsigned char*)data;
 
-    while (textLen >= 2 && bytes[textLen - 1] == 0 && bytes[textLen - 2] == 0) {
-        textLen -= 2;
+    while (textLen + 1 < dataLen) {
+        if (bytes[textLen] == 0 && bytes[textLen + 1] == 0) {
+            break;
+        }
+
+        textLen += 2;
     }
 
     NSData* textData = [NSData dataWithBytes:data length:textLen];
