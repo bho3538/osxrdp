@@ -5,7 +5,7 @@
 #include <unistd.h>
 
 // 디스플레이 복원 최대 wait time
-static int kRestoreVerifyTimeoutMs = 2000;
+static int kRestoreVerifyTimeoutMs = 3500;
 
 VirtualMonitor::VirtualMonitor() :
     _virtualDisplay(nil),
@@ -93,6 +93,9 @@ int VirtualMonitor::Create(int width, int height) {
     
     // 다른 모니터 비활성화
     DisableOtherMonitors();
+    
+    // hack (for old macOS)
+    sleep(2);
     
     // 가상 디스플레이의 해상도 설정
     // 가끔 해상도 설정 후 다른 모니터를 비활성화하면 설정이 풀리는 경우가 있음. 따라서 순서를 이와 같이 수정
