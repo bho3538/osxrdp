@@ -198,6 +198,15 @@ void SwitchUsingTextInputSourceServices() {
         if (status != noErr) {
             printf("Failed to switch. Error: %d\n", (int)status);
         }
+        else {
+            // TISSelectInputSource는 메뉴바만 갱신하고 포그라운드 앱의 입력 컨텍스트를
+            // 활성화하지 않을 수 있다. flags-changed 이벤트를 보내 재동기화를 유도한다.
+            CGEventRef ev = CGEventCreate(NULL);
+            CGEventSetType(ev, kCGEventFlagsChanged);
+            CGEventSetFlags(ev, (CGEventFlags)0);
+            CGEventPost(kCGSessionEventTap, ev);
+            CFRelease(ev);
+        }
     }
 
     if (currentSource != nullptr) {
