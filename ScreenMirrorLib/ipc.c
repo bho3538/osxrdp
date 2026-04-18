@@ -106,6 +106,9 @@ xipc_t* xipc_ctx_create(xipc_data_callback on_data, void* userData)
     }
     
     memset(ipc, 0x00, sizeof(xipc_t));
+    ipc->fd = -1;
+    ipc->wakeup_pipe[0] = -1;
+    ipc->wakeup_pipe[1] = -1;
     
     ipc->on_data = on_data;
     pthread_mutex_init(&ipc->lock, NULL);
@@ -132,9 +135,23 @@ void xipc_destroy(xipc_t* ipc)
         return;
     }
     
-    close(ipc->fd);
-    close(ipc->wakeup_pipe[0]);
-    close(ipc->wakeup_pipe[1]);
+    if (ipc->fd >= 0)
+    {
+        close(ipc->fd);
+        ipc->fd = -1;
+    }
+
+    if (ipc->wakeup_pipe[0] >= 0)
+    {
+        close(ipc->wakeup_pipe[0]);
+        ipc->wakeup_pipe[0] = -1;
+    }
+
+    if (ipc->wakeup_pipe[1] >= 0)
+    {
+        close(ipc->wakeup_pipe[1]);
+        ipc->wakeup_pipe[1] = -1;
+    }
 
     pthread_mutex_destroy(&ipc->lock);
     
@@ -183,7 +200,7 @@ int xipc_create_server(xipc_t* ipc, const char* path, xipc_client_onconnected on
     }
         
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd <= 0)
+    if (fd < 0)
     {
         return errno;
     }
@@ -230,7 +247,7 @@ int xipc_connect_server(xipc_t* ipc, const char* path)
     }
     
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd <= 0)
+    if (fd < 0)
     {
         return errno;
     }

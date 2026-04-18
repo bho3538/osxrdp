@@ -141,12 +141,14 @@ void PaintManager::ReleaseResources() {
     // close shm
     if (_recordShm != NULL) {
         xshm_close(_recordShm);
+        xshm_destroy(_recordShm);
         
         _recordShm = NULL;
     }
     
     if (_cursorShm != NULL) {
         xshm_close(_cursorShm);
+        xshm_destroy(_cursorShm);
         
         _cursorShm = NULL;
     }
