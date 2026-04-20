@@ -56,7 +56,7 @@ private:
     CGKeyCode MapExtendedKey(int scancode);
     bool UpdateKeyboardModifierState(CGKeyCode key, bool isDown);
     
-    void SwitchIME();
+    void SwitchIME(bool keyDown);
 };
 
 #endif /* InputHandler_hpp */
