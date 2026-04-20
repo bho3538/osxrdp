@@ -101,130 +101,6 @@ static const CGKeyCode keymap[] = {
     /* 0x59 */ kVK_ANSI_KeypadEquals, // Keypad =
 };
 
-NSString* CopyInputSourceIdentifier(TISInputSourceRef source) {
-    if (source == nullptr) {
-        return nil;
-    }
-
-    CFTypeRef value = TISGetInputSourceProperty(source, kTISPropertyInputSourceID);
-    if (value == nullptr || CFGetTypeID(value) != CFStringGetTypeID()) {
-        return nil;
-    }
-
-    return [(__bridge NSString*)value copy];
-}
-
-bool SwitchUsingCurrentTextInputContext() {
-    NSTextInputContext* context = NSTextInputContext.currentInputContext;
-    if (context == nil) {
-        return false;
-    }
-
-    NSArray<NSTextInputSourceIdentifier>* sourceIds = context.keyboardInputSources;
-    if (sourceIds.count < 2) {
-        return false;
-    }
-
-    NSTextInputSourceIdentifier currentId = context.selectedKeyboardInputSource;
-    NSUInteger currentIndex = NSNotFound;
-    if (currentId != nil) {
-        currentIndex = [sourceIds indexOfObject:currentId];
-    }
-
-    NSUInteger nextIndex = (currentIndex == NSNotFound) ? 0 : ((currentIndex + 1) % sourceIds.count);
-    NSTextInputSourceIdentifier nextId = sourceIds[nextIndex];
-    if (nextId == nil || [nextId isEqualToString:currentId]) {
-        return false;
-    }
-
-    // Hangul IME가 조합 중이면 메뉴바 상태와 실제 입력 상태가 어긋날 수 있어 조합 상태를 먼저 비운다.
-    [context discardMarkedText];
-    context.selectedKeyboardInputSource = nextId;
-    return true;
-}
-
-void SwitchUsingTextInputSourceServices() {
-    const void* keys[] = {
-        kTISPropertyInputSourceCategory,
-        kTISPropertyInputSourceIsSelectCapable
-    };
-    const void* values[] = {
-        kTISCategoryKeyboardInputSource,
-        kCFBooleanTrue
-    };
-
-    CFDictionaryRef filter = CFDictionaryCreate(
-        kCFAllocatorDefault,
-        keys,
-        values,
-        2,
-        &kCFTypeDictionaryKeyCallBacks,
-        &kCFTypeDictionaryValueCallBacks
-    );
-
-    CFArrayRef sourceList = TISCreateInputSourceList(filter, false);
-    if (filter != nullptr) {
-        CFRelease(filter);
-    }
-
-    if (sourceList == nullptr) {
-        printf("Error: Failed to get input source list.\n");
-        return;
-    }
-
-    const CFIndex count = CFArrayGetCount(sourceList);
-    if (count < 2) {
-        CFRelease(sourceList);
-        return;
-    }
-
-    TISInputSourceRef currentSource = TISCopyCurrentKeyboardInputSource();
-    NSString* currentId = CopyInputSourceIdentifier(currentSource);
-
-    CFIndex currentIndex = -1;
-    for (CFIndex i = 0; i < count; ++i) {
-        TISInputSourceRef source = (TISInputSourceRef)CFArrayGetValueAtIndex(sourceList, i);
-        NSString* sourceId = CopyInputSourceIdentifier(source);
-        if (sourceId != nil && currentId != nil && [sourceId isEqualToString:currentId]) {
-            currentIndex = i;
-            break;
-        }
-    }
-
-    const CFIndex nextIndex = (currentIndex < 0) ? 0 : ((currentIndex + 1) % count);
-    TISInputSourceRef nextSource = (TISInputSourceRef)CFArrayGetValueAtIndex(sourceList, nextIndex);
-    if (nextSource != nullptr) {
-        OSStatus status = TISSelectInputSource(nextSource);
-        if (status != noErr) {
-            printf("Failed to switch. Error: %d\n", (int)status);
-        }
-        else {
-            // TISSelectInputSource는 메뉴바만 갱신하고 포그라운드 앱의 입력 컨텍스트를
-            // 활성화하지 않을 수 있다. flags-changed 이벤트를 보내 재동기화를 유도한다.
-            CGEventRef ev = CGEventCreate(NULL);
-            CGEventSetType(ev, kCGEventFlagsChanged);
-            CGEventSetFlags(ev, (CGEventFlags)0);
-            CGEventPost(kCGSessionEventTap, ev);
-            CFRelease(ev);
-        }
-    }
-
-    if (currentSource != nullptr) {
-        CFRelease(currentSource);
-    }
-
-    CFRelease(sourceList);
-}
-
-void PerformInputSourceSwitch() {
-    @autoreleasepool {
-        if (SwitchUsingCurrentTextInputContext()) {
-            return;
-        }
-
-        SwitchUsingTextInputSourceServices();
-    }
-}
 
 InputHandler::InputHandler() :
     _originalDisplayWidth(0),
@@ -414,10 +290,7 @@ void InputHandler::HandleKeyboardInputEvent(xstream_t* cmd) {
     
     
     if (keyCode == _IME_SWITCH_CODE) {
-        if (inputType == XRDP_KEYBOARD_DOWN) {
-            SwitchIME();
-        }
-        
+        SwitchIME(inputType == XRDP_KEYBOARD_DOWN);
         return;
     }
         
@@ -732,8 +605,30 @@ bool InputHandler::UpdateKeyboardModifierState(CGKeyCode key, bool isDown) {
     return true;
 }
 
-void InputHandler::SwitchIME() {
-    dispatch_sync(dispatch_get_main_queue(), ^{
-        PerformInputSourceSwitch();
-    });
+void InputHandler::SwitchIME(bool keyDown) {
+    CGEventRef ev;
+
+    // todo: 단축키를 바꾼 경우를 대응하기 (입력기 전환 키를 동적으로 읽어오기)
+    if (keyDown) {
+        ev = CGEventCreateKeyboardEvent(_eventRef, kVK_Control, true);
+        CGEventSetFlags(ev, kCGEventFlagMaskControl);
+        CGEventPost(kCGSessionEventTap, ev);
+        CFRelease(ev);
+        
+        ev = CGEventCreateKeyboardEvent(_eventRef, kVK_Space, true);
+        CGEventSetFlags(ev, kCGEventFlagMaskControl);
+        CGEventPost(kCGSessionEventTap, ev);
+        CFRelease(ev);
+    }
+    else {
+        ev = CGEventCreateKeyboardEvent(_eventRef, kVK_Space, false);
+        CGEventSetFlags(ev, 0);
+        CGEventPost(kCGSessionEventTap, ev);
+        CFRelease(ev);
+
+        ev = CGEventCreateKeyboardEvent(_eventRef, kVK_Control, false);
+        CGEventSetFlags(ev, 0);
+        CGEventPost(kCGSessionEventTap, ev);
+        CFRelease(ev);
+    }
 }
