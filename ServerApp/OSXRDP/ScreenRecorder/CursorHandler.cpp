@@ -133,7 +133,7 @@ bool CursorHandler::HandleCursorInfo(cursor_data_t* cursor)
 
     // 커서 이미지 크기
     cursor->cursorImgDataSize = cursor->width * cursor->height * 4;
-    
+        
     atomic_store_explicit(&cursor->updated, 1, memory_order_release);
     
     return true;
@@ -153,7 +153,7 @@ void CursorHandler::BuildSquarePointerBGRA(const char* src, int srcRowBytes, int
 {
     const int dstRowBytes = dstSize * 4;
 
-    memset(dstData, 0, dstRowBytes * dstSize);
+    memset(dstData, 0x00, dstRowBytes * dstSize);
 
     int copyW = srcWidth;
     int copyH = srcHeight;
