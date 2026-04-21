@@ -621,12 +621,12 @@ void InputHandler::SwitchIME(bool keyDown) {
         CFRelease(ev);
     }
     else {
-        ev = CGEventCreateKeyboardEvent(_eventRef, kVK_Space, false);
+        ev = CGEventCreateKeyboardEvent(_eventRef, kVK_Control, false);
         CGEventSetFlags(ev, 0);
         CGEventPost(kCGSessionEventTap, ev);
         CFRelease(ev);
-
-        ev = CGEventCreateKeyboardEvent(_eventRef, kVK_Control, false);
+        
+        ev = CGEventCreateKeyboardEvent(_eventRef, kVK_Space, false);
         CGEventSetFlags(ev, 0);
         CGEventPost(kCGSessionEventTap, ev);
         CFRelease(ev);
