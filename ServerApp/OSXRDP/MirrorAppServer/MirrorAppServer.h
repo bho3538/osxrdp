@@ -2,12 +2,12 @@
 #define MirrorAppServer_hpp
 
 #include "ipc.h"
-#include "../ScreenRecorder/ScreenRecorder.h"
+#include "../ScreenRecorder/ScreenRecorderManager.h"
 #include "../Clipboard/ClipboardManager.h"
 #include <pthread.h>
 
 struct MirrorAppClientCtx {
-    ScreenRecorder* ScreenRecorder; // currently only one.
+    ScreenRecorderManager* ScreenRecorder; // currently only one.
     ClipboardManager* Clipboard;
 };
 
@@ -64,7 +64,7 @@ private:
     static int OnMessageReceived(xipc_t* t, xipc_t* client, void* data, int len);
     
     // 기타
-    ScreenRecorder* CreateScreenRecorder();
+    ScreenRecorderManager* CreateScreenRecorder();
 };
 
 #endif /* MirrorAppServer_hpp */

@@ -5,7 +5,7 @@
     CGDisplayStreamRef _displayStream;
     NSDictionary* _recordConfig;
     dispatch_queue_t _recordQue;
-    on_record_data_fb _recordCb;
+    on_record_data _recordCb;
     on_record_cmd _recordCmdCb;
     void* _recordCbUserData;
     void* _recordCmdCbUserData;
@@ -30,7 +30,7 @@
             RecordHeight:(int)height
             RecordFramerate:(int)framerate
             RecordFormat:(int)recordFormat
-            RecordDataCallback:(on_record_data_fb)recordCb
+            RecordDataCallback:(on_record_data)recordCb
             RecordDataCallbackUserData:(void*)userData
             RecordCmdCallback:(on_record_cmd)recordCmdCb
             RecordCmdCallbackUserData:(void*)userData2 {

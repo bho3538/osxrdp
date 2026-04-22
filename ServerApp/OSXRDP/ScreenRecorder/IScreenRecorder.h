@@ -1,12 +1,21 @@
-#import "IScreenRecorder.h"
+//
+//  IScreenRecorder.h
+//  OSXRDP
+//
+//  Created by byungho on 4/22/26.
+//
+
+#ifndef IScreenRecorderImpl_h
+#define IScreenRecorderImpl_h
+
 #import <Foundation/Foundation.h>
-#import <ScreenCaptureKit/ScreenCaptureKit.h>
 
-NS_ASSUME_NONNULL_BEGIN
+typedef void (*on_record_data)(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData);
+typedef void (*on_record_cmd)(int cmd, void* userData);
 
+@protocol IScreenRecorder<NSObject>
 
-@interface ScreenRecorderImpl : NSObject<SCStreamOutput, SCStreamDelegate, IScreenRecorder>
-
+@required
 - (void)initializeWithDisplayId:(int)displayId
             RecordWidth:(int)width
             RecordHeight:(int)height
@@ -21,4 +30,5 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
-NS_ASSUME_NONNULL_END
+
+#endif /* IScreenRecorderImpl_h */
