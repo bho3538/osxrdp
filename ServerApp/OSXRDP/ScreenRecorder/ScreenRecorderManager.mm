@@ -8,10 +8,6 @@
 #import <CoreMedia/CoreMedia.h>
 #include "utils.h"
 
-
-#define _GET_DISPLAY_USING_INDEX(idx) (__bridge_transfer SCDisplay*)GetDisplay((idx))
-#define _GET_DISPLAY_USING_ID(id) (__bridge_transfer SCDisplay*)GetDisplayById((id))
-
 #define _ALIGN_DOWN_EVEN(v)   ((v) & ~1)
 #define _ALIGN_UP_EVEN(v)     (((v) + 1) & ~1)
 
@@ -275,11 +271,14 @@ bool ScreenRecorderManager::ResolveDisplayForRecorder(const RecordStartParams* p
     int displayId = -1;
     if (params->useVirtualMon != 0) {
         displayId = _virtualMonitor.Create(params->width, params->height);
+        
+        // 가상 디스플레이 생성 실패 (다른 모니터를 롤백)
         if (displayId == -1) {
             _virtualMonitor.RestoreOtherMonitors();
-            displayId = CGMainDisplayID();
         }
-
+    }
+    
+    if (displayId != -1) {
         // macOS 12 에서 가상 디스플레이의 width, height 가 1로 오는 증상이 발생...
         // 가상 디스플레이는 클라이언트의 해상도를 따라가므로 동일하게 설정
         
@@ -291,15 +290,17 @@ bool ScreenRecorderManager::ResolveDisplayForRecorder(const RecordStartParams* p
         _inputHandler.UpdateDisplayRes(params->width / div, params->height / div, params->width, params->height);
     }
     else {
+        // use main monitor
         displayId = CGMainDisplayID();
         CGRect rect = CGDisplayBounds(displayId);
+        
         _inputHandler.UpdateDisplayRes((int)rect.size.width, (int)rect.size.height, params->width, params->height);
     }
-    
+
     // hack
     DisplayUtils::WaitDisplayOnlineState(displayId, true, 10000);
     
-    NSLog(@"[testtest] displayid %d", displayId);
+    NSLog(@"[ScreenRecorderManager::ResolveDisplayForRecorder] displayid %d", displayId);
 
     *displayIdOut = displayId;
     return true;
@@ -389,7 +390,7 @@ void ScreenRecorderManager::DestroyCursorShm() {
 void ScreenRecorderManager::Stop() {
     // 화면 녹화를 먼저 정지
     if (_impl != NULL) {
-        id<IScreenRecorder> impl = (__bridge ScreenRecorderImpl*)_impl;
+        id<IScreenRecorder> impl = (__bridge id<IScreenRecorder>)_impl;
         if ([impl stop] == NO) {
             // 정지 실패 (간혹 빠르게 호출하면 이럼)
             sleep(1);
@@ -470,27 +471,10 @@ void ScreenRecorderManager::SendDisconnectMsgToClient() {
     }
 }
 
-void* ScreenRecorderManager::GetDisplay(int unused) {
-    __block SCDisplay* found = nil;
-    
-    dispatch_semaphore_t sema = dispatch_semaphore_create(0);
-    
-    // ????? macOS 12, 13, 14 모두 잠금화면에서 이것을 호출하면 hang 이 발생함.... 뭐지 --> 아마 이때 NSError 값이 있었던것 같음
-    [SCShareableContent getShareableContentWithCompletionHandler:^(SCShareableContent * _Nullable content, NSError * _Nullable error) {
-        found = content.displays.firstObject;
-        dispatch_semaphore_signal(sema);
-    }];
-
-    dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
-
-    return (__bridge_retained void*)found;
-}
-
-
 bool ScreenRecorderManager::AcquireFrameSlot(screenrecord_shm_t** recordInfoOut, screenrecord_frame** frameOut, char** dataOut, unsigned int* writePosOut) {
-    /*if (recorder == NULL || recorder->_recordShm == NULL || recorder->_recordShm->mem == NULL) {
+    if (_recordShm == NULL || _recordShm->mem == NULL) {
         return false;
-    }*/
+    }
 
     if (recordInfoOut == NULL || frameOut == NULL || dataOut == NULL || writePosOut == NULL) {
         return false;

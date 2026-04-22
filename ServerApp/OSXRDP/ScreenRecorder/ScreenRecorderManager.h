@@ -65,9 +65,6 @@ private:
     // 녹화에 사용할 디스플레이 조회
     bool ResolveDisplayForRecorder(const RecordStartParams* params, int* displayIdOut);
 
-    static void* GetDisplay(int unused);
-    static void* GetDisplayById(int unused);
-
     // 녹화 데이터 처리기
     static void HandleBGRA32RecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData);
     static void HandleBGRA32DirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data);

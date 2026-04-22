@@ -221,7 +221,7 @@ int SetDirtyAreaInfoFromSampleBuffer(CMSampleBufferRef sampleBuffer, CGRect* rec
     }
     
     int dirtyAreaCnt = (int)CFArrayGetCount(dirtyArr);
-    if (dirtyAreaCnt >= MAX_DIRTY_COUNT) return 0;
+    if (dirtyAreaCnt > MAX_DIRTY_COUNT) return 0;
     
     for (int i = 0; i < dirtyAreaCnt; i++) {
         CFTypeRef element = CFArrayGetValueAtIndex(dirtyArr, i);
