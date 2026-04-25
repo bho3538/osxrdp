@@ -122,11 +122,9 @@ void PaintRFX::Initialize(const struct mod* mod) {
     }
     
     _drawCmd = xstream_create(512 * 1024 * 2);
-    _tileMarks = (unsigned char*)malloc((size_t)_tileTotal);
-    _tileIndices = (int*)malloc(sizeof(int) * (size_t)_tileTotal);
     _tileRects = (TileRect*)malloc(sizeof(TileRect) * (size_t)_tileTotal);
-    
-    if (_drawCmd == NULL || _tileMarks == NULL || _tileIndices == NULL || _tileRects == NULL) {
+
+    if (_drawCmd == NULL || _tileRects == NULL) {
         Release();
         return;
     }
@@ -151,17 +149,7 @@ void PaintRFX::Release() {
         xstream_free(_drawCmd);
         _drawCmd = NULL;
     }
-    
-    if (_tileMarks != NULL) {
-        free(_tileMarks);
-        _tileMarks = NULL;
-    }
-    
-    if (_tileIndices != NULL) {
-        free(_tileIndices);
-        _tileIndices = NULL;
-    }
-    
+
     if (_tileRects != NULL) {
         free(_tileRects);
         _tileRects = NULL;
@@ -184,13 +172,36 @@ void PaintRFX::DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, c
     assert(frameInfo != NULL);
     assert(imgData != NULL);
     assert(_drawCmd != NULL);
-    assert(_tileMarks != NULL);
-    assert(_tileIndices != NULL);
     assert(_tileRects != NULL);
 
     if (mod->width != _width || mod->height != _height) {
         return;
     }
+
+    if (_tileDataSize == 0 || _tileTotal <= 0) {
+        return;
+    }
+
+    if (imgDataSize < sizeof(int)) {
+        return;
+    }
+
+    const unsigned char* slot = (const unsigned char*)imgData;
+    int slotTileCount = 0;
+    memcpy(&slotTileCount, slot, sizeof(int));
+
+    if (slotTileCount <= 0 || slotTileCount > _tileTotal) {
+        return;
+    }
+
+    // slot 크기 검증: header(int) + indices(int*n) + tileData(16384*n)
+    const size_t expected = sizeof(int) + sizeof(int) * (size_t)slotTileCount + (size_t)slotTileCount * OSXRDP_RFX_TILE_BYTES;
+    if (imgDataSize < expected) {
+        return;
+    }
+
+    const int* slotIndices = (const int*)(slot + sizeof(int));
+    const unsigned char* slotTileData = (const unsigned char*)(slotIndices + slotTileCount);
 
     xstream_resetPos(_drawCmd);
 
@@ -206,61 +217,25 @@ void PaintRFX::DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, c
     xstream_writeInt8(_drawCmd,  XR_PIXEL_FORMAT_XRGB_8888);        // pixel_format
     xstream_writeInt32(_drawCmd, 0);                                // flags
 
-    memset(_tileMarks, 0x00, (size_t)_tileTotal);
-
-    int tileCount = 0;
-    if (frameInfo->dirtyCount > 0 && frameInfo->dirtyCount < MAX_DIRTY_COUNT) {
-        for (int i = 0; i < frameInfo->dirtyCount; i++) {
-            int x0 = frameInfo->dirtys[i].x;
-            int y0 = frameInfo->dirtys[i].y;
-            int x1 = x0 + frameInfo->dirtys[i].width;
-            int y1 = y0 + frameInfo->dirtys[i].height;
-
-            x0 = clamp_int(x0, 0, _width);
-            y0 = clamp_int(y0, 0, _height);
-            x1 = clamp_int(x1, 0, _width);
-            y1 = clamp_int(y1, 0, _height);
-            if (x1 <= x0 || y1 <= y0) {
-                continue;
-            }
-
-            int tx0 = x0 / 64;
-            int ty0 = y0 / 64;
-            int tx1 = (x1 - 1) / 64;
-            int ty1 = (y1 - 1) / 64;
-            for (int ty = ty0; ty <= ty1; ty++) {
-                for (int tx = tx0; tx <= tx1; tx++) {
-                    _tileMarks[(size_t)ty * (size_t)_tileCols + (size_t)tx] = 1;
-                }
-            }
-        }
-
-        for (int i = 0; i < _tileTotal; i++) {
-            if (_tileMarks[(size_t)i] != 0) {
-                _tileIndices[tileCount++] = i;
-            }
-        }
-    }
-
-    if (tileCount <= 0) {
-        for (int i = 0; i < _tileTotal; i++) {
-            _tileIndices[tileCount++] = i;
-        }
-    }
-
     // RFX progressive 처리를 위해 정렬된 (64) dirty area 를 설정
-    xstream_writeInt16(_drawCmd, tileCount); // num_rects_d
-    for (int i = 0; i < tileCount; ++i) {
-        const TileRect* rect = &_tileRects[_tileIndices[i]];
+    // producer 가 보낸 slot indices 를 그대로 사용 — frameInfo->dirtys 는 RFX 경로에서는 참고하지 않는다.
+    xstream_writeInt16(_drawCmd, slotTileCount); // num_rects_d
+    for (int i = 0; i < slotTileCount; ++i) {
+        const int tileIdx = slotIndices[i];
+        if (tileIdx < 0 || tileIdx >= _tileTotal) {
+            return; // 손상된 slot
+        }
+        const TileRect* rect = &_tileRects[tileIdx];
         xstream_writeInt16(_drawCmd, rect->left);
         xstream_writeInt16(_drawCmd, rect->top);
         xstream_writeInt16(_drawCmd, rect->width);
         xstream_writeInt16(_drawCmd, rect->height);
     }
 
-    xstream_writeInt16(_drawCmd, tileCount); // num_rects_c
-    for (int i = 0; i < tileCount; ++i) {
-        const TileRect* rect = &_tileRects[_tileIndices[i]];
+    xstream_writeInt16(_drawCmd, slotTileCount); // num_rects_c
+    for (int i = 0; i < slotTileCount; ++i) {
+        const int tileIdx = slotIndices[i];
+        const TileRect* rect = &_tileRects[tileIdx];
         xstream_writeInt16(_drawCmd, rect->left);
         xstream_writeInt16(_drawCmd, rect->top);
         xstream_writeInt16(_drawCmd, rect->width);
@@ -274,28 +249,19 @@ void PaintRFX::DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, c
     int dataLen = (int)((char*)_drawCmd->data_current - (char*)_drawCmd->data_start);
     *(int*)((char*)_drawCmd->data_start + sizeof(int)) = dataLen;
 
-    // SHM 검증: Process 1에서 만든 데이터가 타일 전체 크기와 일치하는지 확인
-    if (imgDataSize < _tileDataSize || _tileDataSize == 0) {
-        return;
-    }
-
-    // xrdp 내부에서 해제(munmap/free)할 목적지 버퍼 할당
     void* mapped = mmap(NULL, _tileDataSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
     if (mapped == MAP_FAILED) {
         return;
     }
 
     unsigned char* dst = (unsigned char*)mapped;
-    const unsigned char* src = (const unsigned char*)imgData; // 1:1 매핑된 SHM 데이터
-    const size_t tileSize = 64 * 64 * 4; // 16KB (Y, U, V, A)
+    const size_t tileSize = 16384; // 64 x 64 x (Y + U + V + A)
 
-    // 🚀 압도적으로 단축된 메모리 복사 루프 (Zero-Copy 철학)
-    for (int i = 0; i < tileCount; ++i) {
-        const int tileIdx = _tileIndices[i];
-        const size_t offset = (size_t)tileIdx * tileSize;
-        
-        // SHM에서 이미 완성된 16KB 타일을 그대로 덮어쓰기
-        memcpy(dst + offset, src + offset, tileSize);
+    for (int i = 0; i < slotTileCount; ++i) {
+        const int tileIdx = slotIndices[i];
+        memcpy(dst + (size_t)tileIdx * tileSize,
+               slotTileData + (size_t)i * tileSize,
+               tileSize);
     }
 
     XRDP_EGFX_START_FRAME startCmd;

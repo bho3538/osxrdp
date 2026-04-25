@@ -9,7 +9,10 @@ public:
     void Initialize(const struct mod* mod) override;
     void Release() override;
     void DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, char* imgData, size_t imgDataSize, int frame_id) override;
-    
+
+    // RFX slot 은 "이번 프레임에서 변화된 타일"만 담는 partial-frame 포맷이다.
+    bool FrameIsSelfContained() const override { return false; }
+
 private:
     struct TileRect {
         short left;
@@ -19,8 +22,6 @@ private:
     };
 
     xstream_t* _drawCmd = NULL;
-    unsigned char* _tileMarks = NULL;
-    int* _tileIndices = NULL;
     TileRect* _tileRects = NULL;
 
     int _width = 0;

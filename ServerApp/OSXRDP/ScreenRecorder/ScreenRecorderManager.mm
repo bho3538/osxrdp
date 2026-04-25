@@ -26,109 +26,20 @@ inline void CopyRows(uint8_t* dst, const uint8_t* src, size_t rowBytes, size_t s
         dstRow += rowBytes;
     }
 }
-
-bool ConvertBGRA8888ToRFXPlanarTilesSHM(const uint8_t* bgraBase, size_t bgraStride, int width, int height, uint8_t* shmBase) {
-    if (bgraBase == NULL || shmBase == NULL || width <= 0 || height <= 0) {
-        return false;
-    }
-
-    static dispatch_once_t onceToken;
-    static vImage_ARGBToYpCbCr conversionInfo;
-    static bool hasConversionInfo = false;
-    
-    dispatch_once(&onceToken, ^{
-        const vImage_YpCbCrPixelRange pixelRange = { 16, 128, 235, 240, 255, 0, 255, 1 };
-        vImage_Error err = vImageConvert_ARGBToYpCbCr_GenerateConversion(
-            kvImage_ARGBToYpCbCrMatrix_ITU_R_709_2,
-            &pixelRange,
-            &conversionInfo,
-            kvImageARGB8888,
-            kvImage444CrYpCb8,
-            kvImageNoFlags
-        );
-        hasConversionInfo = (err == kvImageNoError);
-    });
-
-    if (!hasConversionInfo) return false;
-
-    const int tileCols = (width + 63) / 64;
-    const int tileRows = (height + 63) / 64;
-    const size_t tileShmSize = 64 * 64 * 4; // 16KB (Y, U, V, A 각각 4096바이트)
-
-    dispatch_apply(tileRows, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^(size_t ty) {
-        const uint8_t bgraPermuteMap[4] = { 3, 2, 1, 0 }; // BGRA -> ARGB 매핑용
-
-        for (int tx = 0; tx < tileCols; ++tx) {
-            const int left = tx * 64;
-            const int top = (int)ty * 64;
-            const int validWidth = (width - left < 64) ? (width - left) : 64;
-            const int validHeight = (height - top < 64) ? (height - top) : 64;
-
-            // 타일 index 구하기
-            const int tileIdx = (int)ty * tileCols + tx;
-            uint8_t* shmTileBase = shmBase + (tileIdx * tileShmSize);
-            
-            uint8_t* yPlane = shmTileBase;              // Offset 0
-            uint8_t* uPlane = shmTileBase + 4096;       // Offset 4096
-            uint8_t* vPlane = shmTileBase + 8192;       // Offset 8192
-            uint8_t* aPlane = shmTileBase + 12288;      // Offset 12288
-
-            // Alpha 채널은 일괄 0xFF (투명도 없음) 처리
-            memset(aPlane, 0xFF, 4096);
-
-            // 입력 원본 BGRA의 64x64 구역 지정
-            vImage_Buffer srcBuffer = {
-                (void*)(bgraBase + ((size_t)top * bgraStride) + ((size_t)left * 4)),
-                (vImagePixelCount)validHeight,
-                (vImagePixelCount)validWidth,
-                bgraStride
-            };
-
-            uint8_t tempPackedCrYpCb[64 * 64 * 3];
-            vImage_Buffer packedBuffer = {
-                tempPackedCrYpCb,
-                (vImagePixelCount)validHeight,
-                (vImagePixelCount)validWidth,
-                (size_t)validWidth * 3
-            };
-
-            // BGRA -> Packed CrYpCb (V-Y-U) 변환
-            vImageConvert_ARGB8888To444CrYpCb8(&srcBuffer, &packedBuffer, &conversionInfo, bgraPermuteMap, kvImageNoFlags);
-
-            // 변환된 Packed 데이터를 분리하여 SHM Planar 영역에 바로 쓰기
-            // tempPacked의 순서가 Cr(V), Yp(Y), Cb(U) 이므로, Red/Green/Blue 목적지에 맞게 맵핑
-            vImage_Buffer destV = { vPlane, (vImagePixelCount)validHeight, (vImagePixelCount)validWidth, 64 };
-            vImage_Buffer destY = { yPlane, (vImagePixelCount)validHeight, (vImagePixelCount)validWidth, 64 };
-            vImage_Buffer destU = { uPlane, (vImagePixelCount)validHeight, (vImagePixelCount)validWidth, 64 };
-
-            // Packed (V, Y, U) -> 분리된 Planar 타일 (SHM 다이렉트 쓰기)
-            vImageConvert_RGB888toPlanar8(&packedBuffer, &destV, &destY, &destU, kvImageNoFlags);
-
-            // 우측/하단 모서리 타일의 잉여 영역(Padding) 처리
-            if (validWidth < 64 || validHeight < 64) {
-                for (int py = 0; py < 64; ++py) {
-                    for (int px = 0; px < 64; ++px) {
-                        if (py >= validHeight || px >= validWidth) {
-                            const size_t p = (size_t)py * 64 + (size_t)px;
-                            yPlane[p] = 0;
-                            uPlane[p] = 128;
-                            vPlane[p] = 128;
-                        }
-                    }
-                }
-            }
-        }
-    });
-
-    return true;
-}
 }
 
 ScreenRecorderManager::ScreenRecorderManager(bool useLegacyRecorder) :
     _impl(NULL),
     _recordShm(NULL),
     _cursorShm(NULL),
-    _client(NULL)
+    _client(NULL),
+    _rfxCanonical(NULL),
+    _rfxCanonicalSize(0),
+    _rfxCanonicalWidth(0),
+    _rfxCanonicalHeight(0),
+    _rfxTileCols(0),
+    _rfxTileRows(0),
+    _rfxFullRedrawRequired(true)
 {
     id<IScreenRecorder> impl = nil;
     
@@ -144,11 +55,13 @@ ScreenRecorderManager::ScreenRecorderManager(bool useLegacyRecorder) :
 
 ScreenRecorderManager::~ScreenRecorderManager() {
     Stop();
-    
+
     if (_impl) {
         CFRelease(_impl);
         _impl = NULL;
     }
+
+    ReleaseRFXCanonical();
 }
 
 bool ScreenRecorderManager::StartRecord(xstream_t* cmd) {
@@ -259,6 +172,9 @@ bool ScreenRecorderManager::PrepareRecordResources(const RecordStartParams* para
         DestroyRecordShm();
         return false;
     }
+
+    // 세션 시작 시 canonical 은 반드시 무효화 (이전 세션 잔상 방지)
+    InvalidateRFXCanonical();
 
     return true;
 }
@@ -401,10 +317,12 @@ void ScreenRecorderManager::Stop() {
     }
     
     _virtualMonitor.Destroy();
-    
+
     // 공유 메모리 정리
     DestroyRecordShm();
     DestroyCursorShm();
+
+    ReleaseRFXCanonical();
 }
 
 void ScreenRecorderManager::HandleCommand(xipc_t* client, xstream_t* cmd) {
@@ -586,45 +504,6 @@ bool ScreenRecorderManager::CopyNV12AlignedFrame(void* imageBufferRef, char* scr
     return true;
 }
 
-bool ScreenRecorderManager::CopyYUV444Frame(void* imageBufferRef, char* screenrecord_data, int* widthOut, int* heightOut) {
-    if (imageBufferRef == NULL || screenrecord_data == NULL || widthOut == NULL || heightOut == NULL) {
-        return false;
-    }
-
-    CVImageBufferRef imageBuffer = (CVImageBufferRef)imageBufferRef;
-    size_t width = CVPixelBufferGetWidth(imageBuffer);
-    size_t height = CVPixelBufferGetHeight(imageBuffer);
-    if (width == 0 || height == 0) {
-        return false;
-    }
-
-    const OSType pixelFormat = CVPixelBufferGetPixelFormatType(imageBuffer);
-    if (pixelFormat != kCVPixelFormatType_32BGRA) {
-        return false;
-    }
-
-    uint8_t* srcBase = (uint8_t*)CVPixelBufferGetBaseAddress(imageBuffer);
-    size_t srcStride = CVPixelBufferGetBytesPerRow(imageBuffer);
-    if (srcBase == NULL) {
-        return false;
-    }
-
-    const size_t tileCols = (width + 63) / 64;
-    const size_t tileRows = (height + 63) / 64;
-    const size_t imgSize = (size_t)tileCols * (size_t)tileRows * 16384;
-    
-    memcpy(screenrecord_data, &imgSize, sizeof(size_t));
-
-    uint8_t* dst = (uint8_t*)screenrecord_data + sizeof(size_t);
-    if (ConvertBGRA8888ToRFXPlanarTilesSHM(srcBase, srcStride, (int)width, (int)height, dst) == false) {
-        return false;
-    }
-
-    *widthOut = (int)width;
-    *heightOut = (int)height;
-    return true;
-}
-
 bool ScreenRecorderManager::CopyBGRA32Frame(void* imageBufferRef, char* screenrecord_data, int* widthOut, int* heightOut) {
     if (imageBufferRef == NULL || screenrecord_data == NULL || widthOut == NULL || heightOut == NULL) {
         return false;
@@ -800,10 +679,21 @@ void ScreenRecorderManager::HandleRFXRecordData(void* pixelBuffer, const CGRect*
     char* screenrecord_data = NULL;
     unsigned int writePos = 0;
     if (recorder->AcquireFrameSlot(&recordInfo, &slot, &screenrecord_data, &writePos) == false) {
+        recorder->InvalidateRFXCanonical();
         return;
     }
 
-    HandleRFXDirtyArea(pixelBuffer, slot, dirtyRects, dirtyRectsCnt, screenrecord_data);
+    // osxup 가 full redraw 가 필요하다는 요청을 할 경우 이번 프레임은 강제로 full redraw 하도록 설정
+    int wantFull = atomic_exchange_explicit(&recordInfo->consumer_request_full, 0, memory_order_acquire);
+    if (wantFull != 0) {
+        recorder->InvalidateRFXCanonical();
+    }
+
+    if (recorder->HandleRFXDirtyArea(pixelBuffer, slot, dirtyRects, dirtyRectsCnt, screenrecord_data) == false) {
+        recorder->InvalidateRFXCanonical();
+        return;
+    }
+    
     recorder->CommitFrameSlot(recordInfo, writePos);
 }
 
@@ -817,14 +707,320 @@ void ScreenRecorderManager::HandleBGRA32DirtyArea(void* pixelBuffer, screenrecor
     PopulateDirtyRectsFromArray(dirtyRects, dirtyRectsCnt, width, height, current_frame);
 }
 
-void ScreenRecorderManager::HandleRFXDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data) {
-    int width = 0;
-    int height = 0;
-    if (CopyYUV444Frame(pixelBuffer, screenrecord_data, &width, &height) == false) {
-        return;
+bool ScreenRecorderManager::HandleRFXDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data) {
+    if (pixelBuffer == NULL || current_frame == NULL || screenrecord_data == NULL) {
+        return false;
     }
 
-    PopulateDirtyRectsFromArray(dirtyRects, dirtyRectsCnt, width, height, current_frame);
+    CVImageBufferRef imageBuffer = (CVImageBufferRef)pixelBuffer;
+    size_t width = CVPixelBufferGetWidth(imageBuffer);
+    size_t height = CVPixelBufferGetHeight(imageBuffer);
+    if (width == 0 || height == 0) {
+        return false;
+    }
+
+    if (CVPixelBufferGetPixelFormatType(imageBuffer) != kCVPixelFormatType_32BGRA) {
+        return false;
+    }
+
+    uint8_t* srcBase = (uint8_t*)CVPixelBufferGetBaseAddress(imageBuffer);
+    size_t srcStride = CVPixelBufferGetBytesPerRow(imageBuffer);
+    if (srcBase == NULL) {
+        return false;
+    }
+
+    if (EnsureRFXCanonical((int)width, (int)height) == false) {
+        return false;
+    }
+
+    // dirty rect 정보는 current_frame 에 계속 기록한다.
+    // (consumer 의 RFX 경로에서는 slot 안의 indices 를 사용하므로 이 dirtys 는 직접 쓰이지
+    //  않지만, 다른 포맷과의 일관성 / 디버그 편의를 위해 유지한다.)
+    PopulateDirtyRectsFromArray(dirtyRects, dirtyRectsCnt, (int)width, (int)height, current_frame);
+
+    const size_t tileCols  = _rfxTileCols;
+    const size_t tileRows  = _rfxTileRows;
+    const size_t tileTotal = tileCols * tileRows;
+    if (tileCols == 0 || tileRows == 0 || tileTotal == 0) {
+        return false;
+    }
+
+    // full redraw 가 필요한지 판별
+    bool doFullRedraw = _rfxFullRedrawRequired;
+    if (!doFullRedraw && current_frame->dirtyCount <= 0) {
+        doFullRedraw = true;
+    }
+
+    // dirty tile bitmap 구성
+    const size_t maskSize = (tileTotal + 7) / 8;
+    uint8_t  stackMask[2048];
+    uint8_t* mask = (maskSize <= sizeof(stackMask)) ? stackMask : (uint8_t*)malloc(maskSize);
+    if (mask == NULL) return false;
+
+    auto computeMaskFromDirtyRects = [&]() -> bool {
+        memset(mask, 0, maskSize);
+        bool any = false;
+        const int limitW = (int)width;
+        const int limitH = (int)height;
+        for (int i = 0; i < current_frame->dirtyCount && i < MAX_DIRTY_COUNT; ++i) {
+            const struct RECT* r = &current_frame->dirtys[i];
+            int x0 = r->x;
+            int y0 = r->y;
+            int x1 = r->x + r->width;
+            int y1 = r->y + r->height;
+            if (x0 < 0) x0 = 0;
+            if (y0 < 0) y0 = 0;
+            if (x1 > limitW) x1 = limitW;
+            if (y1 > limitH) y1 = limitH;
+            if (x1 <= x0 || y1 <= y0) continue;
+
+            const int tx0 = x0 / 64;
+            const int ty0 = y0 / 64;
+            const int tx1 = (x1 - 1) / 64;
+            const int ty1 = (y1 - 1) / 64;
+            for (int ty = ty0; ty <= ty1; ++ty) {
+                const size_t rowBase = (size_t)ty * tileCols;
+                for (int tx = tx0; tx <= tx1; ++tx) {
+                    const size_t bit = rowBase + (size_t)tx;
+                    mask[bit >> 3] |= (uint8_t)(1u << (bit & 7));
+                    any = true;
+                }
+            }
+        }
+        return any;
+    };
+
+    if (!doFullRedraw) {
+        if (computeMaskFromDirtyRects() == false) {
+            doFullRedraw = true;
+        }
+    }
+
+    if (doFullRedraw) {
+        memset(mask, 0xFF, maskSize);
+        // tileTotal 이 8 의 배수가 아닐 때 초과 비트 클리어
+        const size_t excessBits = (maskSize * 8) - tileTotal;
+        if (excessBits > 0) {
+            mask[maskSize - 1] = (uint8_t)(0xFFu >> excessBits);
+        }
+    }
+
+    // tile 변환 (BGRA -> YUV444 planar)
+    uint8_t* canonical = _rfxCanonical;
+    const uint8_t* bgraBase = srcBase;
+    const size_t bgraStride = srcStride;
+    const int widthInt  = (int)width;
+    const int heightInt = (int)height;
+    _Atomic int convertFailed = 0;
+    _Atomic int* convertFailedPtr = &convertFailed;
+
+    dispatch_apply(tileRows, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^(size_t ty) {
+        const size_t rowBase = ty * tileCols;
+        for (size_t tx = 0; tx < tileCols; ++tx) {
+            const size_t bit = rowBase + tx;
+            if ((mask[bit >> 3] & (uint8_t)(1u << (bit & 7))) == 0) continue;
+
+            uint8_t* tileBase = canonical + (bit * OSXRDP_RFX_TILE_BYTES);
+            if (ConvertRFXTile(bgraBase, bgraStride, widthInt, heightInt, (int)tx, (int)ty, tileBase) == false) {
+                atomic_store_explicit(convertFailedPtr, 1, memory_order_release);
+            }
+        }
+    });
+
+    if (atomic_load_explicit(&convertFailed, memory_order_acquire) != 0) {
+        if (mask != stackMask) free(mask);
+        return false;
+    }
+
+    // layout: [size_t imgSize][int tileCount][int indices[tileCount]][uint8 tileData[tileCount*16384]]
+    int* slotCountPtr = (int*)(screenrecord_data + sizeof(size_t));
+    int* slotIndices  = (int*)(screenrecord_data + sizeof(size_t) + sizeof(int));
+
+    int slotTileCount = 0;
+    for (size_t ty = 0; ty < tileRows; ++ty) {
+        const size_t rowBase = ty * tileCols;
+        for (size_t tx = 0; tx < tileCols; ++tx) {
+            const size_t bit = rowBase + tx;
+            if ((mask[bit >> 3] & (uint8_t)(1u << (bit & 7))) == 0) continue;
+            slotIndices[slotTileCount++] = (int)bit;
+        }
+    }
+
+    if (slotTileCount <= 0) {
+        if (mask != stackMask) free(mask);
+        return false;
+    }
+
+    *slotCountPtr = slotTileCount;
+
+    // canonical → slot tileData 복사
+    uint8_t* slotTileData = (uint8_t*)(slotIndices + slotTileCount);
+    for (int i = 0; i < slotTileCount; ++i) {
+        const int idx = slotIndices[i];
+        memcpy(slotTileData + (size_t)i * OSXRDP_RFX_TILE_BYTES,
+               _rfxCanonical + (size_t)idx * OSXRDP_RFX_TILE_BYTES,
+               OSXRDP_RFX_TILE_BYTES);
+    }
+
+    const size_t imgSize = sizeof(int)
+                         + sizeof(int) * (size_t)slotTileCount
+                         + (size_t)slotTileCount * OSXRDP_RFX_TILE_BYTES;
+    memcpy(screenrecord_data, &imgSize, sizeof(size_t));
+
+    if (doFullRedraw) {
+        _rfxFullRedrawRequired = false;
+        current_frame->dirtyCount = 0;
+    }
+
+    if (mask != stackMask) free(mask);
+    
+    return true;
+}
+
+bool ScreenRecorderManager::EnsureRFXCanonical(int width, int height) {
+    if (width <= 0 || height <= 0) {
+        return false;
+    }
+
+    if (_rfxCanonical != NULL && _rfxCanonicalWidth == width && _rfxCanonicalHeight == height) {
+        return true;
+    }
+
+    ReleaseRFXCanonical();
+
+    const size_t tileCols = ((size_t)width + 63) / 64;
+    const size_t tileRows = ((size_t)height + 63) / 64;
+    const size_t size = tileCols * tileRows * 16384;
+
+    _rfxCanonical = (uint8_t*)malloc(size);
+    if (_rfxCanonical == NULL) {
+        return false;
+    }
+
+    _rfxCanonicalSize      = size;
+    _rfxCanonicalWidth     = width;
+    _rfxCanonicalHeight    = height;
+    _rfxTileCols           = tileCols;
+    _rfxTileRows           = tileRows;
+    _rfxFullRedrawRequired = true;
+    
+    memset(_rfxCanonical, 0, size);
+    for (size_t ty = 0; ty < tileRows; ++ty) {
+        const int top = (int)ty * 64;
+        const int validHeight = (height - top < 64) ? (height - top) : 64;
+
+        for (size_t tx = 0; tx < tileCols; ++tx) {
+            const int left = (int)tx * 64;
+            const int validWidth = (width - left < 64) ? (width - left) : 64;
+
+            uint8_t* tileBase = _rfxCanonical + ((ty * tileCols + tx) * 16384);
+            uint8_t* uPlane = tileBase + 4096;
+            uint8_t* vPlane = tileBase + 8192;
+            uint8_t* aPlane = tileBase + 12288;
+
+            memset(aPlane, 0xFF, 4096);
+
+            // 모서리 타일의 무효 영역 U/V 를 중립값 128 로 고정 (Y 는 이미 0)
+            if (validWidth < 64) {
+                const int stripW = 64 - validWidth;
+                for (int py = 0; py < validHeight; ++py) {
+                    memset(uPlane + (size_t)py * 64 + validWidth, 128, stripW);
+                    memset(vPlane + (size_t)py * 64 + validWidth, 128, stripW);
+                }
+            }
+            if (validHeight < 64) {
+                const int stripRows = 64 - validHeight;
+                memset(uPlane + (size_t)validHeight * 64, 128, (size_t)stripRows * 64);
+                memset(vPlane + (size_t)validHeight * 64, 128, (size_t)stripRows * 64);
+            }
+        }
+    }
+
+    return true;
+}
+
+void ScreenRecorderManager::InvalidateRFXCanonical() {
+    _rfxFullRedrawRequired = true;
+}
+
+void ScreenRecorderManager::ReleaseRFXCanonical() {
+    if (_rfxCanonical != NULL) {
+        free(_rfxCanonical);
+        _rfxCanonical = NULL;
+    }
+    _rfxCanonicalSize      = 0;
+    _rfxCanonicalWidth     = 0;
+    _rfxCanonicalHeight    = 0;
+    _rfxTileCols           = 0;
+    _rfxTileRows           = 0;
+    _rfxFullRedrawRequired = true;
+}
+
+bool ScreenRecorderManager::ConvertRFXTile(const uint8_t* bgraBase, size_t bgraStride, int width, int height,
+                                           int tileCol, int tileRow, uint8_t* tileBase) {
+    const int left = tileCol * 64;
+    const int top  = tileRow * 64;
+    const int validWidth  = (width  - left < 64) ? (width  - left) : 64;
+    const int validHeight = (height - top  < 64) ? (height - top)  : 64;
+    if (validWidth <= 0 || validHeight <= 0) {
+        return false;
+    }
+
+    // RemoteFX 는 MS-RDPRFX 3.1.8.1.3 규격에 따라 BT.601 "full-range" (JFIF) 계수를 요구한다.
+    //   Y  =  0.299 R + 0.587 G + 0.114 B
+    //   Cb = -0.168736 R - 0.331264 G + 0.5 B + 128
+    //   Cr =  0.5 R - 0.418688 G - 0.081312 B + 128
+    // 따라서 matrix 는 ITU_R_601_*, pixelRange 는 { Yp_bias=0, CbCr_bias=128, YpRangeMax=255, CbCrRangeMax=255, YpMax=255, YpMin=0, CbCrMax=255, CbCrMin=0 }.
+    static dispatch_once_t onceToken;
+    static vImage_ARGBToYpCbCr conversionInfo;
+    static bool hasConversionInfo = false;
+    dispatch_once(&onceToken, ^{
+        const vImage_YpCbCrPixelRange pixelRange = { 0, 128, 255, 255, 255, 0, 255, 0 };
+        vImage_Error err = vImageConvert_ARGBToYpCbCr_GenerateConversion(
+            kvImage_ARGBToYpCbCrMatrix_ITU_R_601_4,
+            &pixelRange,
+            &conversionInfo,
+            kvImageARGB8888,
+            kvImage444CrYpCb8,
+            kvImageNoFlags);
+        hasConversionInfo = (err == kvImageNoError);
+    });
+    if (hasConversionInfo == false) {
+        return false;
+    }
+
+    const uint8_t bgraPermuteMap[4] = { 3, 2, 1, 0 }; // BGRA -> ARGB 매핑용
+
+    vImage_Buffer srcBuffer = {
+        (void*)(bgraBase + ((size_t)top * bgraStride) + ((size_t)left * 4)),
+        (vImagePixelCount)validHeight,
+        (vImagePixelCount)validWidth,
+        bgraStride
+    };
+
+    uint8_t tempPackedCrYpCb[64 * 64 * 3];
+    vImage_Buffer packedBuffer = {
+        tempPackedCrYpCb,
+        (vImagePixelCount)validHeight,
+        (vImagePixelCount)validWidth,
+        (size_t)validWidth * 3
+    };
+
+    // BGRA -> Packed CrYpCb (V, Y, U) -> Planar (Y/U/V 타일 다이렉트 쓰기)
+    vImage_Error err = vImageConvert_ARGB8888To444CrYpCb8(&srcBuffer, &packedBuffer, &conversionInfo, bgraPermuteMap, kvImageNoFlags);
+    if (err != kvImageNoError) {
+        return false;
+    }
+
+    vImage_Buffer destV = { tileBase + 8192, (vImagePixelCount)validHeight, (vImagePixelCount)validWidth, 64 };
+    vImage_Buffer destY = { tileBase,        (vImagePixelCount)validHeight, (vImagePixelCount)validWidth, 64 };
+    vImage_Buffer destU = { tileBase + 4096, (vImagePixelCount)validHeight, (vImagePixelCount)validWidth, 64 };
+    err = vImageConvert_RGB888toPlanar8(&packedBuffer, &destV, &destY, &destU, kvImageNoFlags);
+    if (err != kvImageNoError) {
+        return false;
+    }
+
+    return true;
 }
 
 inline void ScreenRecorderManager::ProcessDirtyArea(const CGRect* rect, int limX, int limY, struct RECT* dst) {
