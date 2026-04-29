@@ -3,6 +3,7 @@
 #define VirtualMonitor_h
 
 #include "CGVirtualDisplayPrivate.h"
+#include <pthread.h>
 
 class VirtualMonitor {
 public:
@@ -29,15 +30,28 @@ public:
     static void WakeupDisplay();
     
 private:
-    __strong CGVirtualDisplay* _virtualDisplay;
+    CGVirtualDisplay* _virtualDisplay;
     int _width;
     int _height;
+    
     bool _retina;
+    bool _init;
     
     uint32_t* _disabledDisplayIds;
     int _disabledDisplayIdsCnt;
     
-    int SetResolution(int width, int height, bool retinaMode);
+    pthread_t _watchThread;
+    pthread_mutex_t _watchLock;
+    pthread_cond_t _watchWake;
+    bool _watchRunning;
+    bool _watchThreadCreated;
+    
+    int SetResolution();
+    bool IsRightResolution();
+    
+    void WatchThreadPorcInternal();
+    
+    static void* WatchThreadProc(void* args);
 };
 
 #endif /* VirtualMonitor_h */
