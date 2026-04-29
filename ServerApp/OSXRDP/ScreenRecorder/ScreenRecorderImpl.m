@@ -3,6 +3,7 @@
 #import <Foundation/Foundation.h>
 #import <CoreMedia/CoreMedia.h>
 #include "osxrdp/packet.h"
+#include "osxrdp/screenrecordshm.h"
 
 @implementation ScreenRecorderImpl {
     SCContentFilter* _recordFilter;
@@ -13,6 +14,8 @@
     on_record_cmd _recordCmdCb;
     void* _recordCbUserData;
     void* _recordCmdCbUserData;
+    
+    CGRect _dirtyRectBuffer[MAX_DIRTY_COUNT];
 }
 
 - (instancetype)init {
@@ -29,7 +32,9 @@
     return self;
 }
 
-- (void)initializeWithDisplay:(SCDisplay*)display
+int SetDirtyAreaInfoFromSampleBuffer(CMSampleBufferRef sampleBuffer, CGRect* rects);
+
+- (void)initializeWithDisplayId:(int)displayId
             RecordWidth:(int)width
             RecordHeight:(int)height
             RecordFramerate:(int)framerate
@@ -38,6 +43,8 @@
             RecordDataCallbackUserData:(void*)userData
             RecordCmdCallback:(on_record_cmd)recordCmdCb
             RecordCmdCallbackUserData:(void*)userData2 {
+    
+    SCDisplay* display = [self getDisplayFromDisplayId: displayId];
     if (display == nil) return;
     
     _recordFilter = [[SCContentFilter alloc] initWithDisplay:display excludingWindows:@[]];
@@ -163,8 +170,11 @@
 
     CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
     
+    // dirty area 정보 추출
+    int dirtyAreaCnt = SetDirtyAreaInfoFromSampleBuffer(sampleBuffer, _dirtyRectBuffer);
+    
     // 콜백 호출 (osxup 로 화면 데이터 전송)
-    _recordCb(sampleBuffer, pixelBuffer, _recordCbUserData);
+    _recordCb(pixelBuffer, _dirtyRectBuffer, dirtyAreaCnt, _recordCbUserData);
 
     CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
 }
@@ -172,6 +182,53 @@
 - (void)stream:(SCStream *)stream didStopWithError:(NSError *)error {
     // 녹화 정지 요청
     _recordCmdCb(1, _recordCmdCbUserData);
+}
+
+// 디스플레이 id 를 사용하여 ScreenCaptureKit 디스플레이 조회
+- (SCDisplay*)getDisplayFromDisplayId:(int)displayId {
+    __block SCDisplay* found = nil;
+    
+    dispatch_semaphore_t sema = dispatch_semaphore_create(0);
+    [SCShareableContent getShareableContentWithCompletionHandler:^(SCShareableContent * _Nullable content, NSError * _Nullable error) {
+        for (SCDisplay* item in content.displays) {
+            if (item.displayID == displayId) {
+                found = item;
+                break;
+            }
+        }
+        dispatch_semaphore_signal(sema);
+    }];
+
+    dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
+
+    return found;
+}
+
+int SetDirtyAreaInfoFromSampleBuffer(CMSampleBufferRef sampleBuffer, CGRect* rects) {
+    CFArrayRef arr = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, false);
+    if (arr == NULL || CFArrayGetCount(arr) == 0) {
+        return 0;
+    }
+
+    CFDictionaryRef att = (CFDictionaryRef)CFArrayGetValueAtIndex(arr, 0);
+    if (att == NULL) {
+        return 0;
+    }
+
+    CFArrayRef dirtyArr = (CFArrayRef)CFDictionaryGetValue(att, (__bridge CFStringRef)SCStreamFrameInfoDirtyRects);
+    if (dirtyArr == NULL) {
+        return 0;
+    }
+    
+    int dirtyAreaCnt = (int)CFArrayGetCount(dirtyArr);
+    if (dirtyAreaCnt > MAX_DIRTY_COUNT) return 0;
+    
+    for (int i = 0; i < dirtyAreaCnt; i++) {
+        CFTypeRef element = CFArrayGetValueAtIndex(dirtyArr, i);
+        CGRectMakeWithDictionaryRepresentation((CFDictionaryRef)element, &(rects[i]));
+    }
+    
+    return dirtyAreaCnt;
 }
 
 @end

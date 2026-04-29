@@ -1,7 +1,13 @@
 #!/bin/bash
 
-# generate key
+# generate key (classic rdp)
 /Applications/osxrdp/OSXRDP.app/Contents/MacOS/xrdp-keygen xrdp auto
+
+# generate tls key
+/usr/bin/openssl req -x509 -newkey rsa:2048 -nodes \
+    -keyout /etc/xrdp/key.pem \
+    -out  /etc/xrdp/cert.pem \
+    -days 3650 -subj "/CN=osxrdp"
 
 # create log file (xrdp)
 touch /var/log/xrdp.log

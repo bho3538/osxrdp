@@ -206,51 +206,66 @@ void PaintManager::Paint() {
 
 bool PaintManager::GetPaintData(screenrecord_frame_t** outFrameInfo, char** outImgData, size_t* outImgDataSize, unsigned int* frame_id) {
     screenrecord_shm_t* shm = (screenrecord_shm_t*)_recordShm->mem;
-    
+
     // 읽을 데이터가 있는지 확인
     unsigned int read_pos = atomic_load_explicit(&shm->read_pos,  memory_order_acquire);
     unsigned int write_pos = atomic_load_explicit(&shm->write_pos, memory_order_acquire);
-    
+
     if (read_pos == write_pos) {
         return false;
     }
-    
+
+
     int forceRedrawAll = 0;
     unsigned int targetPos = read_pos + (unsigned int)_inFlightCount;
     if (targetPos >= write_pos) {
         return false;
     }
 
-    // backlog가 너무 큰 경우에만 최신 프레임으로 점프.
-    // 단, 이미 in-flight가 있으면 순서를 깨지 않기 위해 점프하지 않는다.
-    if (_inFlightCount == 0 && (write_pos - read_pos >= FRAME_SLOTS || read_pos == 0)) {
-        targetPos = write_pos - 1;
-        forceRedrawAll = 1;
+    bool selfContained = (_paint == NULL || _paint->FrameIsSelfContained() == true);
+    bool trueBacklog = (_inFlightCount == 0 && (write_pos - read_pos >= FRAME_SLOTS));
+    
+    // backlog 를 처리하는 방법
+    //   - self-contained 포맷 (BGRA32 / NV12) : 최신 slot 으로 점프해서 full 로 처리.
+    //   - partial-frame 포맷 (RFX)            : 중간 dirty tile 을 재구성할 수 없으므로 backlog 전체를 drop 하고 producer 에게 full redraw 를 요청. 이번 paint 는 무시.
+    if (selfContained == false) {
+        if (trueBacklog == true) {
+            atomic_store_explicit(&shm->consumer_request_full, 1, memory_order_release);
+            atomic_store_explicit(&shm->read_pos, write_pos, memory_order_release);
+            return false;
+        }
+    }
+    else {
+        if (trueBacklog == true || (_inFlightCount == 0 && read_pos == 0)) {
+            targetPos = write_pos - 1;
+            forceRedrawAll = 1;
+        }
     }
     
+
     unsigned int idx = targetPos % FRAME_SLOTS;
     screenrecord_frame_t* frame = &(shm->frames[idx]);
     char* imgData = *(&shm->screenrecord_datas + (size_t)shm->screenrecord_data_size * idx);
-    
+
     size_t imgDataSize = 0;
     memcpy(&imgDataSize, imgData, sizeof(size_t));
-    
+
     // abnormal data --> skip it
     if (imgDataSize == 0 || imgDataSize > shm->screenrecord_data_size)
         return false;
-    
+
     if (forceRedrawAll != 0) {
         frame->dirtyCount = 0;
     }
-    
+
     *outFrameInfo = frame;
     *outImgData = imgData + sizeof(size_t);
     *outImgDataSize = imgDataSize;
-    
+
     *frame_id = targetPos;
-    
+
     //atomic_store_explicit(&shm->read_pos, read_pos + 1, memory_order_release);
-    
+
     return true;
 }
 
