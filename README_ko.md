@@ -29,4 +29,4 @@ macOS 12.4 이상\
 Apple Silicon 및 Intel 맥을 지원합니다.
 
 ## 기타
-osxrdp 는 순정 버전의 xrdp v0.10.5 버전과 호환됩니다. (xrdp 에 대한 어떠한 코드 수정없이 작동합니다.)
+osxrdp 는 순정 버전의 xrdp v0.10.6 버전과 호환됩니다. (xrdp 에 대한 어떠한 코드 수정없이 작동합니다.)
