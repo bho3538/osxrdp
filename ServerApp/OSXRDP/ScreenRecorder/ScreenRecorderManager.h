@@ -29,6 +29,15 @@ private:
         int framerate;
         int recordFormat;
         int useVirtualMon;
+        int monitorCount;
+        
+        struct MONITOR_INFO {
+            int left;
+            int top;
+            int right;
+            int bottom;
+            int is_primary;
+        } monitorInfo[16];
     };
 
     // ScreenRecorderImpl

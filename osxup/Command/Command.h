@@ -5,12 +5,13 @@
 
 #include "ipc.h"
 #include "xstream.h"
+#include "../xrdp/xrdp_client_info.h"
 
 class Command {
   
 public:
     
-    void SendRecordStartMsg(xipc_t* agentIpc, int width, int height, int recordFormat, int useVirtualmon);
+    void SendRecordStartMsg(xipc_t* agentIpc, int width, int height, int recordFormat, int useVirtualmon, int monitorCount, struct monitor_info* monitorInfo);
     void SendRecordStopMsg(xipc_t* agentIpc);
     
     void SendMouseInputMsg(xipc_t* agentIpc, int inputType, short x, short y);

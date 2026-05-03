@@ -2,21 +2,34 @@
 #include "Command.h"
 #include "osxrdp/packet.h"
 
-void Command::SendRecordStartMsg(xipc_t* agentIpc, int width, int height, int recordFormat, int useVirtualmon) {
+void Command::SendRecordStartMsg(xipc_t* agentIpc, int width, int height, int recordFormat, int useVirtualmon, int monitorCount, struct monitor_info* monitorInfo) {
     assert(agentIpc != NULL);
     assert(width > 0);
     assert(height > 0);
 
-    xstream_t* stream = xstream_create(64);
+    xstream_t* stream = xstream_create(1024);
+    
+    if (monitorCount > 16) {
+        monitorCount = 1;
+    }
 
     xstream_writeInt32(stream, OSXRDP_CMDTYPE_SCREEN);
     xstream_writeInt32(stream, OSXRDP_PACKETTYPE_REQ_SCREEN);
-    xstream_writeInt32(stream, 0);              // display index 등
+    xstream_writeInt32(stream, 0);              // display index 등 (unused)
     xstream_writeInt32(stream, width);          // width
     xstream_writeInt32(stream, height);         // height
-    xstream_writeInt32(stream, 60);             // fps
+    xstream_writeInt32(stream, 60);             // fps (unused)
     xstream_writeInt32(stream, recordFormat);   // recordFormat (BGRA32, NV12, RFX)
     xstream_writeInt32(stream, useVirtualmon);  // use virtual monitor (0, 1)
+    xstream_writeInt32(stream, monitorCount);
+    
+    for (int i = 0; i < monitorCount; i++) {
+        xstream_writeInt32(stream, monitorInfo[i].left);
+        xstream_writeInt32(stream, monitorInfo[i].top);
+        xstream_writeInt32(stream, monitorInfo[i].right);
+        xstream_writeInt32(stream, monitorInfo[i].bottom);
+        xstream_writeInt32(stream, monitorInfo[i].is_primary);
+    }
     
     _SendMsg(agentIpc, stream);
 

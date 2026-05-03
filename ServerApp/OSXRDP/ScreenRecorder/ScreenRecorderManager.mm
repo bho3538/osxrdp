@@ -117,9 +117,18 @@ bool ScreenRecorderManager::ParseStartRecordParams(xstream_t* cmd, RecordStartPa
     params->framerate = xstream_readInt32(cmd);
     params->recordFormat = xstream_readInt32(cmd);
     params->useVirtualMon = xstream_readInt32(cmd);
+    params->monitorCount = xstream_readInt32(cmd);
 
-    (void)params->monitorIndex; // unused yet
-
+    if (params->monitorCount > 16) params->monitorCount = 1;
+    
+    for (int i = 0; i < params->monitorCount; i++) {
+        params->monitorInfo[i].left = xstream_readInt32(cmd);
+        params->monitorInfo[i].top = xstream_readInt32(cmd);
+        params->monitorInfo[i].right = xstream_readInt32(cmd);
+        params->monitorInfo[i].bottom = xstream_readInt32(cmd);
+        params->monitorInfo[i].is_primary = xstream_readInt32(cmd);
+    }
+    
     // 잠금화면의 경우 virtual monitor 를 지원하지 않음.
     if (is_root_process() != 0) {
         params->useVirtualMon = 0;
