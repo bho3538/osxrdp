@@ -9,6 +9,7 @@
     on_record_cmd _recordCmdCb;
     void* _recordCbUserData;
     void* _recordCmdCbUserData;
+    int _displayIdx;
 }
 
 - (instancetype)init {
@@ -26,6 +27,7 @@
 }
 
 - (void)initializeWithDisplayId:(int)displayId
+            DisplayIndex:(int)displayIdx
             RecordWidth:(int)width
             RecordHeight:(int)height
             RecordFramerate:(int)framerate
@@ -89,6 +91,7 @@
     _recordCbUserData = userData;
     _recordCmdCb = recordCmdCb;
     _recordCmdCbUserData = userData2;
+    _displayIdx = displayIdx;
 }
 
 - (BOOL)start {
@@ -149,7 +152,7 @@
     CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
     
     // 녹화 콜백 전달
-    _recordCb(pixelBuffer, dirtyRects, (int)dirtyRectsCnt, _recordCbUserData);
+    _recordCb(pixelBuffer, dirtyRects, (int)dirtyRectsCnt, _recordCbUserData, _displayIdx);
     
     CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
     

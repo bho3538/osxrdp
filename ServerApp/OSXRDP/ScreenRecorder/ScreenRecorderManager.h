@@ -37,11 +37,18 @@ private:
             int right;
             int bottom;
             int is_primary;
+            int displayId;
         } monitorInfo[16];
     };
+    
+    struct RecordStartParams _recordParams;
 
     // ScreenRecorderImpl
-    void* _impl;
+    //void* _impl;
+    void* _recorder[16];
+    int _recorderCnt;
+    
+    bool _useLegacyRecorder;
     
     // 녹화 데이터가 저장되는 공유 메모리
     xshm_t* _recordShm;
@@ -81,22 +88,22 @@ private:
     bool StartRecord(xstream_t* cmd);
     
     bool ParseStartRecordParams(xstream_t* cmd, RecordStartParams* params);
-    bool PrepareRecordResources(const RecordStartParams* params);
+    bool PrepareRecordResources();
     
-    // 녹화에 사용할 디스플레이 조회
-    bool ResolveDisplayForRecorder(const RecordStartParams* params, int* displayIdOut);
+    // 녹화기 설정
+    bool ResolveDisplayForRecorder();
 
     // 녹화 데이터 처리기
-    static void HandleBGRA32RecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData);
+    static void HandleBGRA32RecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx);
     static void HandleBGRA32DirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data);
     
-    static void HandleNV12PackedRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData);
+    static void HandleNV12PackedRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx);
     static void HandleNV12PackedDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data);
     
-    static void HandleNV12AlignedRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData);
+    static void HandleNV12AlignedRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx);
     static void HandleNV12AlignedDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data);
     
-    static void HandleRFXRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData);
+    static void HandleRFXRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx);
     bool HandleRFXDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data);
     
     // 데이터를 작성할 slot 찾기

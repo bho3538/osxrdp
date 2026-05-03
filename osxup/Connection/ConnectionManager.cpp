@@ -302,7 +302,13 @@ bool ConnectionManager::_ConnectToAgent(int sessionId, bool isLockScreen) {
     _statusManager.SetAgentConnected(isLockScreen);
     
     // 화면 녹화 데이터 요청
-    _command.SendRecordStartMsg(ipc, _mod->width, _mod->height, PaintManager::CheckRecordFormat(_mod), _mod->usevirtualmon);
+    if (_mod->client_info.display_sizes.monitorCount == 0) {
+        _command.SendRecordStartMsg(ipc, _mod->width, _mod->height, PaintManager::CheckRecordFormat(_mod), _mod->usevirtualmon, 0, 0);
+    }
+    else {
+        _command.SendRecordStartMsg(ipc, _mod->width, _mod->height, PaintManager::CheckRecordFormat(_mod), _mod->usevirtualmon, _mod->client_info.display_sizes.monitorCount, (struct monitor_info*)_mod->client_info.display_sizes.minfo_wm);
+    }
+    
     
     // 클립보드 활성화
     _channelManager.SendClipboardServerInit();

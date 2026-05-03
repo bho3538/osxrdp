@@ -5,15 +5,12 @@
 #include <unistd.h>
 
 VirtualMonitor::VirtualMonitor() :
-    _virtualDisplay(nil),
-    _width(0),
-    _height(0),
     _disabledDisplayIds(NULL),
     _disabledDisplayIdsCnt(0),
-    _retina(false),
     _init(false),
     _watchRunning(false),
-    _watchThreadCreated(false)
+    _watchThreadCreated(false),
+    _virtualDisplayInfoCnt(0)
 {
     pthread_mutex_init(&_watchLock, 0);
     pthread_cond_init(&_watchWake, 0);
@@ -26,15 +23,13 @@ VirtualMonitor::~VirtualMonitor() {
     pthread_mutex_destroy(&_watchLock);
 }
 
-int VirtualMonitor::Create(int width, int height) {
-    // 이미 가상 디스플레이가 있는 경우 뽀개고 다시 만들기
-    if (_virtualDisplay != nil) {
-        Destroy();
-    }
+bool VirtualMonitor::Create(int width, int height, int index) {
+
+    if (_virtualDisplayInfoCnt >= 16) return false;
     
     // 가상 디스플레이를 생성
     CGVirtualDisplayDescriptor* desc = [[CGVirtualDisplayDescriptor alloc] init];
-    if (desc == nil) return -1;
+    if (desc == nil) return false;
     
     // 가상 디스플레이의 기본 속성
     desc.queue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0);
@@ -44,27 +39,25 @@ int VirtualMonitor::Create(int width, int height) {
     desc.sizeInMillimeters = CGSizeMake(width * 25.4 / 96,
                                         height * 25.4 / 96);
     
-    desc.productID = 0x5969;
+    desc.productID = 0x5969 + index;
     desc.vendorID = 0x1207;
-    desc.serialNum = 0x0007;
+    desc.serialNum = 0x0007 + index;
     
     CGVirtualDisplayMode* mode = [[CGVirtualDisplayMode alloc] initWithWidth:width height:height refreshRate:60];
-    if (mode == nil) return -1;
+    if (mode == nil) return false;
     
     CGVirtualDisplayMode* retinaMode = [[CGVirtualDisplayMode alloc] initWithWidth:width / 2 height:height / 2 refreshRate:60];
-    if (retinaMode == nil) return -1;
+    if (retinaMode == nil) return false;
     
     CGVirtualDisplaySettings* settings = [[CGVirtualDisplaySettings alloc] init];
-    if (settings == nil) return -1;
+    if (settings == nil) return false;
     
-    // 특정 해상도 이상일 경우 hidpi 모드
+    // 특정 해상도 이상일 경우 hidpi 모드 (hack?)
     if (width > 2300 && height > 1500) {
         settings.hiDPI = 1;
-        _retina = true;
     }
     else {
         settings.hiDPI = 0;
-        _retina = false;
     }
     
     // 이와 같이 구성을 채우지 않으면 macOS 가 이를 모니터가 아닌 다른 무언가로 인식하여 대화상자를 띄우는것 같음 (airplay 수신기?)
@@ -85,18 +78,16 @@ int VirtualMonitor::Create(int width, int height) {
         retinaMode
     ];
     
-    _width = width;
-    _height = height;
-    
-    _virtualDisplay = [[CGVirtualDisplay alloc] initWithDescriptor:desc];
-    if (_virtualDisplay == nil) return -1;
+    CGVirtualDisplay* virtualDisplay = [[CGVirtualDisplay alloc] initWithDescriptor:desc];
+    if (virtualDisplay == nil) return false;
     
     // 가상 디스플레이 속성 적용
-    [_virtualDisplay applySettings:settings];
+    [virtualDisplay applySettings:settings];
     
     WakeupDisplay();
     
-    // watch thread 생성
+    // watch thread 생성 -> 별도의 start 함수 만들 예정
+    /*
     _watchRunning = true;
     if (pthread_create(&_watchThread , NULL, WatchThreadProc, this) == 0) {
         _watchThreadCreated = true;
@@ -104,8 +95,16 @@ int VirtualMonitor::Create(int width, int height) {
     else {
         _watchRunning = false;
     }
-    
-    return _virtualDisplay.displayID;
+    */
+
+    _virtualDisplayInfo[_virtualDisplayInfoCnt].width = width;
+    _virtualDisplayInfo[_virtualDisplayInfoCnt].height = height;
+    _virtualDisplayInfo[_virtualDisplayInfoCnt].is_retina = settings.hiDPI > 0 ? true : false;
+    _virtualDisplayInfo[_virtualDisplayInfoCnt].virtualDisplay = virtualDisplay;
+
+    _virtualDisplayInfoCnt++;
+
+    return true;
 }
 
 void VirtualMonitor::Destroy() {
@@ -116,12 +115,18 @@ void VirtualMonitor::Destroy() {
         pthread_join(_watchThread, NULL); // 완전히 정지할때까지 대기
         _watchThreadCreated = false;
     }
-    
+
     // 비활성화한 디스플레이 롤백 (반드시 먼저 해야함, 그렇지 않는 경우 위 설명처럼 windowserver 가 크래시할 수 있음)
     RestoreOtherMonitors();
 
-    // nil 로 설정하면 알아서 뽀개짐 (즉시 뽀개지는건 아님)
-    _virtualDisplay = nil;
+    for (int i = 0; i < _virtualDisplayInfoCnt; i++) {
+        // nil 로 설정하면 알아서 뽀개짐 (즉시 뽀개지는건 아님)
+        _virtualDisplayInfo[i].virtualDisplay = nil;
+    }
+
+    _virtualDisplayInfoCnt = 0;
+    memset(&_virtualDisplayInfo, 0x00, sizeof(_virtualDisplayInfo));
+
     _init = false;
 }
 
@@ -145,17 +150,14 @@ void VirtualMonitor::WakeupDisplay() {
         IOPMAssertionRelease(assertionID);
         assertionID = kIOPMNullAssertionID;
     }
-
-    // hack : 바로 안꺠어나는 경우가 있음
-    //usleep(150 * 1000);
 }
 
 // todo: DisplayUtils::ApplyDisplayEnabled 에 중복 로직이 있음
 bool VirtualMonitor::DisableOtherMonitors() {
-    NSLog(@"[VirtualMonDebugMsg : DisableOtherMonitors begin virtualDisplay=%p disabledCnt=%d]", _virtualDisplay, _disabledDisplayIdsCnt);
+    NSLog(@"[VirtualMonDebugMsg : DisableOtherMonitors begin virtualDisplayCnt=%d disabledCnt=%d]", _virtualDisplayInfoCnt, _disabledDisplayIdsCnt);
     
     // 가상 디스플레이가 없으면 무시
-    if (_virtualDisplay == nil) {
+    if (_virtualDisplayInfoCnt <= 0) {
         NSLog(@"[VirtualMonDebugMsg : DisableOtherMonitors failed reason=noVirtualDisplay]");
         return false;
     }
@@ -163,7 +165,7 @@ bool VirtualMonitor::DisableOtherMonitors() {
     // 디스플레이 갯수를 조회
     uint32_t displayCnt = 0;
     CGError displayListErr = CGGetOnlineDisplayList(0, NULL, &displayCnt);
-    NSLog(@"[VirtualMonDebugMsg : DisableOtherMonitors onlineCnt=%u err=%d virtualId=%u]", displayCnt, displayListErr, _virtualDisplay.displayID);
+    NSLog(@"[VirtualMonDebugMsg : DisableOtherMonitors onlineCnt=%u err=%d]", displayCnt, displayListErr);
     
     if (displayListErr != kCGErrorSuccess || displayCnt == 0) {
         NSLog(@"[VirtualMonDebugMsg : DisableOtherMonitors failed reason=noDisplay err=%d cnt=%u]", displayListErr, displayCnt);
@@ -208,7 +210,7 @@ bool VirtualMonitor::DisableOtherMonitors() {
     for (uint32_t i = 0; i < displayCnt; i++) {
         NSLog(@"[VirtualMonDebugMsg : DisableOtherMonitors check id=%u index=%u]", displayIds[i], i);
         
-        if (displayIds[i] == _virtualDisplay.displayID) {
+        if (IsVirtualDisplay(displayIds[i])) {
             NSLog(@"[VirtualMonDebugMsg : DisableOtherMonitors skip virtual id=%u]", displayIds[i]);
             continue;
         }
@@ -248,11 +250,56 @@ bool VirtualMonitor::DisableOtherMonitors() {
     NSLog(@"[VirtualMonDebugMsg : DisableOtherMonitors success disabledCnt=%d]", _disabledDisplayIdsCnt);
     
     free(displayIds);
-    
+
     return true;
 }
 
-int VirtualMonitor::SetResolution() {
+bool VirtualMonitor::IsVirtualDisplay(CGDirectDisplayID displayId) {
+    if (displayId == 0) {
+        return false;
+    }
+
+    for (int i = 0; i < _virtualDisplayInfoCnt; i++) {
+        if (_virtualDisplayInfo[i].virtualDisplay == nil) {
+            continue;
+        }
+
+        if (_virtualDisplayInfo[i].virtualDisplay.displayID == displayId) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool VirtualMonitor::IsAllVirtualDisplayOnline() {
+    if (_virtualDisplayInfoCnt <= 0) {
+        return false;
+    }
+
+    for (int i = 0; i < _virtualDisplayInfoCnt; i++) {
+        if (_virtualDisplayInfo[i].virtualDisplay == nil) {
+            return false;
+        }
+
+        if (DisplayUtils::IsDisplayOnline(_virtualDisplayInfo[i].virtualDisplay.displayID) == false) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+int VirtualMonitor::SetResolution(int index) {
+    if (index < 0 || index >= _virtualDisplayInfoCnt) {
+        return 1;
+    }
+
+    struct VIRTUALMONITOR_INFO* displayInfo = &_virtualDisplayInfo[index];
+    if (displayInfo->virtualDisplay == nil) {
+        return 1;
+    }
+
     CGDisplayModeRef bestMode = NULL;
     
     // Retina 해상도 까지 조회하기 위한 옵션
@@ -268,7 +315,7 @@ int VirtualMonitor::SetResolution() {
         &kCFTypeDictionaryValueCallBacks
     );
         
-    CFArrayRef modes = CGDisplayCopyAllDisplayModes(_virtualDisplay.displayID, options);
+    CFArrayRef modes = CGDisplayCopyAllDisplayModes(displayInfo->virtualDisplay.displayID, options);
     if (modes == NULL) {
         NSLog(@"[VirtualMonitor::SetResolution] CGDisplayCopyAllDisplayModes null\n");
         CFRelease(options);
@@ -276,7 +323,7 @@ int VirtualMonitor::SetResolution() {
         return 1;
     }
     
-    if (_retina) {
+    if (displayInfo->is_retina) {
         CFIndex cnt = CFArrayGetCount(modes);
         // Retina (HiDPI) 가 먹힌 해상도를 먼저 찾기
         for (CFIndex i = 0; i < cnt; i++) {
@@ -285,7 +332,7 @@ int VirtualMonitor::SetResolution() {
             size_t modeWidth = CGDisplayModeGetWidth(mode);
             size_t modeHeight = CGDisplayModeGetHeight(mode);
             
-            if (modeWidth == (_width / 2) && modeHeight == (_height / 2)) {
+            if (modeWidth == (displayInfo->width / 2) && modeHeight == (displayInfo->height / 2)) {
                 NSLog(@"found retina bestmode\n");
                 bestMode = mode;
                 break;
@@ -301,7 +348,7 @@ int VirtualMonitor::SetResolution() {
                 size_t modeWidth = CGDisplayModeGetWidth(mode);
                 size_t modeHeight = CGDisplayModeGetHeight(mode);
                 
-                if (modeWidth == _width && modeHeight == _height) {
+                if (modeWidth == displayInfo->width && modeHeight == displayInfo->height) {
                     NSLog(@"found bestmode\n");
                     bestMode = mode;
                     break;
@@ -317,7 +364,7 @@ int VirtualMonitor::SetResolution() {
             size_t modeWidth = CGDisplayModeGetWidth(mode);
             size_t modeHeight = CGDisplayModeGetHeight(mode);
             
-            if (modeWidth == _width && modeHeight == _height) {
+            if (modeWidth == displayInfo->width && modeHeight == displayInfo->height) {
                 NSLog(@"found bestmode\n");
                 bestMode = mode;
                 break;
@@ -334,7 +381,7 @@ int VirtualMonitor::SetResolution() {
         return 1;
     }
     
-    CGError err = CGDisplaySetDisplayMode(_virtualDisplay.displayID, bestMode, NULL);
+    CGError err = CGDisplaySetDisplayMode(displayInfo->virtualDisplay.displayID, bestMode, NULL);
     if (err != kCGErrorSuccess) {
         printf("Configure Resolution Failed. %d \n", err);
     }
@@ -345,12 +392,17 @@ int VirtualMonitor::SetResolution() {
     return err == kCGErrorSuccess ? 0 : 1;
 }
 
-bool VirtualMonitor::IsRightResolution() {
-    if (_virtualDisplay == nil) {
+bool VirtualMonitor::IsRightResolution(int index) {
+    if (index < 0 || index >= _virtualDisplayInfoCnt) {
         return false;
     }
     
-    CGDisplayModeRef mode = CGDisplayCopyDisplayMode(_virtualDisplay.displayID);
+    struct VIRTUALMONITOR_INFO* displayInfo = &_virtualDisplayInfo[index];
+    if (displayInfo->virtualDisplay == nil) {
+        return false;
+    }
+
+    CGDisplayModeRef mode = CGDisplayCopyDisplayMode(displayInfo->virtualDisplay.displayID);
     if (mode == NULL) {
         return false;
     }
@@ -361,13 +413,13 @@ bool VirtualMonitor::IsRightResolution() {
     size_t pixelHeight = CGDisplayModeGetPixelHeight(mode);
     
     bool result = false;
-    if (_retina) {
-        result = (modeWidth == (_width / 2) && modeHeight == (_height / 2) &&
-                  pixelWidth == _width && pixelHeight == _height);
+    if (displayInfo->is_retina) {
+        result = (modeWidth == (displayInfo->width / 2) && modeHeight == (displayInfo->height / 2) &&
+                  pixelWidth == displayInfo->width && pixelHeight == displayInfo->height);
     }
     else {
-        result = (modeWidth == _width && modeHeight == _height &&
-                  pixelWidth == _width && pixelHeight == _height);
+        result = (modeWidth == displayInfo->width && modeHeight == displayInfo->height &&
+                  pixelWidth == displayInfo->width && pixelHeight == displayInfo->height);
     }
     
     CFRelease(mode);
@@ -402,8 +454,8 @@ void* VirtualMonitor::WatchThreadProc(void* args) {
 void VirtualMonitor::WatchThreadPorcInternal() {
     // 아직 가상 모니터가 완전히 활성화 되어있는지 확인하지 못한 상황
     if (_init == false) {
-        // 가상 모니터가 완전히 사용 가능한지 확인
-        if (DisplayUtils::IsDisplayOnline(_virtualDisplay.displayID) == false) {
+        // 모든 가상 모니터가 완전히 사용 가능한지 확인
+        if (IsAllVirtualDisplayOnline() == false) {
             NSLog(@"[VirtualMonitor::WatchThreadProc] virtual display does not online yet");
             return;
         }
@@ -413,17 +465,14 @@ void VirtualMonitor::WatchThreadPorcInternal() {
     }
     
     // 가상 모니터를 제외한 다른 모니터가 온라인인지 확인
-    if (DisplayUtils::HasOtherOnlineDisplay(_virtualDisplay.displayID) == true) {
-        NSLog(@"[VirtualMonitor::WatchThreadProc] other display is online. try disable it");
-
-        // 다른 모니터 disable (혹은 신규 추가 모니터 비활성화)
-        DisableOtherMonitors();
-    }
+    DisableOtherMonitors();
     
     // 해상도 정보 확인 (가상 모니터)
-    if (IsRightResolution() == false) {
-        // 해상도가 틀어진 경우 (혹은 아직 설정되지 않은 경우) --> 해상도 설정
-        NSLog(@"[VirtualMonitor::WatchThreadProc] virtual display has invalid resolution. try change it");
-        SetResolution();
+    for (int i = 0; i < _virtualDisplayInfoCnt; i++) {
+        if (IsRightResolution(i) == false) {
+            // 해상도가 틀어진 경우 (혹은 아직 설정되지 않은 경우) --> 해상도 설정
+            NSLog(@"[VirtualMonitor::WatchThreadProc] virtual display has invalid resolution. try change it index=%d", i);
+            SetResolution(i);
+        }
     }
 }

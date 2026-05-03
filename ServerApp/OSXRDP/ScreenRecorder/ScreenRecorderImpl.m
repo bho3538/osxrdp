@@ -14,6 +14,7 @@
     on_record_cmd _recordCmdCb;
     void* _recordCbUserData;
     void* _recordCmdCbUserData;
+    int _displayIdx;
     
     CGRect _dirtyRectBuffer[MAX_DIRTY_COUNT];
 }
@@ -35,6 +36,7 @@
 int SetDirtyAreaInfoFromSampleBuffer(CMSampleBufferRef sampleBuffer, CGRect* rects);
 
 - (void)initializeWithDisplayId:(int)displayId
+            DisplayIndex:(int)displayIdx
             RecordWidth:(int)width
             RecordHeight:(int)height
             RecordFramerate:(int)framerate
@@ -90,6 +92,8 @@ int SetDirtyAreaInfoFromSampleBuffer(CMSampleBufferRef sampleBuffer, CGRect* rec
     // 녹화 이벤트 콜백 (갑작스러운 녹화 정지 이벤트를 받기 위해)
     _recordCmdCb = recordCmdCb;
     _recordCmdCbUserData = userData2;
+    
+    _displayIdx = displayIdx;
 }
 
 - (BOOL)start {
@@ -174,7 +178,7 @@ int SetDirtyAreaInfoFromSampleBuffer(CMSampleBufferRef sampleBuffer, CGRect* rec
     int dirtyAreaCnt = SetDirtyAreaInfoFromSampleBuffer(sampleBuffer, _dirtyRectBuffer);
     
     // 콜백 호출 (osxup 로 화면 데이터 전송)
-    _recordCb(pixelBuffer, _dirtyRectBuffer, dirtyAreaCnt, _recordCbUserData);
+    _recordCb(pixelBuffer, _dirtyRectBuffer, dirtyAreaCnt, _recordCbUserData, _displayIdx);
 
     CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
 }

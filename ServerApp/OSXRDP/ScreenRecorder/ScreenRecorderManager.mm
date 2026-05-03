@@ -29,7 +29,6 @@ inline void CopyRows(uint8_t* dst, const uint8_t* src, size_t rowBytes, size_t s
 }
 
 ScreenRecorderManager::ScreenRecorderManager(bool useLegacyRecorder) :
-    _impl(NULL),
     _recordShm(NULL),
     _cursorShm(NULL),
     _client(NULL),
@@ -39,68 +38,68 @@ ScreenRecorderManager::ScreenRecorderManager(bool useLegacyRecorder) :
     _rfxCanonicalHeight(0),
     _rfxTileCols(0),
     _rfxTileRows(0),
-    _rfxFullRedrawRequired(true)
-{
-    id<IScreenRecorder> impl = nil;
-    
-    if (useLegacyRecorder == false) {
-        impl = [[ScreenRecorderImpl alloc] init];
-    }
-    else {
-        impl = [[ScreenRecorderFallbackImpl alloc] init];
-    }
-    
-    _impl = (__bridge_retained void*)impl;
-}
+    _rfxFullRedrawRequired(true),
+    _recorderCnt(0),
+    _useLegacyRecorder(useLegacyRecorder)
+{}
 
 ScreenRecorderManager::~ScreenRecorderManager() {
     Stop();
-
-    if (_impl) {
-        CFRelease(_impl);
-        _impl = NULL;
-    }
 
     ReleaseRFXCanonical();
 }
 
 bool ScreenRecorderManager::StartRecord(xstream_t* cmd) {
-    RecordStartParams params = {};
-    if (ParseStartRecordParams(cmd, &params) == false) {
+    memset(&_recordParams, 0x00, sizeof(struct RecordStartParams));
+    
+    if (ParseStartRecordParams(cmd, &_recordParams) == false) {
         return false;
     }
 
-    int displayId = -1;
-    if (ResolveDisplayForRecorder(&params, &displayId) == false) {
+    if (ResolveDisplayForRecorder() == false) {
         return false;
     }
 
-    if (PrepareRecordResources(&params) == false) {
+    if (PrepareRecordResources() == false) {
         return false;
     }
+    
+    for (int i = 0; i < _recordParams.monitorCount; i++) {
+        id<IScreenRecorder> impl = nil;
+        
+        if (_useLegacyRecorder == false) {
+            impl = [[ScreenRecorderImpl alloc] init];
+        }
+        else {
+            impl = [[ScreenRecorderFallbackImpl alloc] init];
+        }
+        
+        on_record_data recordDataCb = HandleBGRA32RecordData;
+        if (_recordParams.recordFormat == OSXRDP_RECORDFORMAT_NV12_PACKED) {
+            recordDataCb = HandleNV12PackedRecordData;
+        }
+        else if (_recordParams.recordFormat == OSXRDP_RECORDFORMAT_NV12_ALIGNED) {
+            recordDataCb = HandleNV12AlignedRecordData;
+        }
+        else if (_recordParams.recordFormat == OSXRDP_RECORDFORMAT_RFX) {
+            recordDataCb = HandleRFXRecordData;
+        }
 
-    id<IScreenRecorder> impl = (__bridge id<IScreenRecorder>)_impl;
-    on_record_data recordDataCb = HandleBGRA32RecordData;
-    if (params.recordFormat == OSXRDP_RECORDFORMAT_NV12_PACKED) {
-        recordDataCb = HandleNV12PackedRecordData;
-    }
-    else if (params.recordFormat == OSXRDP_RECORDFORMAT_NV12_ALIGNED) {
-        recordDataCb = HandleNV12AlignedRecordData;
-    }
-    else if (params.recordFormat == OSXRDP_RECORDFORMAT_RFX) {
-        recordDataCb = HandleRFXRecordData;
-    }
-
-    [impl initializeWithDisplayId:displayId
-                    RecordWidth:params.width RecordHeight:params.height
-                    RecordFramerate:params.framerate RecordFormat:params.recordFormat
+        [impl initializeWithDisplayId:_recordParams.monitorInfo[i].displayId
+                    DisplayIndex:i
+                    RecordWidth:_recordParams.width RecordHeight:_recordParams.height
+                    RecordFramerate:_recordParams.framerate RecordFormat:_recordParams.recordFormat
                     RecordDataCallback:recordDataCb RecordDataCallbackUserData:this
                     RecordCmdCallback:HandleRecordCommand RecordCmdCallbackUserData:this];
 
-    if ([impl start] == NO) {
-        DestroyRecordShm();
-        DestroyCursorShm();
-        return false;
+        if ([impl start] == NO) {
+            DestroyRecordShm();
+            DestroyCursorShm();
+            return false;
+        }
+        
+        _recorder[_recorderCnt] = (__bridge_retained void*)impl;
+        _recorderCnt++;
     }
 
     return true;
@@ -166,12 +165,8 @@ bool ScreenRecorderManager::ParseStartRecordParams(xstream_t* cmd, RecordStartPa
     return true;
 }
 
-bool ScreenRecorderManager::PrepareRecordResources(const RecordStartParams* params) {
-    if (params == NULL) {
-        return false;
-    }
-
-    if (CreateRecordShm(params->width, params->height, params->framerate) == false) {
+bool ScreenRecorderManager::PrepareRecordResources() {
+    if (CreateRecordShm(_recordParams.width, _recordParams.height, _recordParams.framerate) == false) {
         NSLog(@"[ScreenRecorderManager::StartRecord] could not create record shm");
         return false;
     }
@@ -188,11 +183,26 @@ bool ScreenRecorderManager::PrepareRecordResources(const RecordStartParams* para
     return true;
 }
 
-bool ScreenRecorderManager::ResolveDisplayForRecorder(const RecordStartParams* params, int* displayIdOut) {
-    if (params == NULL || displayIdOut == NULL) {
-        return false;
+bool ScreenRecorderManager::ResolveDisplayForRecorder() {
+
+    if (_recordParams.useVirtualMon == 0) {
+        _recordParams.monitorInfo[0].displayId = (int)CGMainDisplayID();
+        
+        CGRect rect = CGDisplayBounds(_recordParams.monitorInfo[0].displayId);
+        
+        _inputHandler.UpdateDisplayRes((int)rect.size.width, (int)rect.size.height, _recordParams.width, _recordParams.height);
+        
+        return true;
+    }
+    
+    for (int i = 0; i < _recordParams.monitorCount; i++) {
+        // todo : 성공,실패 판별
+        _virtualMonitor.Create(_recordParams.monitorInfo[i].right - _recordParams.monitorInfo[i].left, _recordParams.monitorInfo[i].bottom - _recordParams.monitorInfo[i].top, i);
+        
+        _recordParams.monitorInfo[i].displayId = _virtualMonitor.GetDisplayId(i);
     }
 
+    /*
     int displayId = -1;
     if (params->useVirtualMon != 0) {
         displayId = _virtualMonitor.Create(params->width, params->height);
@@ -222,12 +232,11 @@ bool ScreenRecorderManager::ResolveDisplayForRecorder(const RecordStartParams* p
         _inputHandler.UpdateDisplayRes((int)rect.size.width, (int)rect.size.height, params->width, params->height);
     }
 
-    // hack
-    DisplayUtils::WaitDisplayOnlineState(displayId, true, 10000);
     
     NSLog(@"[ScreenRecorderManager::ResolveDisplayForRecorder] displayid %d", displayId);
 
     *displayIdOut = displayId;
+     */
     return true;
 }
 
@@ -314,8 +323,8 @@ void ScreenRecorderManager::DestroyCursorShm() {
 
 void ScreenRecorderManager::Stop() {
     // 화면 녹화를 먼저 정지
-    if (_impl != NULL) {
-        id<IScreenRecorder> impl = (__bridge id<IScreenRecorder>)_impl;
+    for (int i = 0; i < _recorderCnt; i++) {
+        id<IScreenRecorder> impl = (__bridge id<IScreenRecorder>)_recorder[i];
         if ([impl stop] == NO) {
             // 정지 실패 (간혹 빠르게 호출하면 이럼)
             sleep(1);
@@ -323,7 +332,12 @@ void ScreenRecorderManager::Stop() {
             // 재시도
             [impl stop];
         }
+        
+        CFRelease(_recorder[i]);
     }
+    
+    _recorderCnt = 0;
+    memset(_recorder, 0x00, sizeof(_recorder));
     
     _virtualMonitor.Destroy();
 
@@ -607,7 +621,7 @@ void ScreenRecorderManager::PopulateDirtyRectsFromArray(const CGRect* dirtyRects
     }
 }
 
-void ScreenRecorderManager::HandleNV12PackedRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData){
+void ScreenRecorderManager::HandleNV12PackedRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx){
     if (pixelBuffer == NULL || userData == NULL) return;
 
     ScreenRecorderManager* recorder = (ScreenRecorderManager*)userData;
@@ -624,7 +638,7 @@ void ScreenRecorderManager::HandleNV12PackedRecordData(void* pixelBuffer, const 
     recorder->CommitFrameSlot(recordInfo, writePos);
 }
 
-void ScreenRecorderManager::HandleNV12AlignedRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData){
+void ScreenRecorderManager::HandleNV12AlignedRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx){
     if (pixelBuffer == NULL || userData == NULL) return;
 
     ScreenRecorderManager* recorder = (ScreenRecorderManager*)userData;
@@ -661,7 +675,7 @@ void ScreenRecorderManager::HandleNV12AlignedDirtyArea(void* pixelBuffer, screen
     PopulateDirtyRectsFromArray(dirtyRects, dirtyRectsCnt, width, height, current_frame);
 }
 
-void ScreenRecorderManager::HandleBGRA32RecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData){
+void ScreenRecorderManager::HandleBGRA32RecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx){
     if (pixelBuffer == NULL || userData == NULL) return;
 
     ScreenRecorderManager* recorder = (ScreenRecorderManager*)userData;
@@ -678,7 +692,7 @@ void ScreenRecorderManager::HandleBGRA32RecordData(void* pixelBuffer, const CGRe
     recorder->CommitFrameSlot(recordInfo, writePos);
 }
 
-void ScreenRecorderManager::HandleRFXRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData){
+void ScreenRecorderManager::HandleRFXRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx){
     if (pixelBuffer == NULL || userData == NULL) return;
 
     ScreenRecorderManager* recorder = (ScreenRecorderManager*)userData;
