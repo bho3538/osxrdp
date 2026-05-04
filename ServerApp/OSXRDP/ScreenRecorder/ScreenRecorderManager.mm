@@ -204,7 +204,7 @@ bool ScreenRecorderManager::ResolveDisplayForRecorder() {
     
     for (int i = 0; i < _recordParams.monitorCount; i++) {
         // todo : 성공,실패 판별
-        _virtualMonitor.Create(GetMonitorRecordWidth(i), GetMonitorRecordHeight(i), i);
+        _virtualMonitor.Create(GetMonitorRecordWidth(i), GetMonitorRecordHeight(i), i, _recordParams.monitorInfo[i].is_primary != 0);
         
         _recordParams.monitorInfo[i].displayId = _virtualMonitor.GetDisplayId(i);
     }

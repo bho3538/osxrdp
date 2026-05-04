@@ -9,6 +9,7 @@ struct VIRTUALMONITOR_INFO {
     int width;
     int height;
     int is_retina;
+    int is_primary;
     CGVirtualDisplay* virtualDisplay;
 };
 
@@ -18,7 +19,7 @@ public:
     ~VirtualMonitor();
     
     // 가상 모니터를 생성
-    bool Create(int width, int height, int index);
+    bool Create(int width, int height, int index, bool isPrimary = false);
     
     // 모든 가상 모니터를 파괴
     void Destroy();
@@ -56,13 +57,15 @@ private:
     pthread_mutex_t _watchLock;
     pthread_cond_t _watchWake;
     bool _watchRunning;
-    bool _watchThreadCreated;
 
     bool IsVirtualDisplay(CGDirectDisplayID displayId);
     bool IsAllVirtualDisplayOnline();
+    int GetPrimaryDisplayIndex();
+    bool IsRightPrimaryDisplay();
 
     int SetResolution(int index);
     bool IsRightResolution(int index);
+    int SetPrimaryDisplay();
     
     void WatchThreadPorcInternal();
     
