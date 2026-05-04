@@ -223,10 +223,12 @@ void PaintManager::Paint() {
         screenrecord_frame_t* frameInfo = NULL;
         char* imgData = NULL;
         size_t imgDataSize = 0;
+        int width = 0;
+        int height = 0;
         unsigned int shm_frame_id = 0;
         
         // 읽을 데이터가 있는지 확인
-        if (GetPaintData(&frameInfo, &imgData, &imgDataSize, &shm_frame_id, i) == false) {
+        if (GetPaintData(&frameInfo, &imgData, &imgDataSize, &width, &height, &shm_frame_id, i) == false) {
             continue;
         }
 
@@ -237,11 +239,11 @@ void PaintManager::Paint() {
         _inPainting = (_inFlightCount > 0);
         
         // 그리기
-        _paint->DoPaint(_mod, frameInfo, imgData, imgDataSize, frame_id, i);
+        _paint->DoPaint(_mod, frameInfo, imgData, imgDataSize, frame_id, i, width, height);
     }
 }
 
-bool PaintManager::GetPaintData(screenrecord_frame_t** outFrameInfo, char** outImgData, size_t* outImgDataSize, unsigned int* frame_id, int displayIdx) {
+bool PaintManager::GetPaintData(screenrecord_frame_t** outFrameInfo, char** outImgData, size_t* outImgDataSize, int* outWidth, int* outHeight, unsigned int* frame_id, int displayIdx) {
     screenrecord_shm_t* shm = (screenrecord_shm_t*)_recordShm[displayIdx]->mem;
 
     // 읽을 데이터가 있는지 확인
@@ -298,6 +300,8 @@ bool PaintManager::GetPaintData(screenrecord_frame_t** outFrameInfo, char** outI
     *outFrameInfo = frame;
     *outImgData = imgData + sizeof(size_t);
     *outImgDataSize = imgDataSize;
+    *outWidth = shm->width;
+    *outHeight = shm->height;
 
     *frame_id = targetPos;
 

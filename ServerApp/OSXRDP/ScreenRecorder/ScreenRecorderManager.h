@@ -91,6 +91,8 @@ private:
     
     // 녹화기 설정
     bool ResolveDisplayForRecorder();
+    int GetMonitorRecordWidth(int displayIdx);
+    int GetMonitorRecordHeight(int displayIdx);
 
     // 녹화 데이터 처리기
     static void HandleBGRA32RecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx);

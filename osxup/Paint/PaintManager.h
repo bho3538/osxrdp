@@ -52,7 +52,7 @@ private:
     int _inFlightHead;
     int _inFlightCount;
     
-    bool GetPaintData(screenrecord_frame_t** outFrameInfo, char** outImgData, size_t* outImgDataSize, unsigned int* frame_id, int displayIdx);
+    bool GetPaintData(screenrecord_frame_t** outFrameInfo, char** outImgData, size_t* outImgDataSize, int* outWidth, int* outHeight, unsigned int* frame_id, int displayIdx);
     bool PushInFlight(int displayIdx, unsigned int shmReadPos, unsigned int* outFrameId);
     int PopAckedInFlight(int ackFrameId, unsigned int* outMaxReadPosByDisplay, bool* outHasReadPosByDisplay);
     void ResetInFlight();

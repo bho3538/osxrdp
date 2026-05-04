@@ -86,9 +86,12 @@ bool ScreenRecorderManager::StartRecord(xstream_t* cmd) {
             recordDataCb = HandleRFXRecordData;
         }
 
+        int recordWidth = GetMonitorRecordWidth(i);
+        int recordHeight = GetMonitorRecordHeight(i);
+        
         [impl initializeWithDisplayId:_recordParams.monitorInfo[i].displayId
                     DisplayIndex:i
-                    RecordWidth:_recordParams.width RecordHeight:_recordParams.height
+                    RecordWidth:recordWidth RecordHeight:recordHeight
                     RecordFramerate:_recordParams.framerate RecordFormat:_recordParams.recordFormat
                     RecordDataCallback:recordDataCb RecordDataCallbackUserData:this
                     RecordCmdCallback:HandleRecordCommand RecordCmdCallbackUserData:this];
@@ -201,7 +204,7 @@ bool ScreenRecorderManager::ResolveDisplayForRecorder() {
     
     for (int i = 0; i < _recordParams.monitorCount; i++) {
         // todo : 성공,실패 판별
-        _virtualMonitor.Create(_recordParams.monitorInfo[i].right - _recordParams.monitorInfo[i].left, _recordParams.monitorInfo[i].bottom - _recordParams.monitorInfo[i].top, i);
+        _virtualMonitor.Create(GetMonitorRecordWidth(i), GetMonitorRecordHeight(i), i);
         
         _recordParams.monitorInfo[i].displayId = _virtualMonitor.GetDisplayId(i);
     }
@@ -244,11 +247,47 @@ bool ScreenRecorderManager::ResolveDisplayForRecorder() {
     return true;
 }
 
+int ScreenRecorderManager::GetMonitorRecordWidth(int displayIdx) {
+    if (displayIdx < 0 || displayIdx >= 16) {
+        return 0;
+    }
+    
+    int width = _recordParams.monitorInfo[displayIdx].right - _recordParams.monitorInfo[displayIdx].left;
+    
+    // xrdp 의 실제 monitor rect 는 right/bottom inclusive 이다.
+    // monitorCount == 0 인 단일 모니터 경로는 osxup 이 right=width 형태로 보낸 synthetic rect 이므로 그대로 둔다.
+    if (!(_recordParams.monitorCount == 1 &&
+          _recordParams.monitorInfo[displayIdx].left == 0 &&
+          _recordParams.monitorInfo[displayIdx].right == _recordParams.width)) {
+        width++;
+    }
+    
+    return _ALIGN_DOWN_EVEN(width);
+}
+
+int ScreenRecorderManager::GetMonitorRecordHeight(int displayIdx) {
+    if (displayIdx < 0 || displayIdx >= 16) {
+        return 0;
+    }
+    
+    int height = _recordParams.monitorInfo[displayIdx].bottom - _recordParams.monitorInfo[displayIdx].top;
+    
+    // xrdp 의 실제 monitor rect 는 right/bottom inclusive 이다.
+    // monitorCount == 0 인 단일 모니터 경로는 osxup 이 bottom=height 형태로 보낸 synthetic rect 이므로 그대로 둔다.
+    if (!(_recordParams.monitorCount == 1 &&
+          _recordParams.monitorInfo[displayIdx].top == 0 &&
+          _recordParams.monitorInfo[displayIdx].bottom == _recordParams.height)) {
+        height++;
+    }
+    
+    return _ALIGN_DOWN_EVEN(height);
+}
+
 bool ScreenRecorderManager::CreateRecordShm(int displayIdx) {
     if (displayIdx < 0 || displayIdx >= 16) return false;
     
-    const int width = _recordParams.monitorInfo[displayIdx].right - _recordParams.monitorInfo[displayIdx].left;
-    const int height = _recordParams.monitorInfo[displayIdx].bottom - _recordParams.monitorInfo[displayIdx].top;
+    const int width = GetMonitorRecordWidth(displayIdx);
+    const int height = GetMonitorRecordHeight(displayIdx);
 
     // todo : format 마다 정확한 크기 설정하기
     int rawDataSize = width * height * 5 + (sizeof(size_t) * 2);

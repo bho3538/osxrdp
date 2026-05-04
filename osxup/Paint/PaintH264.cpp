@@ -102,10 +102,14 @@ void PaintH264::Release() {
     }
 }
 
-void PaintH264::DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, char* imgData, size_t imgDataSize, int frame_id, int displayId) {
+void PaintH264::DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, char* imgData, size_t imgDataSize, int frame_id, int displayId, int width, int height) {
     assert(mod != NULL);
     assert(frameInfo != NULL);
     assert(imgData != NULL);
+
+    if (displayId < 0 || displayId >= 16 || width <= 0 || height <= 0) {
+        return;
+    }
     
     XRDP_EGFX_START_FRAME startCmd;
     startCmd.header.cmdId = 11;
@@ -127,7 +131,7 @@ void PaintH264::DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, 
     xstream_writeInt16(_drawCmd, displayId); // surface_id;
     xstream_writeInt16(_drawCmd, 0x000B);    // codec_id;
     xstream_writeInt8(_drawCmd, 0x20);       // pixel_format (BGRA)
-    xstream_writeInt32(_drawCmd, 0);         // flags?
+    xstream_writeInt32(_drawCmd, (displayId & 0xF) << 28); // flags
     
     char* rects_start_ptr = (char*)_drawCmd->data_current;
     
@@ -146,8 +150,8 @@ void PaintH264::DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, 
         xstream_writeInt16(_drawCmd, 1); // num_rects
 
         xstream_writeInt32(_drawCmd, 0);
-        xstream_writeInt16(_drawCmd, mod->width);
-        xstream_writeInt16(_drawCmd, mod->height);
+        xstream_writeInt16(_drawCmd, width);
+        xstream_writeInt16(_drawCmd, height);
     }
     
     // 한번 더 복사 (그대로)
@@ -155,8 +159,8 @@ void PaintH264::DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, 
     xstream_writeData(_drawCmd, rects_start_ptr, rects_data_len);
     
     xstream_writeInt32(_drawCmd, 0);
-    xstream_writeInt16(_drawCmd, mod->width);
-    xstream_writeInt16(_drawCmd, mod->height);
+    xstream_writeInt16(_drawCmd, width);
+    xstream_writeInt16(_drawCmd, height);
     
     int dataLen = (int)((char*)_drawCmd->data_current - (char*)_drawCmd->data_start);
     

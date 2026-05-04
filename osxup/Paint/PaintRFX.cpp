@@ -167,12 +167,15 @@ void PaintRFX::Release() {
     _tileDataSize = 0;
 }
 
-void PaintRFX::DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, char* imgData, size_t imgDataSize, int frame_id, int displayId) {
+void PaintRFX::DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, char* imgData, size_t imgDataSize, int frame_id, int displayId, int width, int height) {
     assert(mod != NULL);
     assert(frameInfo != NULL);
     assert(imgData != NULL);
     assert(_drawCmd != NULL);
     assert(_tileRects != NULL);
+
+    (void)width;
+    (void)height;
 
     if (mod->width != _width || mod->height != _height) {
         return;
