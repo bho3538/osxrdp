@@ -43,15 +43,14 @@ private:
     
     struct RecordStartParams _recordParams;
 
-    // ScreenRecorderImpl
-    //void* _impl;
     void* _recorder[16];
     int _recorderCnt;
     
     bool _useLegacyRecorder;
     
     // 녹화 데이터가 저장되는 공유 메모리
-    xshm_t* _recordShm;
+    xshm_t* _recordShm[16];
+    int _recordShmCnt;
     
     // 마우스 커서 이미지가 저장되는 공유 메모리
     xshm_t* _cursorShm;
@@ -79,7 +78,7 @@ private:
     // 다음 프레임을 full redraw 로 내보내야 하는지 표시.
     bool     _rfxFullRedrawRequired;
 
-    bool CreateRecordShm(int width, int height, int framerate);
+    bool CreateRecordShm(int displayIdx);
     void DestroyRecordShm();
     
     bool CreateCursorShm();
@@ -107,7 +106,7 @@ private:
     bool HandleRFXDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data);
     
     // 데이터를 작성할 slot 찾기
-    bool AcquireFrameSlot(screenrecord_shm_t** recordInfoOut, screenrecord_frame** frameOut, char** dataOut, unsigned int* writePosOut);
+    bool AcquireFrameSlot(screenrecord_shm_t** recordInfoOut, screenrecord_frame** frameOut, char** dataOut, unsigned int* writePosOut, int displayIdx);
     
     // 데이터 작성 완료 flag 설정
     void CommitFrameSlot(screenrecord_shm_t* recordInfo, unsigned int writePos);

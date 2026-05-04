@@ -102,7 +102,7 @@ void PaintH264::Release() {
     }
 }
 
-void PaintH264::DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, char* imgData, size_t imgDataSize, int frame_id) {
+void PaintH264::DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, char* imgData, size_t imgDataSize, int frame_id, int displayId) {
     assert(mod != NULL);
     assert(frameInfo != NULL);
     assert(imgData != NULL);
@@ -119,15 +119,15 @@ void PaintH264::DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, 
     xstream_resetPos(_drawCmd);
     
     // header
-    xstream_writeInt16(_drawCmd, 0x1);      // cmdId
-    xstream_writeInt16(_drawCmd, 0);        // flags
-    xstream_writeInt32(_drawCmd, 0);        // len
+    xstream_writeInt16(_drawCmd, 0x1);       // cmdId
+    xstream_writeInt16(_drawCmd, 0);         // flags
+    xstream_writeInt32(_drawCmd, 0);         // len
     
     // body
-    xstream_writeInt16(_drawCmd, 0);        // surface_id;
-    xstream_writeInt16(_drawCmd, 0x000B);   // codec_id;
-    xstream_writeInt8(_drawCmd, 0x20);      // pixel_format (BGRA)
-    xstream_writeInt32(_drawCmd, 0);        // flags?
+    xstream_writeInt16(_drawCmd, displayId); // surface_id;
+    xstream_writeInt16(_drawCmd, 0x000B);    // codec_id;
+    xstream_writeInt8(_drawCmd, 0x20);       // pixel_format (BGRA)
+    xstream_writeInt32(_drawCmd, 0);         // flags?
     
     char* rects_start_ptr = (char*)_drawCmd->data_current;
     

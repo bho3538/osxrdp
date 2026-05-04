@@ -167,7 +167,7 @@ void PaintRFX::Release() {
     _tileDataSize = 0;
 }
 
-void PaintRFX::DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, char* imgData, size_t imgDataSize, int frame_id) {
+void PaintRFX::DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, char* imgData, size_t imgDataSize, int frame_id, int displayId) {
     assert(mod != NULL);
     assert(frameInfo != NULL);
     assert(imgData != NULL);
@@ -211,7 +211,7 @@ void PaintRFX::DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, c
     xstream_writeInt32(_drawCmd, 0);                                // len
 
     // body
-    xstream_writeInt16(_drawCmd, 0);                                // surface_id
+    xstream_writeInt16(_drawCmd, displayId);                        // surface_id
     xstream_writeInt16(_drawCmd, XR_RDPGFX_CODECID_CAPROGRESSIVE);  // codec_id
     xstream_writeInt32(_drawCmd, 0);                                // codec_context_id
     xstream_writeInt8(_drawCmd,  XR_PIXEL_FORMAT_XRGB_8888);        // pixel_format

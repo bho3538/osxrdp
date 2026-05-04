@@ -8,7 +8,7 @@ class PaintRFX : public PaintBase {
 public:
     void Initialize(const struct mod* mod) override;
     void Release() override;
-    void DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, char* imgData, size_t imgDataSize, int frame_id) override;
+    void DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, char* imgData, size_t imgDataSize, int frame_id, int displayId) override;
 
     // RFX slot 은 "이번 프레임에서 변화된 타일"만 담는 partial-frame 포맷이다.
     bool FrameIsSelfContained() const override { return false; }

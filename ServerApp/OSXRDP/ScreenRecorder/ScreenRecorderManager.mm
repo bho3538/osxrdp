@@ -40,7 +40,8 @@ ScreenRecorderManager::ScreenRecorderManager(bool useLegacyRecorder) :
     _rfxTileRows(0),
     _rfxFullRedrawRequired(true),
     _recorderCnt(0),
-    _useLegacyRecorder(useLegacyRecorder)
+    _useLegacyRecorder(useLegacyRecorder),
+    _recordShmCnt(0)
 {}
 
 ScreenRecorderManager::~ScreenRecorderManager() {
@@ -166,11 +167,14 @@ bool ScreenRecorderManager::ParseStartRecordParams(xstream_t* cmd, RecordStartPa
 }
 
 bool ScreenRecorderManager::PrepareRecordResources() {
-    if (CreateRecordShm(_recordParams.width, _recordParams.height, _recordParams.framerate) == false) {
-        NSLog(@"[ScreenRecorderManager::StartRecord] could not create record shm");
-        return false;
+    
+    for (int i = 0; i < _recordParams.monitorCount; i++) {
+        if (CreateRecordShm(i) == false) {
+            NSLog(@"[ScreenRecorderManager::StartRecord] could not create record shm");
+            return false;
+        }
     }
-
+    
     if (CreateCursorShm() == false) {
         NSLog(@"[ScreenRecorderManager::StartRecord] could not create cursor shm");
         DestroyRecordShm();
@@ -240,13 +244,12 @@ bool ScreenRecorderManager::ResolveDisplayForRecorder() {
     return true;
 }
 
-bool ScreenRecorderManager::CreateRecordShm(int width, int height, int framerate) {
-    if (_recordShm != NULL) {
-        NSLog(@"[ScreenRecorderManager::CreateRecordShm] recordShm is already exists.");
-        
-        return false;
-    }
+bool ScreenRecorderManager::CreateRecordShm(int displayIdx) {
+    if (displayIdx < 0 || displayIdx >= 16) return false;
     
+    const int width = _recordParams.monitorInfo[displayIdx].right - _recordParams.monitorInfo[displayIdx].left;
+    const int height = _recordParams.monitorInfo[displayIdx].bottom - _recordParams.monitorInfo[displayIdx].top;
+
     // todo : format 마다 정확한 크기 설정하기
     int rawDataSize = width * height * 5 + (sizeof(size_t) * 2);
     
@@ -254,33 +257,37 @@ bool ScreenRecorderManager::CreateRecordShm(int width, int height, int framerate
     if (get_object_name_by_sessionid("/osxrdpshm", shm_name, 512, is_root_process()) == 0) {
         return false;
     }
+    
+    char shm_name_with_idx[512];
+    snprintf(shm_name_with_idx, sizeof(shm_name_with_idx), "%s_%d", shm_name, displayIdx);
 
-    _recordShm = xshm_create(shm_name, sizeof(screenrecord_shm_t) + (rawDataSize * FRAME_SLOTS));
-    if (_recordShm == NULL) {
-        NSLog(@"[ScreenRecorderManager::CreateRecordShm] xshm_create failed.");
+    _recordShm[displayIdx] = xshm_create(shm_name_with_idx, sizeof(screenrecord_shm_t) + (rawDataSize * FRAME_SLOTS));
+    if (_recordShm[displayIdx] == NULL) {
+        NSLog(@"[ScreenRecorderManager::CreateRecordShm] xshm_create failed. displayIdx = %d", displayIdx);
         
         return false;
     }
     
-    memset(_recordShm->mem, 0x00, sizeof(screenrecord_shm_t) + (rawDataSize * FRAME_SLOTS));
+    memset(_recordShm[displayIdx]->mem, 0x00, sizeof(screenrecord_shm_t) + (rawDataSize * FRAME_SLOTS));
     
-    screenrecord_shm_t* shm = (screenrecord_shm_t*)_recordShm->mem;
+    screenrecord_shm_t* shm = (screenrecord_shm_t*)_recordShm[displayIdx]->mem;
     shm->width = width;
     shm->height = height;
-    shm->fps = framerate;
+    shm->fps = 60;
     shm->screenrecord_data_size = rawDataSize;
+    
+    _recordShmCnt++;
     
     return true;
 }
 
 void ScreenRecorderManager::DestroyRecordShm() {
-    if (_recordShm == NULL) {
-        return;
+    for (int i = 0; i < _recordShmCnt; i++) {
+        xshm_close(_recordShm[i]);
+        xshm_destroy(_recordShm[i]);
     }
     
-    xshm_close(_recordShm);
-    xshm_destroy(_recordShm);
-    _recordShm = NULL;
+    _recordShmCnt = 0;
 }
 
 bool ScreenRecorderManager::CreateCursorShm() {
@@ -412,8 +419,8 @@ void ScreenRecorderManager::SendDisconnectMsgToClient() {
     }
 }
 
-bool ScreenRecorderManager::AcquireFrameSlot(screenrecord_shm_t** recordInfoOut, screenrecord_frame** frameOut, char** dataOut, unsigned int* writePosOut) {
-    if (_recordShm == NULL || _recordShm->mem == NULL) {
+bool ScreenRecorderManager::AcquireFrameSlot(screenrecord_shm_t** recordInfoOut, screenrecord_frame** frameOut, char** dataOut, unsigned int* writePosOut, int displayIdx) {
+    if (_recordShm[displayIdx] == NULL || _recordShm[displayIdx]->mem == NULL) {
         return false;
     }
 
@@ -421,7 +428,7 @@ bool ScreenRecorderManager::AcquireFrameSlot(screenrecord_shm_t** recordInfoOut,
         return false;
     }
 
-    screenrecord_shm_t* recordInfo = (screenrecord_shm_t*)_recordShm->mem;
+    screenrecord_shm_t* recordInfo = (screenrecord_shm_t*)_recordShm[displayIdx]->mem;
     unsigned int readPos = atomic_load_explicit(&recordInfo->read_pos, memory_order_acquire);
     unsigned int writePos = atomic_load_explicit(&recordInfo->write_pos, memory_order_relaxed);
 
@@ -630,7 +637,7 @@ void ScreenRecorderManager::HandleNV12PackedRecordData(void* pixelBuffer, const 
     screenrecord_frame* slot = NULL;
     char* screenrecord_data = NULL;
     unsigned int writePos = 0;
-    if (recorder->AcquireFrameSlot(&recordInfo, &slot, &screenrecord_data, &writePos) == false) {
+    if (recorder->AcquireFrameSlot(&recordInfo, &slot, &screenrecord_data, &writePos, displayIdx) == false) {
         return;
     }
 
@@ -647,7 +654,7 @@ void ScreenRecorderManager::HandleNV12AlignedRecordData(void* pixelBuffer, const
     screenrecord_frame* slot = NULL;
     char* screenrecord_data = NULL;
     unsigned int writePos = 0;
-    if (recorder->AcquireFrameSlot(&recordInfo, &slot, &screenrecord_data, &writePos) == false) {
+    if (recorder->AcquireFrameSlot(&recordInfo, &slot, &screenrecord_data, &writePos, displayIdx) == false) {
         return;
     }
 
@@ -684,7 +691,7 @@ void ScreenRecorderManager::HandleBGRA32RecordData(void* pixelBuffer, const CGRe
     screenrecord_frame* slot = NULL;
     char* screenrecord_data = NULL;
     unsigned int writePos = 0;
-    if (recorder->AcquireFrameSlot(&recordInfo, &slot, &screenrecord_data, &writePos) == false) {
+    if (recorder->AcquireFrameSlot(&recordInfo, &slot, &screenrecord_data, &writePos, displayIdx) == false) {
         return;
     }
 
@@ -701,7 +708,7 @@ void ScreenRecorderManager::HandleRFXRecordData(void* pixelBuffer, const CGRect*
     screenrecord_frame* slot = NULL;
     char* screenrecord_data = NULL;
     unsigned int writePos = 0;
-    if (recorder->AcquireFrameSlot(&recordInfo, &slot, &screenrecord_data, &writePos) == false) {
+    if (recorder->AcquireFrameSlot(&recordInfo, &slot, &screenrecord_data, &writePos, displayIdx) == false) {
         recorder->InvalidateRFXCanonical();
         return;
     }

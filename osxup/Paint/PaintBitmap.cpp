@@ -15,10 +15,12 @@ void PaintBitmap::Initialize(const struct mod* mod)
 void PaintBitmap::Release()
 {}
 
-void PaintBitmap::DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, char* imgData, size_t imgDataSize, int frame_id) {
+void PaintBitmap::DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, char* imgData, size_t imgDataSize, int frame_id, int displayId) {
     assert(mod != NULL);
     assert(frameInfo != NULL);
     assert(imgData != NULL);
+    
+    (void)displayId; // unused
     
     mod->server_begin_update((struct mod*)mod);
         
