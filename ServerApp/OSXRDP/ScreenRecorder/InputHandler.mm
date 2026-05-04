@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <sys/time.h>
 #include <Carbon/Carbon.h>
+#include <string.h>
 
 #define _IME_SWITCH_CODE kVK_RightOption
 
@@ -107,6 +108,7 @@ InputHandler::InputHandler() :
     _originalDisplayHeight(0),
     _recordDisplayWidth(0),
     _recordDisplayHeight(0),
+    _displayLayoutCnt(0),
     _scaleX(0.0f),
     _scaleY(0.0f),
     _inMouseDown(0),
@@ -127,6 +129,7 @@ InputHandler::InputHandler() :
     _wheelSmoothedAmount(0.0f),
     _lastWheelIsTrackpad(false)
 {
+    memset(_displayLayouts, 0x00, sizeof(_displayLayouts));
     _eventRef = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
 }
 
@@ -149,6 +152,32 @@ void InputHandler::UpdateDisplayRes(int originalDisplayWidth, int originalDispla
     printf("UpdateDisplayResolution origin: %d %d , record: %d %d , scale: %f %f\n", _originalDisplayWidth, _originalDisplayHeight, _recordDisplayWidth, _recordDisplayHeight, _scaleX, _scaleY);
 }
 
+void InputHandler::ResetDisplayLayout() {
+    _displayLayoutCnt = 0;
+    memset(_displayLayouts, 0x00, sizeof(_displayLayouts));
+}
+
+bool InputHandler::AddDisplayLayout(int clientLeft, int clientTop, int clientWidth, int clientHeight, int displayId) {
+    if (_displayLayoutCnt >= 16) {
+        return false;
+    }
+
+    if (clientWidth <= 0 || clientHeight <= 0 || displayId <= 0) {
+        return false;
+    }
+
+    _displayLayouts[_displayLayoutCnt].clientLeft = clientLeft;
+    _displayLayouts[_displayLayoutCnt].clientTop = clientTop;
+    _displayLayouts[_displayLayoutCnt].clientWidth = clientWidth;
+    _displayLayouts[_displayLayoutCnt].clientHeight = clientHeight;
+    _displayLayouts[_displayLayoutCnt].displayId = displayId;
+    _displayLayoutCnt++;
+
+    printf("AddDisplayLayout client: %d %d %d %d, displayId: %d\n", clientLeft, clientTop, clientWidth, clientHeight, displayId);
+
+    return true;
+}
+
 void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
     if (cmd == NULL) return;
         
@@ -166,8 +195,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
     }
     _lastMouseInputEventTime = currentTime;
     
-    clientX = CalcPos(clientX, _scaleX);
-    clientY = CalcPos(clientY, _scaleY);
+    MapClientPointToDisplayPoint(clientX, clientY, &clientX, &clientY);
     
     CGPoint point = CGPointMake(clientX, clientY);
     CGEventRef ev;
@@ -339,6 +367,40 @@ void InputHandler::HandleMouseDoubleClick(CGEventRef ev, bool mouseDown, int mou
     }
     
     CGEventSetIntegerValueField(ev, kCGMouseEventClickState, _mouseClickCnt);
+}
+
+bool InputHandler::MapClientPointToDisplayPoint(int clientX, int clientY, int* outX, int* outY) {
+    if (outX == NULL || outY == NULL) {
+        return false;
+    }
+
+    for (int i = 0; i < _displayLayoutCnt; i++) {
+        struct DISPLAY_LAYOUT* layout = &_displayLayouts[i];
+        if (layout->clientWidth <= 0 || layout->clientHeight <= 0 || layout->displayId <= 0) {
+            continue;
+        }
+
+        if (clientX < layout->clientLeft || clientY < layout->clientTop ||
+            clientX >= layout->clientLeft + layout->clientWidth ||
+            clientY >= layout->clientTop + layout->clientHeight) {
+            continue;
+        }
+
+        CGRect bounds = CGDisplayBounds((CGDirectDisplayID)layout->displayId);
+        float scaleX = (float)bounds.size.width / (float)layout->clientWidth;
+        float scaleY = (float)bounds.size.height / (float)layout->clientHeight;
+        int localX = clientX - layout->clientLeft;
+        int localY = clientY - layout->clientTop;
+
+        *outX = (int)bounds.origin.x + (int)((float)localX * scaleX);
+        *outY = (int)bounds.origin.y + (int)((float)localY * scaleY);
+
+        return true;
+    }
+
+    *outX = CalcPos(clientX, _scaleX);
+    *outY = CalcPos(clientY, _scaleY);
+    return false;
 }
 
 int InputHandler::CalcPos(int clientPos, float scale) {

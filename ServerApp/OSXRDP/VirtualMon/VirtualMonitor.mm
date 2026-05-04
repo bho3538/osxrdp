@@ -573,7 +573,7 @@ void VirtualMonitor::WatchThreadPorcInternal() {
     }
     
     // 가상 모니터를 제외한 다른 모니터가 온라인인지 확인
-    //DisableOtherMonitors();
+    DisableOtherMonitors();
     
     // 해상도 정보 확인 (가상 모니터)
     for (int i = 0; i < _virtualDisplayInfoCnt; i++) {

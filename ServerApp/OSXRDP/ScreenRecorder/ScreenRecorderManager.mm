@@ -198,15 +198,25 @@ bool ScreenRecorderManager::ResolveDisplayForRecorder() {
         CGRect rect = CGDisplayBounds(_recordParams.monitorInfo[0].displayId);
         
         _inputHandler.UpdateDisplayRes((int)rect.size.width, (int)rect.size.height, _recordParams.width, _recordParams.height);
+        _inputHandler.ResetDisplayLayout();
+        _inputHandler.AddDisplayLayout(0, 0, _recordParams.width, _recordParams.height, _recordParams.monitorInfo[0].displayId);
         
         return true;
     }
     
+    _inputHandler.UpdateDisplayRes(_recordParams.width, _recordParams.height, _recordParams.width, _recordParams.height);
+    _inputHandler.ResetDisplayLayout();
+
     for (int i = 0; i < _recordParams.monitorCount; i++) {
         // todo : 성공,실패 판별
         _virtualMonitor.Create(GetMonitorRecordWidth(i), GetMonitorRecordHeight(i), i, _recordParams.monitorInfo[i].is_primary != 0);
         
         _recordParams.monitorInfo[i].displayId = _virtualMonitor.GetDisplayId(i);
+        _inputHandler.AddDisplayLayout(_recordParams.monitorInfo[i].left,
+                                       _recordParams.monitorInfo[i].top,
+                                       GetMonitorRecordWidth(i),
+                                       GetMonitorRecordHeight(i),
+                                       _recordParams.monitorInfo[i].displayId);
     }
 
     /*
