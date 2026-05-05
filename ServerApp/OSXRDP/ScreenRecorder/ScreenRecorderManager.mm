@@ -29,7 +29,6 @@ inline void CopyRows(uint8_t* dst, const uint8_t* src, size_t rowBytes, size_t s
 }
 
 ScreenRecorderManager::ScreenRecorderManager(bool useLegacyRecorder) :
-    _recordShm(NULL),
     _cursorShm(NULL),
     _client(NULL),
     _rfxCanonical(NULL),
@@ -42,7 +41,9 @@ ScreenRecorderManager::ScreenRecorderManager(bool useLegacyRecorder) :
     _recorderCnt(0),
     _useLegacyRecorder(useLegacyRecorder),
     _recordShmCnt(0)
-{}
+{
+    memset(_recordShm, 0x00, sizeof(_recordShm));
+}
 
 ScreenRecorderManager::~ScreenRecorderManager() {
     Stop();
@@ -123,6 +124,7 @@ bool ScreenRecorderManager::ParseStartRecordParams(xstream_t* cmd, RecordStartPa
     params->monitorCount = xstream_readInt32(cmd);
 
     if (params->monitorCount > 16) params->monitorCount = 1;
+    int requestedMonitorCount = params->monitorCount;
     
     for (int i = 0; i < params->monitorCount; i++) {
         params->monitorInfo[i].left = xstream_readInt32(cmd);
@@ -131,7 +133,7 @@ bool ScreenRecorderManager::ParseStartRecordParams(xstream_t* cmd, RecordStartPa
         params->monitorInfo[i].bottom = xstream_readInt32(cmd);
         params->monitorInfo[i].is_primary = xstream_readInt32(cmd);
     }
-    
+
     // 잠금화면의 경우 virtual monitor 를 지원하지 않음.
     if (is_root_process() != 0) {
         params->useVirtualMon = 0;
@@ -147,6 +149,23 @@ bool ScreenRecorderManager::ParseStartRecordParams(xstream_t* cmd, RecordStartPa
         else {
             params->framerate = 30;
         }
+    }
+    
+    bool forceSingleMonitor = (params->useVirtualMon == 0 || params->recordFormat != OSXRDP_RECORDFORMAT_NV12_PACKED);
+    if (forceSingleMonitor == true) {
+        int monitorIndex = 0;
+        for (int i = 0; i < requestedMonitorCount; i++) {
+            if (params->monitorInfo[i].is_primary != 0) {
+                monitorIndex = i;
+                break;
+            }
+        }
+
+        if (monitorIndex != 0) {
+            params->monitorInfo[0] = params->monitorInfo[monitorIndex];
+        }
+
+        params->monitorCount = 1;
     }
 
     if (params->width <= 0 || params->height <= 0) {
@@ -197,9 +216,9 @@ bool ScreenRecorderManager::ResolveDisplayForRecorder() {
         
         CGRect rect = CGDisplayBounds(_recordParams.monitorInfo[0].displayId);
         
-        _inputHandler.UpdateDisplayRes((int)rect.size.width, (int)rect.size.height, _recordParams.width, _recordParams.height);
+        _inputHandler.UpdateDisplayRes((int)rect.size.width, (int)rect.size.height, GetMonitorRecordWidth(0), GetMonitorRecordHeight(0));
         _inputHandler.ResetDisplayLayout();
-        _inputHandler.AddDisplayLayout(0, 0, _recordParams.width, _recordParams.height, _recordParams.monitorInfo[0].displayId);
+        _inputHandler.AddDisplayLayout(_recordParams.monitorInfo[0].left, _recordParams.monitorInfo[0].top, GetMonitorRecordWidth(0), GetMonitorRecordHeight(0), _recordParams.monitorInfo[0].displayId);
         
         return true;
     }
@@ -209,51 +228,19 @@ bool ScreenRecorderManager::ResolveDisplayForRecorder() {
 
     for (int i = 0; i < _recordParams.monitorCount; i++) {
         // todo : 성공,실패 판별
-        _virtualMonitor.Create(GetMonitorRecordWidth(i), GetMonitorRecordHeight(i), i, _recordParams.monitorInfo[i].is_primary != 0);
-        
+
+        int monitorWidth = GetMonitorRecordWidth(i);
+        int monitorHeight = GetMonitorRecordHeight(i);
+
+        _virtualMonitor.Create(monitorWidth, monitorHeight, _recordParams.monitorInfo[i].left, _recordParams.monitorInfo[i].top, i, _recordParams.monitorInfo[i].is_primary != 0);
+
         _recordParams.monitorInfo[i].displayId = _virtualMonitor.GetDisplayId(i);
-        _inputHandler.AddDisplayLayout(_recordParams.monitorInfo[i].left,
-                                       _recordParams.monitorInfo[i].top,
-                                       GetMonitorRecordWidth(i),
-                                       GetMonitorRecordHeight(i),
-                                       _recordParams.monitorInfo[i].displayId);
+
+        _inputHandler.AddDisplayLayout(_recordParams.monitorInfo[i].left, _recordParams.monitorInfo[i].top, monitorWidth, monitorHeight, _recordParams.monitorInfo[i].displayId);
     }
 
-    /*
-    int displayId = -1;
-    if (params->useVirtualMon != 0) {
-        displayId = _virtualMonitor.Create(params->width, params->height);
-        
-        // 가상 디스플레이 생성 실패 (다른 모니터를 롤백)
-        if (displayId == -1) {
-            _virtualMonitor.RestoreOtherMonitors();
-        }
-    }
-    
-    if (displayId != -1) {
-        // macOS 12 에서 가상 디스플레이의 width, height 가 1로 오는 증상이 발생...
-        // 가상 디스플레이는 클라이언트의 해상도를 따라가므로 동일하게 설정
-        
-        int div = 1;
-        if (_virtualMonitor.IsRetina() == true) {
-            div = 2;
-        }
-        
-        _inputHandler.UpdateDisplayRes(params->width / div, params->height / div, params->width, params->height);
-    }
-    else {
-        // use main monitor
-        displayId = CGMainDisplayID();
-        CGRect rect = CGDisplayBounds(displayId);
-        
-        _inputHandler.UpdateDisplayRes((int)rect.size.width, (int)rect.size.height, params->width, params->height);
-    }
+    _virtualMonitor.StartMonitor();
 
-    
-    NSLog(@"[ScreenRecorderManager::ResolveDisplayForRecorder] displayid %d", displayId);
-
-    *displayIdOut = displayId;
-     */
     return true;
 }
 
@@ -334,6 +321,7 @@ void ScreenRecorderManager::DestroyRecordShm() {
     for (int i = 0; i < _recordShmCnt; i++) {
         xshm_close(_recordShm[i]);
         xshm_destroy(_recordShm[i]);
+        _recordShm[i] = NULL;
     }
     
     _recordShmCnt = 0;

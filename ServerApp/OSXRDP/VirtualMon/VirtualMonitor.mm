@@ -22,7 +22,7 @@ VirtualMonitor::~VirtualMonitor() {
     pthread_mutex_destroy(&_watchLock);
 }
 
-bool VirtualMonitor::Create(int width, int height, int index, bool isPrimary) {
+bool VirtualMonitor::Create(int width, int height, int left, int top, int index, bool isPrimary) {
 
     if (_virtualDisplayInfoCnt >= 16) return false;
     
@@ -85,6 +85,8 @@ bool VirtualMonitor::Create(int width, int height, int index, bool isPrimary) {
     
     WakeupDisplay();
     
+    _virtualDisplayInfo[_virtualDisplayInfoCnt].left = left;
+    _virtualDisplayInfo[_virtualDisplayInfoCnt].top = top;
     _virtualDisplayInfo[_virtualDisplayInfoCnt].width = width;
     _virtualDisplayInfo[_virtualDisplayInfoCnt].height = height;
     _virtualDisplayInfo[_virtualDisplayInfoCnt].is_retina = settings.hiDPI > 0 ? true : false;
@@ -92,15 +94,10 @@ bool VirtualMonitor::Create(int width, int height, int index, bool isPrimary) {
     _virtualDisplayInfo[_virtualDisplayInfoCnt].virtualDisplay = virtualDisplay;
 
     _virtualDisplayInfoCnt++;
+    
+    DisplayUtils::WaitDisplayOnlineState(virtualDisplay.displayID, true, 5000);
 
-    if (isPrimary == true) {
-        SetPrimaryDisplay();
-    }
-
-    if (_watchRunning == false) {
-        _watchRunning = true;
-        pthread_create(&_watchThread , NULL, WatchThreadProc, this);
-    }
+    ApplyDisplayLayout();
 
     return true;
 }
@@ -138,6 +135,13 @@ void VirtualMonitor::RestoreOtherMonitors() {
     
     _disabledDisplayIds = NULL;
     _disabledDisplayIdsCnt = 0;
+}
+
+void VirtualMonitor::StartMonitor() {
+    if (_watchRunning == false) {
+        _watchRunning = true;
+        pthread_create(&_watchThread , NULL, WatchThreadProc, this);
+    }
 }
 
 void VirtualMonitor::WakeupDisplay() {
@@ -312,6 +316,35 @@ bool VirtualMonitor::IsRightPrimaryDisplay() {
     }
 
     return CGMainDisplayID() == _virtualDisplayInfo[primaryIndex].virtualDisplay.displayID;
+}
+
+bool VirtualMonitor::IsRightDisplayLayout() {
+    int primaryIndex = GetPrimaryDisplayIndex();
+    if (primaryIndex < 0 || primaryIndex >= _virtualDisplayInfoCnt) {
+        return false;
+    }
+
+    struct VIRTUALMONITOR_INFO* primaryInfo = &_virtualDisplayInfo[primaryIndex];
+    if (primaryInfo->virtualDisplay == nil) {
+        return false;
+    }
+
+    for (int i = 0; i < _virtualDisplayInfoCnt; i++) {
+        struct VIRTUALMONITOR_INFO* displayInfo = &_virtualDisplayInfo[i];
+        if (displayInfo->virtualDisplay == nil) {
+            return false;
+        }
+
+        CGRect bounds = CGDisplayBounds(displayInfo->virtualDisplay.displayID);
+        int expectedX = displayInfo->left - primaryInfo->left;
+        int expectedY = displayInfo->top - primaryInfo->top;
+
+        if ((int)bounds.origin.x != expectedX || (int)bounds.origin.y != expectedY) {
+            return false;
+        }
+    }
+
+    return IsRightPrimaryDisplay();
 }
 
 int VirtualMonitor::SetResolution(int index) {
@@ -535,6 +568,59 @@ int VirtualMonitor::SetPrimaryDisplay() {
     return 0;
 }
 
+int VirtualMonitor::ApplyDisplayLayout() {
+    int primaryIndex = GetPrimaryDisplayIndex();
+    if (primaryIndex < 0 || primaryIndex >= _virtualDisplayInfoCnt) {
+        return 1;
+    }
+
+    struct VIRTUALMONITOR_INFO* primaryInfo = &_virtualDisplayInfo[primaryIndex];
+    if (primaryInfo->virtualDisplay == nil) {
+        return 1;
+    }
+
+    CGDisplayConfigRef cfg = NULL;
+    CGError beginErr = CGBeginDisplayConfiguration(&cfg);
+    if (beginErr != kCGErrorSuccess || cfg == NULL) {
+        NSLog(@"[VirtualMonitor::ApplyDisplayLayout] failed reason=beginConfiguration err=%d cfg=%p", beginErr, cfg);
+        return 1;
+    }
+
+    bool configured = true;
+    for (int i = 0; i < _virtualDisplayInfoCnt; i++) {
+        struct VIRTUALMONITOR_INFO* displayInfo = &_virtualDisplayInfo[i];
+        if (displayInfo->virtualDisplay == nil) {
+            configured = false;
+            break;
+        }
+
+        int x = displayInfo->left - primaryInfo->left;
+        int y = displayInfo->top - primaryInfo->top;
+
+        CGError configureErr = CGConfigureDisplayOrigin(cfg, displayInfo->virtualDisplay.displayID, x, y);
+        if (configureErr != kCGErrorSuccess) {
+            NSLog(@"[VirtualMonitor::ApplyDisplayLayout] configure failed index=%d id=%u x=%d y=%d err=%d",
+                  i, displayInfo->virtualDisplay.displayID, x, y, configureErr);
+            configured = false;
+            break;
+        }
+    }
+
+    if (configured == false) {
+        CGCancelDisplayConfiguration(cfg);
+        return 1;
+    }
+
+    CGError completeErr = CGCompleteDisplayConfiguration(cfg, kCGConfigureForAppOnly);
+    if (completeErr != kCGErrorSuccess) {
+        NSLog(@"[VirtualMonitor::ApplyDisplayLayout] failed reason=complete err=%d", completeErr);
+        return 1;
+    }
+
+    NSLog(@"[VirtualMonitor::ApplyDisplayLayout] success primaryIndex=%d primary=%u", primaryIndex, primaryInfo->virtualDisplay.displayID);
+    return 0;
+}
+
 void* VirtualMonitor::WatchThreadProc(void* args) {
     
     if (args == NULL) return NULL;
@@ -584,9 +670,9 @@ void VirtualMonitor::WatchThreadPorcInternal() {
         }
     }
 
-    // 다른 display 추가/삭제 과정에서 primary display 가 풀리는 경우 원복
-    if (IsRightPrimaryDisplay() == false) {
-        NSLog(@"[VirtualMonitor::WatchThreadProc] virtual display has invalid primary. try change it");
-        SetPrimaryDisplay();
+    // 다른 display 추가/삭제 과정에서 display 배치나 primary 가 풀리는 경우 원복
+    if (IsRightDisplayLayout() == false) {
+        NSLog(@"[VirtualMonitor::WatchThreadProc] virtual display has invalid layout. try change it");
+        ApplyDisplayLayout();
     }
 }

@@ -6,6 +6,8 @@
 #include <pthread.h>
 
 struct VIRTUALMONITOR_INFO {
+    int left;
+    int top;
     int width;
     int height;
     int is_retina;
@@ -19,7 +21,7 @@ public:
     ~VirtualMonitor();
     
     // 가상 모니터를 생성
-    bool Create(int width, int height, int index, bool isPrimary = false);
+    bool Create(int width, int height, int left, int top, int index, bool isPrimary = false);
     
     // 모든 가상 모니터를 파괴
     void Destroy();
@@ -30,6 +32,8 @@ public:
     
     // 비활성화 하였던 나머지 모니터들을 다시 활성화
     void RestoreOtherMonitors();
+    
+    void StartMonitor();
     
     bool IsRetina(int index) {
         if (index >= _virtualDisplayInfoCnt) return false;
@@ -62,10 +66,12 @@ private:
     bool IsAllVirtualDisplayOnline();
     int GetPrimaryDisplayIndex();
     bool IsRightPrimaryDisplay();
+    bool IsRightDisplayLayout();
 
     int SetResolution(int index);
     bool IsRightResolution(int index);
     int SetPrimaryDisplay();
+    int ApplyDisplayLayout();
     
     void WatchThreadPorcInternal();
     

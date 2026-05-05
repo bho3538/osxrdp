@@ -103,10 +103,12 @@ int PaintManager::Initialize(const struct mod* mod, int recordFormat, int sessio
             
             // 녹화 데이터가 담긴 공유 메모리를 열기
             _recordShm[i] = xshm_open(shm_name_with_idx);
-            if (_recordShm[i] == NULL) {
+            
+            // 열지 못하더라도 skip (의도된 동작)
+            //if (_recordShm[i] == NULL) {
                 // log
-                return false;
-            }
+            //    return false;
+            //}
             
             _recordShmCnt++;
         }
@@ -216,6 +218,11 @@ void PaintManager::Paint() {
     
     // todo : 더 좋은 방법이 있는지 확인 필요
     for (int i = 0; i < _recordShmCnt; i++) {
+        
+        // 그릴 수 있는 유효한 디스플레이인지 확인
+        if (_recordShm[i] == NULL)
+            continue;
+        
         if (_inFlightCountByDisplay[i] >= FRAME_SLOTS) {
             continue;
         }
@@ -390,7 +397,6 @@ void PaintManager::ResetInFlight() {
     _freeInFlightCount = IN_FLIGHT_SLOT_COUNT;
     _inFlightHead = 0;
     _inFlightCount = 0;
-    _nextFrameGeneration = 1;
     for (int i = 0; i < IN_FLIGHT_SLOT_COUNT; i++) {
         _inFlightFrames[i].frameId = 0;
         _inFlightFrames[i].displayIdx = 0;
