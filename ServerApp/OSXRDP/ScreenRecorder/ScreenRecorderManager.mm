@@ -26,6 +26,14 @@ inline void CopyRows(uint8_t* dst, const uint8_t* src, size_t rowBytes, size_t s
         dstRow += rowBytes;
     }
 }
+
+inline int GetDisplayPointSize(int pixelSize, bool isRetina) {
+    if (isRetina == false) {
+        return pixelSize;
+    }
+
+    return pixelSize / 2;
+}
 }
 
 ScreenRecorderManager::ScreenRecorderManager(bool useLegacyRecorder) :
@@ -259,10 +267,14 @@ bool ScreenRecorderManager::ResolveDisplayForRecorder() {
 
         _recordParams.monitorInfo[i].displayId = _virtualMonitor.GetDisplayId(i);
 
+        bool isRetina = _virtualMonitor.IsRetina(i);
+        int displayWidth = GetDisplayPointSize(monitorWidth, isRetina);
+        int displayHeight = GetDisplayPointSize(monitorHeight, isRetina);
+
         _inputHandler.AddDisplayLayout(_recordParams.monitorInfo[i].left, _recordParams.monitorInfo[i].top,
                                        monitorWidth, monitorHeight,
                                        displayOriginX, displayOriginY,
-                                       monitorWidth, monitorHeight,
+                                       displayWidth, displayHeight,
                                        _recordParams.monitorInfo[i].displayId);
     }
 
