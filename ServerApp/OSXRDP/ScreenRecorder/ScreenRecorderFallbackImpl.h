@@ -11,6 +11,7 @@
 @interface ScreenRecorderFallbackImpl : NSObject<IScreenRecorder>
 
 - (void)initializeWithDisplayId:(int)displayId
+            DisplayIndex:(int)displayIdx
             RecordWidth:(int)width
             RecordHeight:(int)height
             RecordFramerate:(int)framerate

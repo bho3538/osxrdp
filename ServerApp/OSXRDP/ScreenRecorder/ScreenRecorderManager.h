@@ -29,13 +29,29 @@ private:
         int framerate;
         int recordFormat;
         int useVirtualMon;
+        int monitorCount;
+        
+        struct MONITOR_INFO {
+            int left;
+            int top;
+            int right;
+            int bottom;
+            int is_primary;
+            int displayId;
+            int outputIndex;
+        } monitorInfo[16];
     };
+    
+    struct RecordStartParams _recordParams;
 
-    // ScreenRecorderImpl
-    void* _impl;
+    void* _recorder[16];
+    int _recorderCnt;
+    
+    bool _useLegacyRecorder;
     
     // 녹화 데이터가 저장되는 공유 메모리
-    xshm_t* _recordShm;
+    xshm_t* _recordShm[16];
+    int _recordShmCnt;
     
     // 마우스 커서 이미지가 저장되는 공유 메모리
     xshm_t* _cursorShm;
@@ -63,7 +79,7 @@ private:
     // 다음 프레임을 full redraw 로 내보내야 하는지 표시.
     bool     _rfxFullRedrawRequired;
 
-    bool CreateRecordShm(int width, int height, int framerate);
+    bool CreateRecordShm(int recordIdx);
     void DestroyRecordShm();
     
     bool CreateCursorShm();
@@ -72,29 +88,31 @@ private:
     bool StartRecord(xstream_t* cmd);
     
     bool ParseStartRecordParams(xstream_t* cmd, RecordStartParams* params);
-    bool PrepareRecordResources(const RecordStartParams* params);
+    bool PrepareRecordResources();
     
-    // 녹화에 사용할 디스플레이 조회
-    bool ResolveDisplayForRecorder(const RecordStartParams* params, int* displayIdOut);
+    // 녹화기 설정
+    bool ResolveDisplayForRecorder();
+    int GetMonitorRecordWidth(int recordIdx);
+    int GetMonitorRecordHeight(int recordIdx);
 
     // 녹화 데이터 처리기
-    static void HandleBGRA32RecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData);
+    static void HandleBGRA32RecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx);
     static void HandleBGRA32DirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data);
     
-    static void HandleNV12PackedRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData);
+    static void HandleNV12PackedRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx);
     static void HandleNV12PackedDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data);
     
-    static void HandleNV12AlignedRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData);
+    static void HandleNV12AlignedRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx);
     static void HandleNV12AlignedDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data);
     
-    static void HandleRFXRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData);
+    static void HandleRFXRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx);
     bool HandleRFXDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data);
     
     // 데이터를 작성할 slot 찾기
-    bool AcquireFrameSlot(screenrecord_shm_t** recordInfoOut, screenrecord_frame** frameOut, char** dataOut, unsigned int* writePosOut);
+    bool AcquireFrameSlot(screenrecord_shm_t** recordInfoOut, screenrecord_frame** frameOut, char** dataOut, unsigned int* writePosOut, int displayIdx);
     
     // 데이터 작성 완료 flag 설정
-    void CommitFrameSlot(screenrecord_shm_t* recordInfo, unsigned int writePos);
+    void CommitFrameSlot(screenrecord_shm_t* recordInfo, unsigned int writePos, int displayIdx);
 
     // NV12Packed 데이터를 메모리에 기록
     static bool CopyNV12PackedFrame(void* imageBuffer, char* screenrecord_data, int* widthOut, int* heightOut);

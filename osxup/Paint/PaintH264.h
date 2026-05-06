@@ -9,7 +9,7 @@ class PaintH264 : public PaintBase {
 public:
     void Initialize(const struct mod* mod) override;
     void Release() override;
-    void DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, char* imgData, size_t imgDataSize, int frame_id) override;
+    void DoPaint(const struct mod* mod, screenrecord_frame_t* frameInfo, char* imgData, size_t imgDataSize, int frame_id, int displayId, int width, int height) override;
     
 private:
     xstream_t* _drawCmd = NULL;

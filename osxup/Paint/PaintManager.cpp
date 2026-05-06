@@ -14,14 +14,21 @@ PaintManager::PaintManager() :
     _inited(false),
     _mod(NULL),
     _paint(NULL),
-    _recordShm(NULL),
     _cursorShm(NULL),
     _inPainting(false),
     _releasePending(false),
-    _nextFrameId(1),
+    _nextFrameGeneration(1),
+    _freeInFlightCount(0),
     _inFlightHead(0),
-    _inFlightCount(0)
-{}
+    _inFlightCount(0),
+    _recordShmCnt(0)
+{
+    for (int i = 0; i < 16; i++) {
+        _recordShm[i] = NULL;
+        _needPaintDisplay[i] = 0;
+        _inFlightCountByDisplay[i] = 0;
+    }
+}
 
 PaintManager::~PaintManager() {
     Release();
@@ -52,7 +59,7 @@ int PaintManager::CheckRecordFormat(const struct mod* mod) {
 int PaintManager::Initialize(const struct mod* mod, int recordFormat, int sessionId, bool isLockScreen) {
     assert(mod != NULL);
     assert(recordFormat >= 0);
-    assert(_recordShm == NULL);
+    assert(_recordShmCnt == 0);
     assert(_inited == false);
     
     if (_inited == true) {
@@ -65,16 +72,33 @@ int PaintManager::Initialize(const struct mod* mod, int recordFormat, int sessio
     }
     
     char shm_name[512] = {0,};
+    int monitorCount = mod->client_info.display_sizes.monitorCount;
+    if (monitorCount == 0) {
+        monitorCount = 1;
+    }
+
+    if (monitorCount > 16) {
+        monitorCount = 16;
+    }
+
     if (get_object_name(sessionId, OSXRDP_SCREENSHM_NAME, shm_name, sizeof(shm_name), isLockScreen) == 0) {
         // log
         return false;
     }
-    
-    // 녹화 데이터가 담긴 공유 메모리를 열기
-    _recordShm = xshm_open(shm_name);
-    if (_recordShm == NULL) {
-        // log
-        return false;
+
+    for (int i = 0; i < monitorCount; i++) {
+        char shm_name_with_idx[512];
+        snprintf(shm_name_with_idx, sizeof(shm_name_with_idx), "%s_%d", shm_name, i);
+
+        // lockscreen 처럼 일부 output monitor 에만 SHM 이 존재할 수 있다.
+        _recordShm[i] = xshm_open(shm_name_with_idx);
+
+        if (mod->client_info.display_sizes.monitorCount == 0 && _recordShm[i] == NULL) {
+            // log
+            return false;
+        }
+
+        _recordShmCnt++;
     }
     
     if (get_object_name(sessionId, OSXRDP_CURSORSHM_NAME, shm_name, sizeof(shm_name), isLockScreen) == 0) {
@@ -117,7 +141,7 @@ void PaintManager::Release() {
 }
 
 bool PaintManager::TryReleaseForReconnect() {
-    if (_inited == false && _recordShm == NULL && _cursorShm == NULL && _paint == NULL) {
+    if (_inited == false && _recordShmCnt == 0 && _cursorShm == NULL && _paint == NULL) {
         return true;
     }
 
@@ -139,12 +163,16 @@ void PaintManager::ReleaseResources() {
     }
 
     // close shm
-    if (_recordShm != NULL) {
-        xshm_close(_recordShm);
-        xshm_destroy(_recordShm);
+    for (int i = 0; i < 16; i++) {
+        if (_recordShm[i] != NULL) {
+            xshm_close(_recordShm[i]);
+            xshm_destroy(_recordShm[i]);
+            _recordShm[i] = NULL;
+        }
         
-        _recordShm = NULL;
+        _needPaintDisplay[i] = 0;
     }
+    _recordShmCnt = 0;
     
     if (_cursorShm != NULL) {
         xshm_close(_cursorShm);
@@ -161,7 +189,7 @@ void PaintManager::ReleaseResources() {
 }
 
 void PaintManager::Paint() {
-    if (_inited == false || _paint == NULL || _recordShm == NULL || _cursorShm == NULL) {
+    if (_inited == false || _paint == NULL || _recordShmCnt == 0 || _cursorShm == NULL) {
         return;
     }
 
@@ -174,38 +202,51 @@ void PaintManager::Paint() {
     // 마우스 커서 그리기
     PaintMouseCursor();
     
-    if (_inFlightCount >= FRAME_SLOTS) {
+    if (_inFlightCount >= FRAME_SLOTS * _recordShmCnt) {
         return;
     }
     
-    screenrecord_frame_t* frameInfo = NULL;
-    char* imgData = NULL;
-    size_t imgDataSize = 0;
-    unsigned int shm_frame_id = 0;
-    
-    // 읽을 데이터가 있는지 확인
-    if (GetPaintData(&frameInfo, &imgData, &imgDataSize, &shm_frame_id) == false) {
-        return;
-    }
+    // todo : 더 좋은 방법이 있는지 확인 필요
+    for (int i = 0; i < _recordShmCnt; i++) {
+        // 그려야 하는 데이타가 있는지 확인
+        if (_needPaintDisplay[i] == 0)
+            continue;
+        
+        _needPaintDisplay[i] = 0;
+        
+        // 그릴 수 있는 유효한 디스플레이인지 확인
+        if (_recordShm[i] == NULL)
+            continue;
+        
+        if (_inFlightCountByDisplay[i] >= FRAME_SLOTS) {
+            continue;
+        }
 
-    // xrdp의 ACK 윈도우는 작은 연속 frame_id를 가정한다.
-    // SHM read_pos(큰 값/불연속) 대신 세션 로컬 frame_id를 사용한다.
-    unsigned int frame_id = _nextFrameId++;
-    if (_nextFrameId >= 0x7FFFFFFFU) {
-        _nextFrameId = 1;
-    }
+        screenrecord_frame_t* frameInfo = NULL;
+        char* imgData = NULL;
+        size_t imgDataSize = 0;
+        int width = 0;
+        int height = 0;
+        unsigned int shm_frame_id = 0;
+        
+        // 읽을 데이터가 있는지 확인
+        if (GetPaintData(&frameInfo, &imgData, &imgDataSize, &width, &height, &shm_frame_id, i) == false) {
+            continue;
+        }
 
-    if (PushInFlight(frame_id, shm_frame_id) == false) {
-        return;
+        unsigned int frame_id = 0;
+        if (PushInFlight(i, shm_frame_id, &frame_id) == false) {
+            return;
+        }
+        _inPainting = (_inFlightCount > 0);
+        
+        // 그리기
+        _paint->DoPaint(_mod, frameInfo, imgData, imgDataSize, frame_id, i, width, height);
     }
-    _inPainting = (_inFlightCount > 0);
-    
-    // 그리기
-    _paint->DoPaint(_mod, frameInfo, imgData, imgDataSize, frame_id);
 }
 
-bool PaintManager::GetPaintData(screenrecord_frame_t** outFrameInfo, char** outImgData, size_t* outImgDataSize, unsigned int* frame_id) {
-    screenrecord_shm_t* shm = (screenrecord_shm_t*)_recordShm->mem;
+bool PaintManager::GetPaintData(screenrecord_frame_t** outFrameInfo, char** outImgData, size_t* outImgDataSize, int* outWidth, int* outHeight, unsigned int* frame_id, int displayIdx) {
+    screenrecord_shm_t* shm = (screenrecord_shm_t*)_recordShm[displayIdx]->mem;
 
     // 읽을 데이터가 있는지 확인
     unsigned int read_pos = atomic_load_explicit(&shm->read_pos,  memory_order_acquire);
@@ -215,15 +256,15 @@ bool PaintManager::GetPaintData(screenrecord_frame_t** outFrameInfo, char** outI
         return false;
     }
 
-
     int forceRedrawAll = 0;
-    unsigned int targetPos = read_pos + (unsigned int)_inFlightCount;
+    int displayInFlightCount = _inFlightCountByDisplay[displayIdx];
+    unsigned int targetPos = read_pos + (unsigned int)displayInFlightCount;
     if (targetPos >= write_pos) {
         return false;
     }
 
     bool selfContained = (_paint == NULL || _paint->FrameIsSelfContained() == true);
-    bool trueBacklog = (_inFlightCount == 0 && (write_pos - read_pos >= FRAME_SLOTS));
+    bool trueBacklog = (displayInFlightCount == 0 && (write_pos - read_pos >= FRAME_SLOTS));
     
     // backlog 를 처리하는 방법
     //   - self-contained 포맷 (BGRA32 / NV12) : 최신 slot 으로 점프해서 full 로 처리.
@@ -236,7 +277,7 @@ bool PaintManager::GetPaintData(screenrecord_frame_t** outFrameInfo, char** outI
         }
     }
     else {
-        if (trueBacklog == true || (_inFlightCount == 0 && read_pos == 0)) {
+        if (trueBacklog == true || (displayInFlightCount == 0 && read_pos == 0)) {
             targetPos = write_pos - 1;
             forceRedrawAll = 1;
         }
@@ -261,6 +302,8 @@ bool PaintManager::GetPaintData(screenrecord_frame_t** outFrameInfo, char** outI
     *outFrameInfo = frame;
     *outImgData = imgData + sizeof(size_t);
     *outImgDataSize = imgDataSize;
+    *outWidth = shm->width;
+    *outHeight = shm->height;
 
     *frame_id = targetPos;
 
@@ -269,65 +312,101 @@ bool PaintManager::GetPaintData(screenrecord_frame_t** outFrameInfo, char** outI
     return true;
 }
 
-bool PaintManager::PushInFlight(unsigned int frameId, unsigned int shmReadPos) {
-    if (_inFlightCount >= FRAME_SLOTS) {
+bool PaintManager::PushInFlight(int displayIdx, unsigned int shmReadPos, unsigned int* outFrameId) {
+    if (displayIdx < 0 || displayIdx >= 16) {
         return false;
     }
 
-    int tail = (_inFlightHead + _inFlightCount) % FRAME_SLOTS;
-    _inFlightFrameIds[tail] = frameId;
-    _inFlightReadPos[tail] = shmReadPos;
+    if (outFrameId == NULL) {
+        return false;
+    }
+
+    if (_freeInFlightCount <= 0) {
+        return false;
+    }
+
+    if (_inFlightCountByDisplay[displayIdx] >= FRAME_SLOTS) {
+        return false;
+    }
+
+    if (_nextFrameGeneration >= 0x7FFFFFFFU / IN_FLIGHT_SLOT_COUNT) {
+        if (_inFlightCount > 0) {
+            return false;
+        }
+        _nextFrameGeneration = 1;
+    }
+
+    int slot = _freeInFlightSlots[--_freeInFlightCount];
+    unsigned int frameId = (_nextFrameGeneration * IN_FLIGHT_SLOT_COUNT) + (unsigned int)slot;
+    _nextFrameGeneration++;
+
+    _inFlightFrames[slot].frameId = frameId;
+    _inFlightFrames[slot].displayIdx = displayIdx;
+    _inFlightFrames[slot].shmReadPos = shmReadPos;
+    _inFlightFrames[slot].inUse = true;
+
+    int tail = (_inFlightHead + _inFlightCount) % IN_FLIGHT_SLOT_COUNT;
+    _inFlightSlotQueue[tail] = slot;
+
     _inFlightCount++;
+    _inFlightCountByDisplay[displayIdx]++;
+    *outFrameId = frameId;
     return true;
 }
 
-int PaintManager::PopAckedInFlight(int ackFrameId, unsigned int* outMaxReadPos) {
+int PaintManager::PopAckedInFlight(int ackFrameId, unsigned int* outMaxReadPosByDisplay, bool* outHasReadPosByDisplay) {
     int popped = 0;
-    unsigned int maxReadPos = 0;
-    bool hasMax = false;
-
-    if (ackFrameId < 0) {
-        while (_inFlightCount > 0) {
-            int idx = _inFlightHead;
-            maxReadPos = _inFlightReadPos[idx];
-            hasMax = true;
-            _inFlightHead = (_inFlightHead + 1) % FRAME_SLOTS;
-            _inFlightCount--;
-            popped++;
-        }
-        if (hasMax && outMaxReadPos != NULL) {
-            *outMaxReadPos = maxReadPos;
-        }
-        return popped;
-    }
 
     while (_inFlightCount > 0) {
-        int idx = _inFlightHead;
-        unsigned int frontFrameId = _inFlightFrameIds[idx];
-        if ((int)frontFrameId > ackFrameId) {
+        int slot = _inFlightSlotQueue[_inFlightHead];
+        InFlightFrame* frame = &_inFlightFrames[slot];
+
+        if (ackFrameId >= 0 && (int)frame->frameId > ackFrameId) {
             break;
         }
 
-        maxReadPos = _inFlightReadPos[idx];
-        hasMax = true;
-        _inFlightHead = (_inFlightHead + 1) % FRAME_SLOTS;
+        int displayIdx = frame->displayIdx;
+        if (displayIdx >= 0 && displayIdx < 16) {
+            if (outMaxReadPosByDisplay != NULL) {
+                outMaxReadPosByDisplay[displayIdx] = frame->shmReadPos;
+            }
+            if (outHasReadPosByDisplay != NULL) {
+                outHasReadPosByDisplay[displayIdx] = true;
+            }
+            if (_inFlightCountByDisplay[displayIdx] > 0) {
+                _inFlightCountByDisplay[displayIdx]--;
+            }
+        }
+
+        frame->inUse = false;
+        _freeInFlightSlots[_freeInFlightCount++] = slot;
+        _inFlightHead = (_inFlightHead + 1) % IN_FLIGHT_SLOT_COUNT;
         _inFlightCount--;
         popped++;
     }
 
-    if (hasMax && outMaxReadPos != NULL) {
-        *outMaxReadPos = maxReadPos;
-    }
     return popped;
 }
 
 void PaintManager::ResetInFlight() {
+    _freeInFlightCount = IN_FLIGHT_SLOT_COUNT;
     _inFlightHead = 0;
     _inFlightCount = 0;
+    for (int i = 0; i < IN_FLIGHT_SLOT_COUNT; i++) {
+        _inFlightFrames[i].frameId = 0;
+        _inFlightFrames[i].displayIdx = 0;
+        _inFlightFrames[i].shmReadPos = 0;
+        _inFlightFrames[i].inUse = false;
+        _inFlightSlotQueue[i] = 0;
+        _freeInFlightSlots[i] = i;
+    }
+    for (int i = 0; i < 16; i++) {
+        _inFlightCountByDisplay[i] = 0;
+    }
 }
 
 void PaintManager::PaintEnd(int ackFrameId) {
-    if (_inited == false || _recordShm == NULL) {
+    if (_inited == false || _recordShmCnt == 0) {
         _inPainting = false;
         return;
     }
@@ -337,19 +416,31 @@ void PaintManager::PaintEnd(int ackFrameId) {
         return;
     }
 
-    unsigned int maxReadPos = 0;
-    int popped = PopAckedInFlight(ackFrameId, &maxReadPos);
+    unsigned int maxReadPosByDisplay[16];
+    bool hasReadPosByDisplay[16];
+    for (int i = 0; i < 16; i++) {
+        maxReadPosByDisplay[i] = 0;
+        hasReadPosByDisplay[i] = false;
+    }
+
+    int popped = PopAckedInFlight(ackFrameId, maxReadPosByDisplay, hasReadPosByDisplay);
     if (popped <= 0) {
         _inPainting = (_inFlightCount > 0);
         return;
     }
 
-    screenrecord_shm_t* shm = (screenrecord_shm_t*)_recordShm->mem;
-    unsigned int read_pos = atomic_load_explicit(&shm->read_pos, memory_order_relaxed);
-    unsigned int nextReadPos = maxReadPos + 1;
+    for (int i = 0; i < _recordShmCnt; i++) {
+        if (hasReadPosByDisplay[i] == false) {
+            continue;
+        }
 
-    if (nextReadPos > read_pos) {
-        atomic_store_explicit(&shm->read_pos, nextReadPos, memory_order_release);
+        screenrecord_shm_t* shm = (screenrecord_shm_t*)_recordShm[i]->mem;
+        unsigned int read_pos = atomic_load_explicit(&shm->read_pos, memory_order_relaxed);
+        unsigned int nextReadPos = maxReadPosByDisplay[i] + 1;
+
+        if (nextReadPos > read_pos) {
+            atomic_store_explicit(&shm->read_pos, nextReadPos, memory_order_release);
+        }
     }
     
     _inPainting = (_inFlightCount > 0);

@@ -10,15 +10,32 @@ public:
     ~InputHandler();
     
     void UpdateDisplayRes(int originalDisplayWidth, int originalDisplayHeight, int recordDisplayWidth, int recordDisplayHeight);
+    void ResetDisplayLayout();
+    bool AddDisplayLayout(int clientLeft, int clientTop, int clientWidth, int clientHeight, int displayOriginX, int displayOriginY, int displayWidth, int displayHeight, int displayId);
     
     void HandleMousseInputEvent(xstream_t* cmd);
     void HandleKeyboardInputEvent(xstream_t* cmd);
     
 private:
+    struct DISPLAY_LAYOUT {
+        int clientLeft;
+        int clientTop;
+        int clientWidth;
+        int clientHeight;
+        int displayId;
+        int displayOriginX;
+        int displayOriginY;
+        float scaleX;
+        float scaleY;
+    };
+
     int _originalDisplayWidth;
     int _originalDisplayHeight;
     int _recordDisplayWidth;
     int _recordDisplayHeight;
+
+    struct DISPLAY_LAYOUT _displayLayouts[16];
+    int _displayLayoutCnt;
     
     int _lastMousePosX;
     int _lastMousePosY;
@@ -45,6 +62,7 @@ private:
     CGEventSourceRef _eventRef;
     
     void HandleMouseDoubleClick(CGEventRef ev, bool mouseDown, int mouseX, int mouseY, int mouseButton);
+    bool MapClientPointToDisplayPoint(int clientX, int clientY, int* outX, int* outY);
     int GetMouseWheelMoveAmount(int direction);
     void PostScrollEvent(int amount, bool continuous);
     void PostTrackpadScrollEvent(int amount);

@@ -58,6 +58,14 @@ lib_mod_connect(struct mod *mod, int fd)
     memset(mod->password, 0x01, MAX_PATH);
     memset(mod->password, 0x00, MAX_PATH);
     
+    // check multi mon compatiable
+    if (mod->client_info.display_sizes.monitorCount > 1 && PaintManager::CheckRecordFormat(mod) != OSXRDP_RECORDFORMAT_NV12_PACKED) {
+        mod->server_msg(mod, "Multiple monitor only support H.264 format", 0);
+        mod->server_msg(mod, "Please disable multiple monitor options on client.", 0);
+
+        return 1;
+    }
+    
     // connection manager 를 초기화 (sessionmanager와 연결)
     if (mod->connectionManager->Initialize() != 0) {
         mod->server_msg(mod, "Could not connect to sessionmanager.", 0);

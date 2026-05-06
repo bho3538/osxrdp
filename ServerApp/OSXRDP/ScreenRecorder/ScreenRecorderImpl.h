@@ -8,6 +8,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface ScreenRecorderImpl : NSObject<SCStreamOutput, SCStreamDelegate, IScreenRecorder>
 
 - (void)initializeWithDisplayId:(int)displayId
+            DisplayIndex:(int)displayIdx
             RecordWidth:(int)width
             RecordHeight:(int)height
             RecordFramerate:(int)framerate
