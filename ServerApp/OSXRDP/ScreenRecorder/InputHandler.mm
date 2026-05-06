@@ -157,12 +157,12 @@ void InputHandler::ResetDisplayLayout() {
     memset(_displayLayouts, 0x00, sizeof(_displayLayouts));
 }
 
-bool InputHandler::AddDisplayLayout(int clientLeft, int clientTop, int clientWidth, int clientHeight, int displayId) {
+bool InputHandler::AddDisplayLayout(int clientLeft, int clientTop, int clientWidth, int clientHeight, int displayOriginX, int displayOriginY, int displayWidth, int displayHeight, int displayId) {
     if (_displayLayoutCnt >= 16) {
         return false;
     }
 
-    if (clientWidth <= 0 || clientHeight <= 0 || displayId <= 0) {
+    if (clientWidth <= 0 || clientHeight <= 0 || displayWidth <= 0 || displayHeight <= 0 || displayId <= 0) {
         return false;
     }
 
@@ -171,9 +171,13 @@ bool InputHandler::AddDisplayLayout(int clientLeft, int clientTop, int clientWid
     _displayLayouts[_displayLayoutCnt].clientWidth = clientWidth;
     _displayLayouts[_displayLayoutCnt].clientHeight = clientHeight;
     _displayLayouts[_displayLayoutCnt].displayId = displayId;
+    _displayLayouts[_displayLayoutCnt].displayOriginX = displayOriginX;
+    _displayLayouts[_displayLayoutCnt].displayOriginY = displayOriginY;
+    _displayLayouts[_displayLayoutCnt].scaleX = (float)displayWidth / (float)clientWidth;
+    _displayLayouts[_displayLayoutCnt].scaleY = (float)displayHeight / (float)clientHeight;
     _displayLayoutCnt++;
 
-    printf("AddDisplayLayout client: %d %d %d %d, displayId: %d\n", clientLeft, clientTop, clientWidth, clientHeight, displayId);
+    printf("AddDisplayLayout client: %d %d %d %d, display: %d %d %d %d, displayId: %d\n", clientLeft, clientTop, clientWidth, clientHeight, displayOriginX, displayOriginY, displayWidth, displayHeight, displayId);
 
     return true;
 }
@@ -338,7 +342,14 @@ void InputHandler::HandleKeyboardInputEvent(xstream_t* cmd) {
             return;
     }
     
-    CGEventSetFlags(ev, _keyboardModifierFlags);
+    // 미션 컨트롤
+    CGEventFlags eventFlags = _keyboardModifierFlags;
+    if ((eventFlags & kCGEventFlagMaskControl) != 0 &&
+        (keyCode == kVK_UpArrow || keyCode == kVK_DownArrow ||
+         keyCode == kVK_LeftArrow || keyCode == kVK_RightArrow)) {
+        eventFlags |= kCGEventFlagMaskSecondaryFn;
+    }
+    CGEventSetFlags(ev, eventFlags);
     
     CGEventPost(kCGSessionEventTap, ev);
     CFRelease(ev);
@@ -386,14 +397,11 @@ bool InputHandler::MapClientPointToDisplayPoint(int clientX, int clientY, int* o
             continue;
         }
 
-        CGRect bounds = CGDisplayBounds((CGDirectDisplayID)layout->displayId);
-        float scaleX = (float)bounds.size.width / (float)layout->clientWidth;
-        float scaleY = (float)bounds.size.height / (float)layout->clientHeight;
         int localX = clientX - layout->clientLeft;
         int localY = clientY - layout->clientTop;
 
-        *outX = (int)bounds.origin.x + (int)((float)localX * scaleX);
-        *outY = (int)bounds.origin.y + (int)((float)localY * scaleY);
+        *outX = layout->displayOriginX + (int)((float)localX * layout->scaleX);
+        *outY = layout->displayOriginY + (int)((float)localY * layout->scaleY);
 
         return true;
     }

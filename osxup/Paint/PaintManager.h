@@ -20,6 +20,12 @@ public:
     void Paint();
     void PaintEnd(int ackFrameId);
     
+    // thread safe 하지 않지만, 동일 스레드에서 호출하므로 안전
+    void PreparePaint(int displayIdx) {
+        if (displayIdx >= 16) return;
+        _needPaintDisplay[displayIdx] = 1;
+    }
+    
     static int CheckRecordFormat(const struct mod* mod);
     
 private:
@@ -51,6 +57,7 @@ private:
     int _inFlightCountByDisplay[16];
     int _inFlightHead;
     int _inFlightCount;
+    int _needPaintDisplay[16];
     
     bool GetPaintData(screenrecord_frame_t** outFrameInfo, char** outImgData, size_t* outImgDataSize, int* outWidth, int* outHeight, unsigned int* frame_id, int displayIdx);
     bool PushInFlight(int displayIdx, unsigned int shmReadPos, unsigned int* outFrameId);

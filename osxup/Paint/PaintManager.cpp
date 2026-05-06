@@ -25,6 +25,7 @@ PaintManager::PaintManager() :
 {
     for (int i = 0; i < 16; i++) {
         _recordShm[i] = NULL;
+        _needPaintDisplay[i] = 0;
         _inFlightCountByDisplay[i] = 0;
     }
 }
@@ -70,51 +71,35 @@ int PaintManager::Initialize(const struct mod* mod, int recordFormat, int sessio
         return false;
     }
     
-    // todo : 반드시 수정 (예외 처리가 부실함)
     char shm_name[512] = {0,};
-    
-    if (mod->client_info.display_sizes.monitorCount == 0) {
-        if (get_object_name(sessionId, OSXRDP_SCREENSHM_NAME, shm_name, sizeof(shm_name), isLockScreen) == 0) {
-            // log
-            return false;
-        }
-        
+    int monitorCount = mod->client_info.display_sizes.monitorCount;
+    if (monitorCount == 0) {
+        monitorCount = 1;
+    }
+
+    if (monitorCount > 16) {
+        monitorCount = 16;
+    }
+
+    if (get_object_name(sessionId, OSXRDP_SCREENSHM_NAME, shm_name, sizeof(shm_name), isLockScreen) == 0) {
+        // log
+        return false;
+    }
+
+    for (int i = 0; i < monitorCount; i++) {
         char shm_name_with_idx[512];
-        snprintf(shm_name_with_idx, sizeof(shm_name_with_idx), "%s_%d", shm_name, 0 );
-        
-        // 녹화 데이터가 담긴 공유 메모리를 열기
-        _recordShm[0] = xshm_open(shm_name_with_idx);
-        if (_recordShm[0] == NULL) {
+        snprintf(shm_name_with_idx, sizeof(shm_name_with_idx), "%s_%d", shm_name, i);
+
+        // lockscreen 처럼 일부 output monitor 에만 SHM 이 존재할 수 있다.
+        _recordShm[i] = xshm_open(shm_name_with_idx);
+
+        if (mod->client_info.display_sizes.monitorCount == 0 && _recordShm[i] == NULL) {
             // log
             return false;
         }
-        
+
         _recordShmCnt++;
     }
-    else {
-        for (int i = 0; i < mod->client_info.display_sizes.monitorCount; i++) {
-            if (get_object_name(sessionId, OSXRDP_SCREENSHM_NAME, shm_name, sizeof(shm_name), isLockScreen) == 0) {
-                // log
-                return false;
-            }
-            
-            char shm_name_with_idx[512];
-            snprintf(shm_name_with_idx, sizeof(shm_name_with_idx), "%s_%d", shm_name, i);
-            
-            // 녹화 데이터가 담긴 공유 메모리를 열기
-            _recordShm[i] = xshm_open(shm_name_with_idx);
-            
-            // 열지 못하더라도 skip (의도된 동작)
-            //if (_recordShm[i] == NULL) {
-                // log
-            //    return false;
-            //}
-            
-            _recordShmCnt++;
-        }
-    }
-
-
     
     if (get_object_name(sessionId, OSXRDP_CURSORSHM_NAME, shm_name, sizeof(shm_name), isLockScreen) == 0) {
         // log
@@ -178,9 +163,14 @@ void PaintManager::ReleaseResources() {
     }
 
     // close shm
-    for (int i = 0; i < _recordShmCnt; i++) {
-        xshm_close(_recordShm[i]);
-        xshm_destroy(_recordShm[i]);
+    for (int i = 0; i < 16; i++) {
+        if (_recordShm[i] != NULL) {
+            xshm_close(_recordShm[i]);
+            xshm_destroy(_recordShm[i]);
+            _recordShm[i] = NULL;
+        }
+        
+        _needPaintDisplay[i] = 0;
     }
     _recordShmCnt = 0;
     
@@ -218,6 +208,11 @@ void PaintManager::Paint() {
     
     // todo : 더 좋은 방법이 있는지 확인 필요
     for (int i = 0; i < _recordShmCnt; i++) {
+        // 그려야 하는 데이타가 있는지 확인
+        if (_needPaintDisplay[i] == 0)
+            continue;
+        
+        _needPaintDisplay[i] = 0;
         
         // 그릴 수 있는 유효한 디스플레이인지 확인
         if (_recordShm[i] == NULL)

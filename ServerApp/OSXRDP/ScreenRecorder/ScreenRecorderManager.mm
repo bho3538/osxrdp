@@ -87,11 +87,12 @@ bool ScreenRecorderManager::StartRecord(xstream_t* cmd) {
             recordDataCb = HandleRFXRecordData;
         }
 
+        int outputIndex = _recordParams.monitorInfo[i].outputIndex;
         int recordWidth = GetMonitorRecordWidth(i);
         int recordHeight = GetMonitorRecordHeight(i);
         
         [impl initializeWithDisplayId:_recordParams.monitorInfo[i].displayId
-                    DisplayIndex:i
+                    DisplayIndex:outputIndex
                     RecordWidth:recordWidth RecordHeight:recordHeight
                     RecordFramerate:_recordParams.framerate RecordFormat:_recordParams.recordFormat
                     RecordDataCallback:recordDataCb RecordDataCallbackUserData:this
@@ -125,13 +126,16 @@ bool ScreenRecorderManager::ParseStartRecordParams(xstream_t* cmd, RecordStartPa
 
     if (params->monitorCount > 16) params->monitorCount = 1;
     int requestedMonitorCount = params->monitorCount;
+    RecordStartParams::MONITOR_INFO requestedMonitorInfo[16];
+    memset(requestedMonitorInfo, 0x00, sizeof(requestedMonitorInfo));
     
     for (int i = 0; i < params->monitorCount; i++) {
-        params->monitorInfo[i].left = xstream_readInt32(cmd);
-        params->monitorInfo[i].top = xstream_readInt32(cmd);
-        params->monitorInfo[i].right = xstream_readInt32(cmd);
-        params->monitorInfo[i].bottom = xstream_readInt32(cmd);
-        params->monitorInfo[i].is_primary = xstream_readInt32(cmd);
+        requestedMonitorInfo[i].left = xstream_readInt32(cmd);
+        requestedMonitorInfo[i].top = xstream_readInt32(cmd);
+        requestedMonitorInfo[i].right = xstream_readInt32(cmd);
+        requestedMonitorInfo[i].bottom = xstream_readInt32(cmd);
+        requestedMonitorInfo[i].is_primary = xstream_readInt32(cmd);
+        requestedMonitorInfo[i].outputIndex = i;
     }
 
     // 잠금화면의 경우 virtual monitor 를 지원하지 않음.
@@ -155,17 +159,20 @@ bool ScreenRecorderManager::ParseStartRecordParams(xstream_t* cmd, RecordStartPa
     if (forceSingleMonitor == true) {
         int monitorIndex = 0;
         for (int i = 0; i < requestedMonitorCount; i++) {
-            if (params->monitorInfo[i].is_primary != 0) {
+            if (requestedMonitorInfo[i].is_primary != 0) {
                 monitorIndex = i;
                 break;
             }
         }
 
-        if (monitorIndex != 0) {
-            params->monitorInfo[0] = params->monitorInfo[monitorIndex];
-        }
-
+        params->monitorInfo[0] = requestedMonitorInfo[monitorIndex];
+        params->monitorInfo[0].outputIndex = monitorIndex;
         params->monitorCount = 1;
+    }
+    else {
+        for (int i = 0; i < requestedMonitorCount; i++) {
+            params->monitorInfo[i] = requestedMonitorInfo[i];
+        }
     }
 
     if (params->width <= 0 || params->height <= 0) {
@@ -218,7 +225,11 @@ bool ScreenRecorderManager::ResolveDisplayForRecorder() {
         
         _inputHandler.UpdateDisplayRes((int)rect.size.width, (int)rect.size.height, GetMonitorRecordWidth(0), GetMonitorRecordHeight(0));
         _inputHandler.ResetDisplayLayout();
-        _inputHandler.AddDisplayLayout(_recordParams.monitorInfo[0].left, _recordParams.monitorInfo[0].top, GetMonitorRecordWidth(0), GetMonitorRecordHeight(0), _recordParams.monitorInfo[0].displayId);
+        _inputHandler.AddDisplayLayout(_recordParams.monitorInfo[0].left, _recordParams.monitorInfo[0].top,
+                                       GetMonitorRecordWidth(0), GetMonitorRecordHeight(0),
+                                       (int)rect.origin.x, (int)rect.origin.y,
+                                       (int)rect.size.width, (int)rect.size.height,
+                                       _recordParams.monitorInfo[0].displayId);
         
         return true;
     }
@@ -226,17 +237,33 @@ bool ScreenRecorderManager::ResolveDisplayForRecorder() {
     _inputHandler.UpdateDisplayRes(_recordParams.width, _recordParams.height, _recordParams.width, _recordParams.height);
     _inputHandler.ResetDisplayLayout();
 
+    int primaryLeft = 0;
+    int primaryTop = 0;
+    for (int i = 0; i < _recordParams.monitorCount; i++) {
+        if (_recordParams.monitorInfo[i].is_primary != 0) {
+            primaryLeft = _recordParams.monitorInfo[i].left;
+            primaryTop = _recordParams.monitorInfo[i].top;
+            break;
+        }
+    }
+
     for (int i = 0; i < _recordParams.monitorCount; i++) {
         // todo : 성공,실패 판별
 
         int monitorWidth = GetMonitorRecordWidth(i);
         int monitorHeight = GetMonitorRecordHeight(i);
+        int displayOriginX = _recordParams.monitorInfo[i].left - primaryLeft;
+        int displayOriginY = _recordParams.monitorInfo[i].top - primaryTop;
 
-        _virtualMonitor.Create(monitorWidth, monitorHeight, _recordParams.monitorInfo[i].left, _recordParams.monitorInfo[i].top, i, _recordParams.monitorInfo[i].is_primary != 0);
+        _virtualMonitor.Create(monitorWidth, monitorHeight, _recordParams.monitorInfo[i].left, _recordParams.monitorInfo[i].top, _recordParams.monitorInfo[i].outputIndex, _recordParams.monitorInfo[i].is_primary != 0);
 
         _recordParams.monitorInfo[i].displayId = _virtualMonitor.GetDisplayId(i);
 
-        _inputHandler.AddDisplayLayout(_recordParams.monitorInfo[i].left, _recordParams.monitorInfo[i].top, monitorWidth, monitorHeight, _recordParams.monitorInfo[i].displayId);
+        _inputHandler.AddDisplayLayout(_recordParams.monitorInfo[i].left, _recordParams.monitorInfo[i].top,
+                                       monitorWidth, monitorHeight,
+                                       displayOriginX, displayOriginY,
+                                       monitorWidth, monitorHeight,
+                                       _recordParams.monitorInfo[i].displayId);
     }
 
     _virtualMonitor.StartMonitor();
@@ -244,47 +271,51 @@ bool ScreenRecorderManager::ResolveDisplayForRecorder() {
     return true;
 }
 
-int ScreenRecorderManager::GetMonitorRecordWidth(int displayIdx) {
-    if (displayIdx < 0 || displayIdx >= 16) {
+int ScreenRecorderManager::GetMonitorRecordWidth(int recordIdx) {
+    if (recordIdx < 0 || recordIdx >= 16) {
         return 0;
     }
     
-    int width = _recordParams.monitorInfo[displayIdx].right - _recordParams.monitorInfo[displayIdx].left;
+    int width = _recordParams.monitorInfo[recordIdx].right - _recordParams.monitorInfo[recordIdx].left;
     
     // xrdp 의 실제 monitor rect 는 right/bottom inclusive 이다.
-    // monitorCount == 0 인 단일 모니터 경로는 osxup 이 right=width 형태로 보낸 synthetic rect 이므로 그대로 둔다.
+    // osxup 이 단일 모니터용으로 보낸 synthetic rect(right=width)는 그대로 둔다.
     if (!(_recordParams.monitorCount == 1 &&
-          _recordParams.monitorInfo[displayIdx].left == 0 &&
-          _recordParams.monitorInfo[displayIdx].right == _recordParams.width)) {
+          _recordParams.monitorInfo[recordIdx].left == 0 &&
+          _recordParams.monitorInfo[recordIdx].right == _recordParams.width)) {
         width++;
     }
     
     return _ALIGN_DOWN_EVEN(width);
 }
 
-int ScreenRecorderManager::GetMonitorRecordHeight(int displayIdx) {
-    if (displayIdx < 0 || displayIdx >= 16) {
+int ScreenRecorderManager::GetMonitorRecordHeight(int recordIdx) {
+    if (recordIdx < 0 || recordIdx >= 16) {
         return 0;
     }
     
-    int height = _recordParams.monitorInfo[displayIdx].bottom - _recordParams.monitorInfo[displayIdx].top;
+    int height = _recordParams.monitorInfo[recordIdx].bottom - _recordParams.monitorInfo[recordIdx].top;
     
     // xrdp 의 실제 monitor rect 는 right/bottom inclusive 이다.
-    // monitorCount == 0 인 단일 모니터 경로는 osxup 이 bottom=height 형태로 보낸 synthetic rect 이므로 그대로 둔다.
+    // osxup 이 단일 모니터용으로 보낸 synthetic rect(bottom=height)는 그대로 둔다.
     if (!(_recordParams.monitorCount == 1 &&
-          _recordParams.monitorInfo[displayIdx].top == 0 &&
-          _recordParams.monitorInfo[displayIdx].bottom == _recordParams.height)) {
+          _recordParams.monitorInfo[recordIdx].top == 0 &&
+          _recordParams.monitorInfo[recordIdx].bottom == _recordParams.height)) {
         height++;
     }
     
     return _ALIGN_DOWN_EVEN(height);
 }
 
-bool ScreenRecorderManager::CreateRecordShm(int displayIdx) {
-    if (displayIdx < 0 || displayIdx >= 16) return false;
-    
-    const int width = GetMonitorRecordWidth(displayIdx);
-    const int height = GetMonitorRecordHeight(displayIdx);
+bool ScreenRecorderManager::CreateRecordShm(int recordIdx) {
+    if (recordIdx < 0 || recordIdx >= 16) return false;
+
+    const int outputIndex = _recordParams.monitorInfo[recordIdx].outputIndex;
+    if (outputIndex < 0 || outputIndex >= 16) return false;
+    if (_recordShm[outputIndex] != NULL) return false;
+
+    const int width = GetMonitorRecordWidth(recordIdx);
+    const int height = GetMonitorRecordHeight(recordIdx);
 
     // todo : format 마다 정확한 크기 설정하기
     int rawDataSize = width * height * 5 + (sizeof(size_t) * 2);
@@ -295,18 +326,18 @@ bool ScreenRecorderManager::CreateRecordShm(int displayIdx) {
     }
     
     char shm_name_with_idx[512];
-    snprintf(shm_name_with_idx, sizeof(shm_name_with_idx), "%s_%d", shm_name, displayIdx);
+    snprintf(shm_name_with_idx, sizeof(shm_name_with_idx), "%s_%d", shm_name, outputIndex);
 
-    _recordShm[displayIdx] = xshm_create(shm_name_with_idx, sizeof(screenrecord_shm_t) + (rawDataSize * FRAME_SLOTS));
-    if (_recordShm[displayIdx] == NULL) {
-        NSLog(@"[ScreenRecorderManager::CreateRecordShm] xshm_create failed. displayIdx = %d", displayIdx);
+    _recordShm[outputIndex] = xshm_create(shm_name_with_idx, sizeof(screenrecord_shm_t) + (rawDataSize * FRAME_SLOTS));
+    if (_recordShm[outputIndex] == NULL) {
+        NSLog(@"[ScreenRecorderManager::CreateRecordShm] xshm_create failed. outputIndex = %d", outputIndex);
         
         return false;
     }
     
-    memset(_recordShm[displayIdx]->mem, 0x00, sizeof(screenrecord_shm_t) + (rawDataSize * FRAME_SLOTS));
+    memset(_recordShm[outputIndex]->mem, 0x00, sizeof(screenrecord_shm_t) + (rawDataSize * FRAME_SLOTS));
     
-    screenrecord_shm_t* shm = (screenrecord_shm_t*)_recordShm[displayIdx]->mem;
+    screenrecord_shm_t* shm = (screenrecord_shm_t*)_recordShm[outputIndex]->mem;
     shm->width = width;
     shm->height = height;
     shm->fps = 60;
@@ -318,10 +349,12 @@ bool ScreenRecorderManager::CreateRecordShm(int displayIdx) {
 }
 
 void ScreenRecorderManager::DestroyRecordShm() {
-    for (int i = 0; i < _recordShmCnt; i++) {
-        xshm_close(_recordShm[i]);
-        xshm_destroy(_recordShm[i]);
-        _recordShm[i] = NULL;
+    for (int i = 0; i < 16; i++) {
+        if (_recordShm[i] != NULL) {
+            xshm_close(_recordShm[i]);
+            xshm_destroy(_recordShm[i]);
+            _recordShm[i] = NULL;
+        }
     }
     
     _recordShmCnt = 0;
@@ -457,6 +490,10 @@ void ScreenRecorderManager::SendDisconnectMsgToClient() {
 }
 
 bool ScreenRecorderManager::AcquireFrameSlot(screenrecord_shm_t** recordInfoOut, screenrecord_frame** frameOut, char** dataOut, unsigned int* writePosOut, int displayIdx) {
+    if (displayIdx < 0 || displayIdx >= 16) {
+        return false;
+    }
+
     if (_recordShm[displayIdx] == NULL || _recordShm[displayIdx]->mem == NULL) {
         return false;
     }
@@ -483,15 +520,25 @@ bool ScreenRecorderManager::AcquireFrameSlot(screenrecord_shm_t** recordInfoOut,
     return true;
 }
 
-void ScreenRecorderManager::CommitFrameSlot(screenrecord_shm_t* recordInfo, unsigned int writePos) {
+void ScreenRecorderManager::CommitFrameSlot(screenrecord_shm_t* recordInfo, unsigned int writePos, int displayIdx) {
     if (recordInfo == NULL) {
         return;
     }
 
     atomic_store_explicit(&recordInfo->write_pos, writePos + 1, memory_order_release);
 
-    int dummy = OSXRDP_CMDTYPE_DUMMY;
-    xipc_send_data(_client, (void*)&dummy, sizeof(int));
+    union needPaintMsg {
+        struct {
+            int packetType;
+            int displayIdx;
+        } _unused;
+        long dummy;
+    } paintMsg {
+        OSXRDP_CMDTYPE_NEEDPAINT,
+        displayIdx
+    };
+    
+    xipc_send_data(_client, (void*)&paintMsg.dummy, sizeof(paintMsg.dummy));
 }
 
 bool ScreenRecorderManager::CopyNV12PackedFrame(void* imageBufferRef, char* screenrecord_data, int* widthOut, int* heightOut) {
@@ -679,7 +726,7 @@ void ScreenRecorderManager::HandleNV12PackedRecordData(void* pixelBuffer, const 
     }
 
     HandleNV12PackedDirtyArea(pixelBuffer, slot, dirtyRects, dirtyRectsCnt, screenrecord_data);
-    recorder->CommitFrameSlot(recordInfo, writePos);
+    recorder->CommitFrameSlot(recordInfo, writePos, displayIdx);
 }
 
 void ScreenRecorderManager::HandleNV12AlignedRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx){
@@ -696,7 +743,7 @@ void ScreenRecorderManager::HandleNV12AlignedRecordData(void* pixelBuffer, const
     }
 
     HandleNV12AlignedDirtyArea(pixelBuffer, slot, dirtyRects, dirtyRectsCnt, screenrecord_data);
-    recorder->CommitFrameSlot(recordInfo, writePos);
+    recorder->CommitFrameSlot(recordInfo, writePos, displayIdx);
 }
 
 void ScreenRecorderManager::HandleNV12PackedDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data) {
@@ -733,7 +780,7 @@ void ScreenRecorderManager::HandleBGRA32RecordData(void* pixelBuffer, const CGRe
     }
 
     HandleBGRA32DirtyArea(pixelBuffer, slot, dirtyRects, dirtyRectsCnt, screenrecord_data);
-    recorder->CommitFrameSlot(recordInfo, writePos);
+    recorder->CommitFrameSlot(recordInfo, writePos, displayIdx);
 }
 
 void ScreenRecorderManager::HandleRFXRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx){
@@ -761,7 +808,7 @@ void ScreenRecorderManager::HandleRFXRecordData(void* pixelBuffer, const CGRect*
         return;
     }
     
-    recorder->CommitFrameSlot(recordInfo, writePos);
+    recorder->CommitFrameSlot(recordInfo, writePos, displayIdx);
 }
 
 void ScreenRecorderManager::HandleBGRA32DirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data) {

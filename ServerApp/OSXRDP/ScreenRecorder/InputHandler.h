@@ -11,7 +11,7 @@ public:
     
     void UpdateDisplayRes(int originalDisplayWidth, int originalDisplayHeight, int recordDisplayWidth, int recordDisplayHeight);
     void ResetDisplayLayout();
-    bool AddDisplayLayout(int clientLeft, int clientTop, int clientWidth, int clientHeight, int displayId);
+    bool AddDisplayLayout(int clientLeft, int clientTop, int clientWidth, int clientHeight, int displayOriginX, int displayOriginY, int displayWidth, int displayHeight, int displayId);
     
     void HandleMousseInputEvent(xstream_t* cmd);
     void HandleKeyboardInputEvent(xstream_t* cmd);
@@ -23,6 +23,10 @@ private:
         int clientWidth;
         int clientHeight;
         int displayId;
+        int displayOriginX;
+        int displayOriginY;
+        float scaleX;
+        float scaleY;
     };
 
     int _originalDisplayWidth;

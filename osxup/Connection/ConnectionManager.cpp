@@ -8,7 +8,7 @@
 static const char* OSXRDP_SESSIONMANAGER_NAME = "/tmp/osxrdpsessionmanager";
 static const char* OSXRDP_AGENT_NAME = "/tmp/osxrdp";
 
-static const int OSXRDP_RECONNECT_WAITCNT = 25;
+static const int OSXRDP_RECONNECT_WAITCNT = 30;
 
 namespace {
 inline void AddWaitObject(void* read_objs, int* rcount, int fd) {
@@ -401,6 +401,11 @@ int ConnectionManager::_OnReceivedAgentManagerMessage(xipc_t* t, xipc_t* client,
     int cmdType = xstream_readInt32(stream);
     
     switch (cmdType) {
+        case OSXRDP_CMDTYPE_NEEDPAINT: {
+            int displayIdx = xstream_readInt32(stream);
+            
+            _this->_paintManager.PreparePaint(displayIdx);
+        }
         case OSXRDP_CMDTYPE_SCREEN: {
             int packetType = xstream_readInt32(stream);
             if (packetType == OSXRDP_PACKETTYPE_REP_SCREEN) {

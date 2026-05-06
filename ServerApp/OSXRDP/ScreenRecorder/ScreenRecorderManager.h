@@ -38,6 +38,7 @@ private:
             int bottom;
             int is_primary;
             int displayId;
+            int outputIndex;
         } monitorInfo[16];
     };
     
@@ -78,7 +79,7 @@ private:
     // 다음 프레임을 full redraw 로 내보내야 하는지 표시.
     bool     _rfxFullRedrawRequired;
 
-    bool CreateRecordShm(int displayIdx);
+    bool CreateRecordShm(int recordIdx);
     void DestroyRecordShm();
     
     bool CreateCursorShm();
@@ -91,8 +92,8 @@ private:
     
     // 녹화기 설정
     bool ResolveDisplayForRecorder();
-    int GetMonitorRecordWidth(int displayIdx);
-    int GetMonitorRecordHeight(int displayIdx);
+    int GetMonitorRecordWidth(int recordIdx);
+    int GetMonitorRecordHeight(int recordIdx);
 
     // 녹화 데이터 처리기
     static void HandleBGRA32RecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx);
@@ -111,7 +112,7 @@ private:
     bool AcquireFrameSlot(screenrecord_shm_t** recordInfoOut, screenrecord_frame** frameOut, char** dataOut, unsigned int* writePosOut, int displayIdx);
     
     // 데이터 작성 완료 flag 설정
-    void CommitFrameSlot(screenrecord_shm_t* recordInfo, unsigned int writePos);
+    void CommitFrameSlot(screenrecord_shm_t* recordInfo, unsigned int writePos, int displayIdx);
 
     // NV12Packed 데이터를 메모리에 기록
     static bool CopyNV12PackedFrame(void* imageBuffer, char* screenrecord_data, int* widthOut, int* heightOut);
