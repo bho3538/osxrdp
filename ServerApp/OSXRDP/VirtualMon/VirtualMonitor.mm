@@ -631,7 +631,7 @@ void* VirtualMonitor::WatchThreadProc(void* args) {
     for(;;) {
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
-        ts.tv_sec += 2;
+        ts.tv_sec += 3;
         
         pthread_cond_timedwait(&_this->_watchWake, &_this->_watchLock, &ts);
         

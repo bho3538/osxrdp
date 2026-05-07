@@ -405,6 +405,8 @@ int ConnectionManager::_OnReceivedAgentManagerMessage(xipc_t* t, xipc_t* client,
             int displayIdx = xstream_readInt32(stream);
             
             _this->_paintManager.PreparePaint(displayIdx);
+            
+            break;
         }
         case OSXRDP_CMDTYPE_SCREEN: {
             int packetType = xstream_readInt32(stream);
