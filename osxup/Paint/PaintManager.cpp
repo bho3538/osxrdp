@@ -211,9 +211,7 @@ void PaintManager::Paint() {
         // 그려야 하는 데이타가 있는지 확인
         if (_needPaintDisplay[i] == 0)
             continue;
-        
-        _needPaintDisplay[i] = 0;
-        
+                
         // 그릴 수 있는 유효한 디스플레이인지 확인
         if (_recordShm[i] == NULL)
             continue;
@@ -221,6 +219,8 @@ void PaintManager::Paint() {
         if (_inFlightCountByDisplay[i] >= FRAME_SLOTS) {
             continue;
         }
+        
+        _needPaintDisplay[i] = 0;
 
         screenrecord_frame_t* frameInfo = NULL;
         char* imgData = NULL;
@@ -236,7 +236,7 @@ void PaintManager::Paint() {
 
         unsigned int frame_id = 0;
         if (PushInFlight(i, shm_frame_id, &frame_id) == false) {
-            return;
+            continue;
         }
         _inPainting = (_inFlightCount > 0);
         
@@ -283,7 +283,6 @@ bool PaintManager::GetPaintData(screenrecord_frame_t** outFrameInfo, char** outI
         }
     }
     
-
     unsigned int idx = targetPos % FRAME_SLOTS;
     screenrecord_frame_t* frame = &(shm->frames[idx]);
     char* imgData = *(&shm->screenrecord_datas + (size_t)shm->screenrecord_data_size * idx);
@@ -416,12 +415,8 @@ void PaintManager::PaintEnd(int ackFrameId) {
         return;
     }
 
-    unsigned int maxReadPosByDisplay[16];
-    bool hasReadPosByDisplay[16];
-    for (int i = 0; i < 16; i++) {
-        maxReadPosByDisplay[i] = 0;
-        hasReadPosByDisplay[i] = false;
-    }
+    unsigned int maxReadPosByDisplay[16] = {0,};
+    bool hasReadPosByDisplay[16] = {false,};
 
     int popped = PopAckedInFlight(ackFrameId, maxReadPosByDisplay, hasReadPosByDisplay);
     if (popped <= 0) {
@@ -434,6 +429,7 @@ void PaintManager::PaintEnd(int ackFrameId) {
             continue;
         }
 
+        
         screenrecord_shm_t* shm = (screenrecord_shm_t*)_recordShm[i]->mem;
         unsigned int read_pos = atomic_load_explicit(&shm->read_pos, memory_order_relaxed);
         unsigned int nextReadPos = maxReadPosByDisplay[i] + 1;

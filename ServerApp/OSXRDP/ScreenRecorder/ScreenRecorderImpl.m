@@ -58,7 +58,7 @@ int SetDirtyAreaInfoFromSampleBuffer(CMSampleBufferRef sampleBuffer, CGRect* rec
     _recordConfig.height = height;
     _recordConfig.queueDepth = 3;
     
-    _recordConfig.colorSpaceName = kCGColorSpaceSRGB;
+    //_recordConfig.colorSpaceName = kCGColorSpaceSRGB;
     
     if (recordFormat == OSXRDP_RECORDFORMAT_NV12_PACKED || recordFormat == OSXRDP_RECORDFORMAT_NV12_ALIGNED) {
         // h264 사용 시
