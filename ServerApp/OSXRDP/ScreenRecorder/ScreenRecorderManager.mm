@@ -51,6 +51,7 @@ ScreenRecorderManager::ScreenRecorderManager(bool useLegacyRecorder) :
     _recordShmCnt(0)
 {
     memset(_recordShm, 0x00, sizeof(_recordShm));
+    ResetPendingDirty();
 }
 
 ScreenRecorderManager::~ScreenRecorderManager() {
@@ -220,6 +221,7 @@ bool ScreenRecorderManager::PrepareRecordResources() {
 
     // 세션 시작 시 canonical 은 반드시 무효화 (이전 세션 잔상 방지)
     InvalidateRFXCanonical();
+    ResetPendingDirty();
 
     return true;
 }
@@ -435,6 +437,7 @@ void ScreenRecorderManager::Stop() {
     DestroyCursorShm();
 
     ReleaseRFXCanonical();
+    ResetPendingDirty();
 }
 
 void ScreenRecorderManager::HandleCommand(xipc_t* client, xstream_t* cmd) {
@@ -717,11 +720,93 @@ void ScreenRecorderManager::PopulateDirtyRectsFromArray(const CGRect* dirtyRects
         return;
     }
 
-    CGRect tmp;
     for (int i = 0; i < current_frame->dirtyCount; i++) {
-        memcpy(&tmp, &dirtyRects[i], sizeof(CGRect));
-        ProcessDirtyArea(&tmp, width, height, &(current_frame->dirtys[i]));
+        ProcessDirtyArea(&dirtyRects[i], width, height, &(current_frame->dirtys[i]));
     }
+}
+
+void ScreenRecorderManager::ResetPendingDirty() {
+    memset(_pendingDirty, 0x00, sizeof(_pendingDirty));
+    memset(_pendingDirtyFull, 0x00, sizeof(_pendingDirtyFull));
+}
+
+void ScreenRecorderManager::ResetPendingDirty(int displayIdx) {
+    if (displayIdx < 0 || displayIdx >= 16) {
+        return;
+    }
+
+    memset(&_pendingDirty[displayIdx], 0x00, sizeof(_pendingDirty[displayIdx]));
+    _pendingDirtyFull[displayIdx] = false;
+}
+
+void ScreenRecorderManager::AddPendingDirty(int displayIdx, const CGRect* dirtyRects, int dirtyRectsCnt, int width, int height) {
+    if (displayIdx < 0 || displayIdx >= 16) {
+        return;
+    }
+
+    if (_pendingDirtyFull[displayIdx] == true) {
+        return;
+    }
+
+    if (dirtyRects == NULL || dirtyRectsCnt <= 0 || dirtyRectsCnt > MAX_DIRTY_COUNT) {
+        _pendingDirty[displayIdx].dirtyCount = 0;
+        _pendingDirtyFull[displayIdx] = true;
+        return;
+    }
+
+    if (_pendingDirty[displayIdx].dirtyCount + dirtyRectsCnt > MAX_DIRTY_COUNT) {
+        _pendingDirty[displayIdx].dirtyCount = 0;
+        _pendingDirtyFull[displayIdx] = true;
+        return;
+    }
+
+    CGRect tmp;
+    for (int i = 0; i < dirtyRectsCnt; i++) {
+        int index = _pendingDirty[displayIdx].dirtyCount++;
+        memcpy(&tmp, &dirtyRects[i], sizeof(CGRect));
+        ProcessDirtyArea(&tmp, width, height, &_pendingDirty[displayIdx].dirtys[index]);
+    }
+}
+
+void ScreenRecorderManager::AddPendingDirtyFromPixelBuffer(int displayIdx, void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt) {
+    if (pixelBuffer == NULL) {
+        return;
+    }
+
+    CVImageBufferRef imageBuffer = (CVImageBufferRef)pixelBuffer;
+    int width = (int)CVPixelBufferGetWidth(imageBuffer);
+    int height = (int)CVPixelBufferGetHeight(imageBuffer);
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+
+    AddPendingDirty(displayIdx, dirtyRects, dirtyRectsCnt, width, height);
+}
+
+void ScreenRecorderManager::ApplyPendingDirty(int displayIdx, screenrecord_frame* current_frame) {
+    if (displayIdx < 0 || displayIdx >= 16 || current_frame == NULL) {
+        return;
+    }
+
+    if (_pendingDirtyFull[displayIdx] == true || current_frame->dirtyCount == 0) {
+        current_frame->dirtyCount = 0;
+        return;
+    }
+
+    int pendingCount = _pendingDirty[displayIdx].dirtyCount;
+    if (pendingCount <= 0) {
+        return;
+    }
+
+    if (current_frame->dirtyCount + pendingCount > MAX_DIRTY_COUNT) {
+        current_frame->dirtyCount = 0;
+        return;
+    }
+
+    memcpy(&current_frame->dirtys[current_frame->dirtyCount],
+           _pendingDirty[displayIdx].dirtys,
+           sizeof(struct RECT) * pendingCount);
+    current_frame->dirtyCount += pendingCount;
 }
 
 void ScreenRecorderManager::HandleNV12PackedRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx){
@@ -734,11 +819,14 @@ void ScreenRecorderManager::HandleNV12PackedRecordData(void* pixelBuffer, const 
     char* screenrecord_data = NULL;
     unsigned int writePos = 0;
     if (recorder->AcquireFrameSlot(&recordInfo, &slot, &screenrecord_data, &writePos, displayIdx) == false) {
+        recorder->AddPendingDirtyFromPixelBuffer(displayIdx, pixelBuffer, dirtyRects, dirtyRectsCnt);
         return;
     }
 
     HandleNV12PackedDirtyArea(pixelBuffer, slot, dirtyRects, dirtyRectsCnt, screenrecord_data);
+    recorder->ApplyPendingDirty(displayIdx, slot);
     recorder->CommitFrameSlot(recordInfo, writePos, displayIdx);
+    recorder->ResetPendingDirty(displayIdx);
 }
 
 void ScreenRecorderManager::HandleNV12AlignedRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx){
@@ -751,11 +839,14 @@ void ScreenRecorderManager::HandleNV12AlignedRecordData(void* pixelBuffer, const
     char* screenrecord_data = NULL;
     unsigned int writePos = 0;
     if (recorder->AcquireFrameSlot(&recordInfo, &slot, &screenrecord_data, &writePos, displayIdx) == false) {
+        recorder->AddPendingDirtyFromPixelBuffer(displayIdx, pixelBuffer, dirtyRects, dirtyRectsCnt);
         return;
     }
 
     HandleNV12AlignedDirtyArea(pixelBuffer, slot, dirtyRects, dirtyRectsCnt, screenrecord_data);
+    recorder->ApplyPendingDirty(displayIdx, slot);
     recorder->CommitFrameSlot(recordInfo, writePos, displayIdx);
+    recorder->ResetPendingDirty(displayIdx);
 }
 
 void ScreenRecorderManager::HandleNV12PackedDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data) {
@@ -788,11 +879,14 @@ void ScreenRecorderManager::HandleBGRA32RecordData(void* pixelBuffer, const CGRe
     char* screenrecord_data = NULL;
     unsigned int writePos = 0;
     if (recorder->AcquireFrameSlot(&recordInfo, &slot, &screenrecord_data, &writePos, displayIdx) == false) {
+        recorder->AddPendingDirtyFromPixelBuffer(displayIdx, pixelBuffer, dirtyRects, dirtyRectsCnt);
         return;
     }
 
     HandleBGRA32DirtyArea(pixelBuffer, slot, dirtyRects, dirtyRectsCnt, screenrecord_data);
+    recorder->ApplyPendingDirty(displayIdx, slot);
     recorder->CommitFrameSlot(recordInfo, writePos, displayIdx);
+    recorder->ResetPendingDirty(displayIdx);
 }
 
 void ScreenRecorderManager::HandleRFXRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx){
@@ -805,7 +899,7 @@ void ScreenRecorderManager::HandleRFXRecordData(void* pixelBuffer, const CGRect*
     char* screenrecord_data = NULL;
     unsigned int writePos = 0;
     if (recorder->AcquireFrameSlot(&recordInfo, &slot, &screenrecord_data, &writePos, displayIdx) == false) {
-        recorder->InvalidateRFXCanonical();
+        recorder->AddPendingDirtyFromPixelBuffer(displayIdx, pixelBuffer, dirtyRects, dirtyRectsCnt);
         return;
     }
 
@@ -815,12 +909,12 @@ void ScreenRecorderManager::HandleRFXRecordData(void* pixelBuffer, const CGRect*
         recorder->InvalidateRFXCanonical();
     }
 
-    if (recorder->HandleRFXDirtyArea(pixelBuffer, slot, dirtyRects, dirtyRectsCnt, screenrecord_data) == false) {
+    if (recorder->HandleRFXDirtyArea(pixelBuffer, slot, dirtyRects, dirtyRectsCnt, screenrecord_data, displayIdx) == false) {
         recorder->InvalidateRFXCanonical();
         return;
     }
-    
     recorder->CommitFrameSlot(recordInfo, writePos, displayIdx);
+    recorder->ResetPendingDirty(displayIdx);
 }
 
 void ScreenRecorderManager::HandleBGRA32DirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data) {
@@ -833,7 +927,7 @@ void ScreenRecorderManager::HandleBGRA32DirtyArea(void* pixelBuffer, screenrecor
     PopulateDirtyRectsFromArray(dirtyRects, dirtyRectsCnt, width, height, current_frame);
 }
 
-bool ScreenRecorderManager::HandleRFXDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data) {
+bool ScreenRecorderManager::HandleRFXDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data, int displayIdx) {
     if (pixelBuffer == NULL || current_frame == NULL || screenrecord_data == NULL) {
         return false;
     }
@@ -863,6 +957,7 @@ bool ScreenRecorderManager::HandleRFXDirtyArea(void* pixelBuffer, screenrecord_f
     // (consumer 의 RFX 경로에서는 slot 안의 indices 를 사용하므로 이 dirtys 는 직접 쓰이지
     //  않지만, 다른 포맷과의 일관성 / 디버그 편의를 위해 유지한다.)
     PopulateDirtyRectsFromArray(dirtyRects, dirtyRectsCnt, (int)width, (int)height, current_frame);
+    ApplyPendingDirty(displayIdx, current_frame);
 
     const size_t tileCols  = _rfxTileCols;
     const size_t tileRows  = _rfxTileRows;
@@ -1150,22 +1245,17 @@ bool ScreenRecorderManager::ConvertRFXTile(const uint8_t* bgraBase, size_t bgraS
 }
 
 inline void ScreenRecorderManager::ProcessDirtyArea(const CGRect* rect, int limX, int limY, struct RECT* dst) {
-    const short orgX = rect->origin.x;
-    const short orgY = rect->origin.y;
-    const short orgW = rect->size.width;
-    const short orgH = rect->size.height;
+    const int orgX = (int)rect->origin.x;
+    const int orgY = (int)rect->origin.y;
+    const int orgW = (int)rect->size.width;
+    const int orgH = (int)rect->size.height;
 
     // padding 추가 (이것이 없을 경우 화면 해상도가 1:1 이 아닌 경우 창의 끝부분 잔상이 남는 경우가 있음)
-    int x0 = (int)orgX - 2;
-    int y0 = (int)orgY - 2;
-    int x1 = (int)(orgX + orgW + 2);
-    int y1 = (int)(orgY + orgH + 2);
-
     // 4:2:0 정렬
-    x0 = _ALIGN_DOWN_EVEN(x0);
-    y0 = _ALIGN_DOWN_EVEN(y0);
-    x1 = _ALIGN_UP_EVEN(x1);
-    y1 = _ALIGN_UP_EVEN(y1);
+    int x0 = (orgX - 4) & ~1;
+    int y0 = (orgY - 4) & ~1;
+    int x1 = (orgX + orgW + 5) & ~1;
+    int y1 = (orgY + orgH + 5) & ~1;
 
     // 정렬로 인해 넘어간 경우 방지
     x0 = MAX(0, x0);

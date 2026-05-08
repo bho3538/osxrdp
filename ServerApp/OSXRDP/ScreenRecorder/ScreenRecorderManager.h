@@ -79,6 +79,9 @@ private:
     // 다음 프레임을 full redraw 로 내보내야 하는지 표시.
     bool     _rfxFullRedrawRequired;
 
+    screenrecord_frame_t _pendingDirty[16];
+    bool _pendingDirtyFull[16];
+
     bool CreateRecordShm(int recordIdx);
     void DestroyRecordShm();
     
@@ -106,7 +109,7 @@ private:
     static void HandleNV12AlignedDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data);
     
     static void HandleRFXRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx);
-    bool HandleRFXDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data);
+    bool HandleRFXDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data, int displayIdx);
     
     // 데이터를 작성할 slot 찾기
     bool AcquireFrameSlot(screenrecord_shm_t** recordInfoOut, screenrecord_frame** frameOut, char** dataOut, unsigned int* writePosOut, int displayIdx);
@@ -132,6 +135,12 @@ private:
     
     // dirty area (변화한 구역) 정보 처리
     inline static void ProcessDirtyArea(const CGRect* rect, int limitX, int limitY, struct RECT* dst);
+    
+    void ResetPendingDirty();
+    void ResetPendingDirty(int displayIdx);
+    void AddPendingDirty(int displayIdx, const CGRect* dirtyRects, int dirtyRectsCnt, int width, int height);
+    void AddPendingDirtyFromPixelBuffer(int displayIdx, void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt);
+    void ApplyPendingDirty(int displayIdx, screenrecord_frame* current_frame);
     
     static void PopulateDirtyRectsFromSampleBuffer(void* sampleBuffer, int width, int height, screenrecord_frame* current_frame);
     static void PopulateDirtyRectsFromArray(const CGRect* dirtyRects, int dirtyRectsCnt, int width, int height, screenrecord_frame* current_frame);
