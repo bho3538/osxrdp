@@ -7,7 +7,7 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include "xshm.h"
 
-#define FRAME_SLOTS             12
+#define FRAME_SLOTS             7
 #define MAX_DIRTY_COUNT         128
 
 struct RECT {

@@ -111,7 +111,6 @@ InputHandler::InputHandler() :
     _displayLayoutCnt(0),
     _scaleX(0.0f),
     _scaleY(0.0f),
-    _inMouseDown(0),
     _lastMousePosX(0),
     _lastMousePosY(0),
     _lastMouseClickPosX(0),
@@ -131,6 +130,8 @@ InputHandler::InputHandler() :
 {
     memset(_displayLayouts, 0x00, sizeof(_displayLayouts));
     _eventRef = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
+    
+    _mouseKeyStatus.status = 0;
 }
 
 InputHandler::~InputHandler() {
@@ -191,8 +192,9 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
     long long currentTime = GetCurrentEventTime();
     
     // 최소화/복원 등으로 입력 간격이 크게 벌어지면 이전 클릭 상태를 버린다.
-    if (_lastMouseInputEventTime != 0 && currentTime - _lastMouseInputEventTime > 1200) {
-        _inMouseDown = 0;
+    if (_lastMouseInputEventTime != 0 && currentTime - _lastMouseInputEventTime > 1500) {
+        RestorePreviousMouseKeydownEvent();
+        
         _mouseClickCnt = 0;
         _lastMouseButton = -1;
         _lastMouseClickTime = 0;
@@ -202,11 +204,22 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
     MapClientPointToDisplayPoint(clientX, clientY, &clientX, &clientY);
     
     CGPoint point = CGPointMake(clientX, clientY);
-    CGEventRef ev;
+    CGEventRef ev = NULL;
 
     switch (key) {
         case XRDP_MOUSE_MOVE: {
-            ev = CGEventCreateMouseEvent(_eventRef, _inMouseDown == 1 ? kCGEventLeftMouseDragged : kCGEventMouseMoved, point, kCGMouseButtonLeft);
+            
+            CGMouseButton btn = kCGMouseButtonLeft;
+            CGEventType mouseMoveFlags = kCGEventMouseMoved;
+            if (_mouseKeyStatus.downStatus.leftKeyDown) {
+                mouseMoveFlags = kCGEventLeftMouseDragged;
+            }
+            else if (_mouseKeyStatus.downStatus.rightKeyDown) {
+                mouseMoveFlags = kCGEventRightMouseDragged;
+                btn = kCGMouseButtonRight;
+            }
+            
+            ev = CGEventCreateMouseEvent(_eventRef, mouseMoveFlags, point, btn);
             
             // xcode minimap 과 같은 일부 컨트롤을 움직이려면 아래와 같은 값들을 설정해야 함.
             int dx = clientX - _lastMousePosX;
@@ -225,7 +238,8 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
             
             HandleMouseDoubleClick(ev, true, clientX, clientY, kCGMouseButtonLeft);
             
-            _inMouseDown = 1;
+            _mouseKeyStatus.downStatus.leftKeyDown = 1;
+            
             break;
         }
         case XRDP_MOUSE_LBTNUP: {
@@ -233,27 +247,40 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
             
             HandleMouseDoubleClick(ev, false, clientX, clientY, kCGMouseButtonLeft);
             
-            _inMouseDown = 0;
+            _mouseKeyStatus.downStatus.leftKeyDown = 0;
+            
             break;
         }
         case XRDP_MOUSE_RBTNDOWN: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventRightMouseDown, point, kCGMouseButtonRight);
             
             HandleMouseDoubleClick(ev, true, clientX, clientY, kCGMouseButtonRight);
+            
+            _mouseKeyStatus.downStatus.rightKeyDown = 1;
+
             break;
         }
         case XRDP_MOUSE_RBTNUP: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventRightMouseUp, point, kCGMouseButtonRight);
             
             HandleMouseDoubleClick(ev, false, clientX, clientY, kCGMouseButtonRight);
+            
+            _mouseKeyStatus.downStatus.rightKeyDown = 0;
+
             break;
         }
         case XRDP_MOUSE_MBTNDOWN: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseDown, point, (CGMouseButton)2);
+            
+            _mouseKeyStatus.downStatus.wheelKeyDown = 1;
+            
             break;
         }
         case XRDP_MOUSE_MBTNUP: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseUp, point, (CGMouseButton)2);
+            
+            _mouseKeyStatus.downStatus.wheelKeyDown = 0;
+            
             break;
         }
         case XRDP_MOUSE_WHEELUP : {
@@ -276,18 +303,30 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         }
         case XRDP_MOUSE_BBTNUP: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseUp, point, (CGMouseButton)3);
+            
+            _mouseKeyStatus.downStatus.backKeyDown = 0;
+            
             break;
         }
         case XRDP_MOUSE_BBTNDOWN: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseDown, point, (CGMouseButton)3);
+            
+            _mouseKeyStatus.downStatus.backKeyDown = 1;
+            
             break;
         }
         case XRDP_MOUSE_FBTNUP: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseUp, point, (CGMouseButton)4);
+            
+            _mouseKeyStatus.downStatus.forwardKeyDown = 0;
+            
             break;
         }
         case XRDP_MOUSE_FBTNDOWN: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseDown, point, (CGMouseButton)4);
+            
+            _mouseKeyStatus.downStatus.forwardKeyDown = 1;
+
             break;
         }
         default:
@@ -701,4 +740,55 @@ void InputHandler::SwitchIME(bool keyDown) {
         CGEventPost(kCGSessionEventTap, ev);
         CFRelease(ev);
     }
+}
+
+void InputHandler::RestorePreviousMouseKeydownEvent() {
+    if (_mouseKeyStatus.status == 0) {
+        return;
+    }
+
+    CGPoint point = CGPointMake(_lastMousePosX, _lastMousePosY);
+    CGEventRef ev = NULL;
+
+    if (_mouseKeyStatus.downStatus.leftKeyDown) {
+        ev = CGEventCreateMouseEvent(_eventRef, kCGEventLeftMouseUp, point, kCGMouseButtonLeft);
+        if (ev != NULL) {
+            CGEventPost(kCGSessionEventTap, ev);
+            CFRelease(ev);
+        }
+    }
+
+    if (_mouseKeyStatus.downStatus.rightKeyDown) {
+        ev = CGEventCreateMouseEvent(_eventRef, kCGEventRightMouseUp, point, kCGMouseButtonRight);
+        if (ev != NULL) {
+            CGEventPost(kCGSessionEventTap, ev);
+            CFRelease(ev);
+        }
+    }
+
+    if (_mouseKeyStatus.downStatus.wheelKeyDown) {
+        ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseUp, point, (CGMouseButton)2);
+        if (ev != NULL) {
+            CGEventPost(kCGSessionEventTap, ev);
+            CFRelease(ev);
+        }
+    }
+
+    if (_mouseKeyStatus.downStatus.backKeyDown) {
+        ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseUp, point, (CGMouseButton)3);
+        if (ev != NULL) {
+            CGEventPost(kCGSessionEventTap, ev);
+            CFRelease(ev);
+        }
+    }
+
+    if (_mouseKeyStatus.downStatus.forwardKeyDown) {
+        ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseUp, point, (CGMouseButton)4);
+        if (ev != NULL) {
+            CGEventPost(kCGSessionEventTap, ev);
+            CFRelease(ev);
+        }
+    }
+
+    _mouseKeyStatus.status = 0;
 }

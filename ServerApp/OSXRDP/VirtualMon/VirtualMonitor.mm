@@ -626,6 +626,8 @@ void* VirtualMonitor::WatchThreadProc(void* args) {
     if (args == NULL) return NULL;
     VirtualMonitor* _this = (VirtualMonitor*)args;
     
+    pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0);
+    
     pthread_mutex_lock(&_this->_watchLock);
     
     for(;;) {

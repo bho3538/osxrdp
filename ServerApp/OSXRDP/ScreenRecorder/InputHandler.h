@@ -45,7 +45,20 @@ private:
     float _scaleX;
     float _scaleY;
     
-    int _inMouseDown;
+    union MOUSE_DOWN_STATUS {
+        struct STATUS {
+            char leftKeyDown;
+            char rightKeyDown;
+            char wheelKeyDown;
+            char backKeyDown;
+            char forwardKeyDown;
+            char dummy1;
+            char dummy2;
+            char dummy3;
+        } downStatus;
+        unsigned long status;
+    } _mouseKeyStatus;
+    
     int _mouseClickCnt;
     int _lastMouseButton;
     long long _lastMouseClickTime;
@@ -66,6 +79,8 @@ private:
     int GetMouseWheelMoveAmount(int direction);
     void PostScrollEvent(int amount, bool continuous);
     void PostTrackpadScrollEvent(int amount);
+    
+    void RestorePreviousMouseKeydownEvent();
     
     static int CalcPos(int clientPos, float scale);
     
