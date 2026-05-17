@@ -6,7 +6,7 @@
 #include <stdint.h>
 #include <unistd.h>
 
-static const int kPollIntervalMs = 20;
+static const int kPollIntervalMs = 50;
 
 static uint64_t GetNowMs() {
     struct timeval tv;

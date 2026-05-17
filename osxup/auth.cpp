@@ -71,9 +71,9 @@ int _verify_mac_user(const char *username, const char *password) {
         return 1; // 초기화 실패
     }
 
-    retval = pam_authenticate(pamh, 0);
+    retval = pam_authenticate(pamh, PAM_DISALLOW_NULL_AUTHTOK);
     if (retval == PAM_SUCCESS) {
-        retval = pam_acct_mgmt(pamh, 0);
+        retval = pam_acct_mgmt(pamh, PAM_DISALLOW_NULL_AUTHTOK);
     }
     
     pam_end(pamh, retval);
