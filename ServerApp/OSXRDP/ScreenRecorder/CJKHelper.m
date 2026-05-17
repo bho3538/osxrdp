@@ -411,11 +411,11 @@ static OSStatus SelectInputSourceWithWorkaround(TISInputSourceRef targetSource,
         return TISSelectInputSource(targetSource);
     }
 
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (!PostNextInputSourceShortcut(&hotkey)) {
-            NSLog(@"[CJKHelper] Failed to post next input source shortcut.");
-        }
-    });
+    usleep(5000); // hack?
+    
+    if (!PostNextInputSourceShortcut(&hotkey)) {
+        NSLog(@"[CJKHelper] Failed to post next input source shortcut.");
+    }
 
     return noErr;
 }
