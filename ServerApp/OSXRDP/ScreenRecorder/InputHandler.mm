@@ -7,6 +7,8 @@
 #include <Carbon/Carbon.h>
 #include <string.h>
 
+#import "CJKHelper.h"
+
 #define _IME_SWITCH_CODE kVK_RightOption
 
 static const CGKeyCode keymap[] = {
@@ -101,7 +103,6 @@ static const CGKeyCode keymap[] = {
     /* 0x58 */ kVK_F12,
     /* 0x59 */ kVK_ANSI_KeypadEquals, // Keypad =
 };
-
 
 InputHandler::InputHandler() :
     _originalDisplayWidth(0),
@@ -333,7 +334,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
             return;
     }
     
-    CGEventPost(kCGSessionEventTap, ev);
+    CGEventPost(kCGHIDEventTap, ev);
     CFRelease(ev);
 }
 
@@ -715,31 +716,17 @@ bool InputHandler::UpdateKeyboardModifierState(CGKeyCode key, bool isDown) {
 }
 
 void InputHandler::SwitchIME(bool keyDown) {
-    CGEventRef ev;
+    if (!keyDown) {
+        return;
+    }
 
-    // todo: 단축키를 바꾼 경우를 대응하기 (입력기 전환 키를 동적으로 읽어오기)
-    if (keyDown) {
-        ev = CGEventCreateKeyboardEvent(_eventRef, kVK_Control, true);
-        CGEventSetFlags(ev, kCGEventFlagMaskControl);
-        CGEventPost(kCGSessionEventTap, ev);
-        CFRelease(ev);
-        
-        ev = CGEventCreateKeyboardEvent(_eventRef, kVK_Space, true);
-        CGEventSetFlags(ev, kCGEventFlagMaskControl);
-        CGEventPost(kCGSessionEventTap, ev);
-        CFRelease(ev);
-    }
-    else {
-        ev = CGEventCreateKeyboardEvent(_eventRef, kVK_Control, false);
-        CGEventSetFlags(ev, 0);
-        CGEventPost(kCGSessionEventTap, ev);
-        CFRelease(ev);
-        
-        ev = CGEventCreateKeyboardEvent(_eventRef, kVK_Space, false);
-        CGEventSetFlags(ev, 0);
-        CGEventPost(kCGSessionEventTap, ev);
-        CFRelease(ev);
-    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        OSStatus status = [CJKHelper selectNextInputSourceWithWorkaround];
+
+        if (status != noErr) {
+            NSLog(@"[InputHandler] Failed to switch input source. Error: %d", (int)status);
+        }
+    });
 }
 
 void InputHandler::RestorePreviousMouseKeydownEvent() {

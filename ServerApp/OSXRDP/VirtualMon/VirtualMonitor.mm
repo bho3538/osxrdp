@@ -4,6 +4,8 @@
 #include <IOKit/pwr_mgt/IOPMLib.h>
 #include <unistd.h>
 
+static const int kDisplayReconfigSettleUsec = 500 * 1000;
+
 VirtualMonitor::VirtualMonitor() :
     _disabledDisplayIds(NULL),
     _disabledDisplayIdsCnt(0),
@@ -110,6 +112,10 @@ void VirtualMonitor::Destroy() {
         pthread_join(_watchThread, NULL); // 완전히 정지할때까지 대기
     }
 
+    if (_disabledDisplayIdsCnt > 0) {
+        usleep(kDisplayReconfigSettleUsec);
+    }
+
     // 비활성화한 디스플레이 롤백 (반드시 먼저 해야함, 그렇지 않는 경우 위 설명처럼 windowserver 가 크래시할 수 있음)
     RestoreOtherMonitors();
 
@@ -186,6 +192,19 @@ bool VirtualMonitor::DisableOtherMonitors() {
         free(displayIds);
         
         return false;
+    }
+
+    bool hasPhysicalOnlineDisplay = false;
+    for (uint32_t i = 0; i < displayCnt; i++) {
+        if (IsVirtualDisplay(displayIds[i]) == false) {
+            hasPhysicalOnlineDisplay = true;
+            break;
+        }
+    }
+
+    if (hasPhysicalOnlineDisplay == false) {
+        free(displayIds);
+        return true;
     }
     
     uint32_t* newDisabledDisplayIds = (uint32_t*)realloc(_disabledDisplayIds, sizeof(uint32_t) * (_disabledDisplayIdsCnt + displayCnt));
