@@ -7,11 +7,12 @@
 static const int kDisplayReconfigSettleUsec = 500 * 1000;
 
 VirtualMonitor::VirtualMonitor() :
+    _virtualDisplayInfoCnt(0),
+    _init(false),
     _disabledDisplayIds(NULL),
     _disabledDisplayIdsCnt(0),
-    _init(false),
     _watchRunning(false),
-    _virtualDisplayInfoCnt(0)
+    _displaySleepAssertion(kIOPMNullAssertionID)
 {
     pthread_mutex_init(&_watchLock, 0);
     pthread_cond_init(&_watchWake, 0);
@@ -27,6 +28,9 @@ VirtualMonitor::~VirtualMonitor() {
 bool VirtualMonitor::Create(int width, int height, int left, int top, int index, bool isPrimary) {
 
     if (_virtualDisplayInfoCnt >= 16) return false;
+
+    HoldDisplaySleepAssertion();
+    WakeupDisplay();
     
     // 가상 디스플레이를 생성
     CGVirtualDisplayDescriptor* desc = [[CGVirtualDisplayDescriptor alloc] init];
@@ -113,6 +117,7 @@ void VirtualMonitor::Destroy() {
     }
 
     if (_disabledDisplayIdsCnt > 0) {
+        WakeupDisplay();
         usleep(kDisplayReconfigSettleUsec);
     }
 
@@ -128,6 +133,7 @@ void VirtualMonitor::Destroy() {
     memset(&_virtualDisplayInfo, 0x00, sizeof(_virtualDisplayInfo));
 
     _init = false;
+    ReleaseDisplaySleepAssertion();
 }
 
 void VirtualMonitor::RestoreOtherMonitors() {
@@ -144,6 +150,9 @@ void VirtualMonitor::RestoreOtherMonitors() {
 }
 
 void VirtualMonitor::StartMonitor() {
+    HoldDisplaySleepAssertion();
+    WakeupDisplay();
+
     if (_watchRunning == false) {
         _watchRunning = true;
         pthread_create(&_watchThread , NULL, WatchThreadProc, this);
@@ -157,6 +166,26 @@ void VirtualMonitor::WakeupDisplay() {
         IOPMAssertionRelease(assertionID);
         assertionID = kIOPMNullAssertionID;
     }
+}
+
+void VirtualMonitor::HoldDisplaySleepAssertion() {
+    if (_displaySleepAssertion != kIOPMNullAssertionID) {
+        return;
+    }
+
+    IOPMAssertionCreateWithName(kIOPMAssertionTypePreventUserIdleDisplaySleep,
+                                kIOPMAssertionLevelOn,
+                                CFSTR("OSXRDP virtual monitor session"),
+                                &_displaySleepAssertion);
+}
+
+void VirtualMonitor::ReleaseDisplaySleepAssertion() {
+    if (_displaySleepAssertion == kIOPMNullAssertionID) {
+        return;
+    }
+
+    IOPMAssertionRelease(_displaySleepAssertion);
+    _displaySleepAssertion = kIOPMNullAssertionID;
 }
 
 // todo: DisplayUtils::ApplyDisplayEnabled 에 중복 로직이 있음

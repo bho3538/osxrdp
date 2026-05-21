@@ -3,6 +3,7 @@
 #define VirtualMonitor_h
 
 #include "CGVirtualDisplayPrivate.h"
+#include <IOKit/pwr_mgt/IOPMLib.h>
 #include <pthread.h>
 
 struct VIRTUALMONITOR_INFO {
@@ -61,6 +62,7 @@ private:
     pthread_mutex_t _watchLock;
     pthread_cond_t _watchWake;
     bool _watchRunning;
+    IOPMAssertionID _displaySleepAssertion;
 
     bool IsVirtualDisplay(CGDirectDisplayID displayId);
     bool IsAllVirtualDisplayOnline();
@@ -74,6 +76,8 @@ private:
     int ApplyDisplayLayout();
     
     void WatchThreadPorcInternal();
+    void HoldDisplaySleepAssertion();
+    void ReleaseDisplaySleepAssertion();
     
     static void* WatchThreadProc(void* args);
 };
