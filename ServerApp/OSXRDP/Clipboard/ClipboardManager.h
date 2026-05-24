@@ -4,6 +4,19 @@
 #include "ipc.h"
 #include "xstream.h"
 #include <pthread.h>
+#include <stdint.h>
+
+#ifdef __OBJC__
+@class NSDate;
+@class NSMutableArray;
+@class NSString;
+@class NSURL;
+#else
+typedef void NSDate;
+typedef void NSMutableArray;
+typedef void NSString;
+typedef void NSURL;
+#endif
 
 class ClipboardManager {
 public:
@@ -29,6 +42,8 @@ private:
     int _pendingTextRetryCount;
     xipc_t* _client;
     int _lastChangeCount;
+    int _remoteFileClipEnabled;
+    void* _localFileItems;
 
     pthread_mutex_t _lock;
     pthread_t _monitorThread;
@@ -41,9 +56,11 @@ private:
     static int GetRequestedFormatPriority(PendingClipType clipType, int formatId);
 
     void HandleClipData(xipc_t* client, const void* data, int dataLen);
+    void HandleCaps(xstream_t* clipStream, int msgLen);
     void HandleFormatList(xipc_t* client, xstream_t* clipStream, int msgFlags, int msgLen);
     void HandleDataRequest(xipc_t* client, xstream_t* clipStream, int msgFlags, int msgLen);
     void HandleDataResponse(xstream_t* clipStream, int msgFlags, int msgLen);
+    void HandleFileContentsRequest(xipc_t* client, xstream_t* clipStream, int msgFlags, int msgLen);
 
     void FindRequestedFormat(int msgFlags, int msgLen, xstream_t* clipStream, int* formatId, PendingClipType* clipType);
     void FindRequestedFormatLongName(xstream_t* clipStream, int msgLen, int* formatId, PendingClipType* clipType);
@@ -59,9 +76,21 @@ private:
     void SendDataResponse(xipc_t* client, const void* data, int dataLen);
     void SendDataResponseText(xipc_t* client, const char* utf8Text, int utf8Len, int formatId);
     void SendDataResponseFailed(xipc_t* client);
+    void SendFileContentsResponse(xipc_t* client, int streamId, const void* data, int dataLen);
+    void SendFileContentsResponseFailed(xipc_t* client, int streamId);
     void SendChannelData(xipc_t* client, const void* data, int dataLen);
     void SendChannelDataParts(xipc_t* client, const void* header, int headerLen, const void* data, int dataLen, const void* footer, int footerLen);
 
+    NSMutableArray* LocalFileItems();
+    static uint64_t ReadUInt64FromLowHigh(int low, int high);
+    static void WriteUInt64ToBuffer(unsigned char* buffer, uint64_t value);
+    static uint64_t FileTimeFromDate(NSDate* date);
+    static void WriteFileName(xstream_t* stream, NSString* fileName);
+    static void AddLocalFileItem(NSMutableArray* items, NSURL* url, NSString* name);
+    static void AddLocalFileTree(NSMutableArray* items, NSURL* rootUrl);
+
+    bool UpdatePasteboardFileItems(int* itemCount);
+    bool BuildFileList(char** fileListData, int* fileListLen);
     bool GetPasteboardText(char** utf8Text, int* utf8Len, int* changeCount);
     bool GetPasteboardRtf(char** rtfData, int* rtfLen);
     bool GetPasteboardImage(char** dibData, int* dibLen);
