@@ -48,7 +48,7 @@ Starting from **osxrdp 2.0.0**, osxrdp supports file and folder copy between the
   Follow these steps:
   1. On the client computer, select the files or folders and copy them with **Ctrl + C**.
   2. On the server (macOS), select the OSXRDP app from the top menu bar.
-  3. Select **Save copied files**.<img width="1366" height="800" alt="1" src="https://github.com/user-attachments/assets/85363408-7b64-4a3e-8f37-5227f702993b" />
+  3. Select **Save copied files**.<img width="1366" height="800" alt="1" src="https://github.com/user-attachments/assets/f27486dc-464f-4ec9-86e5-8198e2ba1e77" />
   4. Select the folder path where the files will be saved.<img width="1366" height="800" alt="2" src="https://github.com/user-attachments/assets/c4c9c62a-7d47-4e45-86db-ef37a9d4d6d1" />
   5. You can confirm that the files or folders have been copied as follows.<img width="1366" height="800" alt="3" src="https://github.com/user-attachments/assets/988a260f-7656-4c58-aa1d-b0c0e869e1ac" />
 
