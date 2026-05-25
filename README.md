@@ -16,8 +16,9 @@ osxrdp is an unofficial module of xrdp to support rdp server in macOS.
 |Basic Clipboard (Text)|✅|
 |Advanced Clipboard (Image, Rich Text)|✅|
 |Multiple monitor (only H.264)|✅|
+|File transfer| ✅ |
 |Audio|❌|
-|File transfer|❌|
+
 
 ## Manual
 <h6><a href="Manual.md">Link</a></h6>

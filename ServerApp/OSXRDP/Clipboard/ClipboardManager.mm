@@ -2192,6 +2192,8 @@ bool ClipboardManager::PrepareRemoteFileDestinations(NSURL* folderUrl) {
     NSMutableArray* preparedItems = [NSMutableArray array];
     for (NSDictionary* item in snapshot) {
         NSString* name = [item objectForKey:@"name"];
+        
+        // NFD --> NFC (윈도우에서의 자소 분리 해결)
         NSString* normalizedName = [name stringByReplacingOccurrencesOfString:@"\\" withString:@"/"];
         NSArray* components = [normalizedName componentsSeparatedByString:@"/"];
         if ([components count] == 0) {
