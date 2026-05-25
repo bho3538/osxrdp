@@ -1,6 +1,7 @@
 "statusbar.icon.accessibility" = "OSXRDP 메뉴 로고";
 "statusbar.menu.title" = "OSXRDP";
 "statusbar.menu.open" = "열기";
+"statusbar.menu.save_copied_files" = "복사한 파일 저장...";
 "statusbar.menu.close" = "닫기";
 
 "main.alert.title" = "OSXRDP";
@@ -15,3 +16,15 @@
 "permission.button.close" = "닫기";
 "permission.button.refresh" = "새로 고침";
 "permission.button.ok" = "확인";
+
+"filecopy.window.title" = "파일 복사 중";
+"filecopy.button.cancel" = "취소";
+"filecopy.status.bytes" = "%llu / %llu 바이트";
+"filecopy.panel.title" = "복사한 파일 저장";
+"filecopy.panel.message" = "원격 컴퓨터에서 복사한 파일을 저장할 폴더를 선택해 주세요.";
+"filecopy.panel.button" = "저장";
+"filecopy.alert.title" = "파일 복사";
+"filecopy.alert.no_files" = "사용 가능한 원격 복사 파일이 없습니다.";
+"filecopy.alert.in_progress" = "파일 복사가 이미 진행 중입니다.";
+"filecopy.alert.permission" = "선택한 폴더에 쓸 권한이 없습니다.";
+"filecopy.alert.failed" = "파일 복사에 실패했습니다.";

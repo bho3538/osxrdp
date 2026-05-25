@@ -10,6 +10,7 @@ void _handle_sigterm(int signal);
 @interface AppDelegate ()
 {
     NSStatusItem* _trayMenu;
+    NSMenuItem* _saveCopiedFilesMenuItem;
 }
 
 @property (strong) IBOutlet MainWindowController* mainWindowController;
@@ -57,6 +58,9 @@ void _handle_sigterm(int signal);
     
     NSMenuItem* openItem = [menus addItemWithTitle:NSLocalizedString(@"statusbar.menu.open", nil) action:@selector(onOpenWindowMenuClicked) keyEquivalent:@""];
     openItem.target = self;
+
+    _saveCopiedFilesMenuItem = [menus addItemWithTitle:NSLocalizedString(@"statusbar.menu.save_copied_files", nil) action:@selector(onSaveCopiedFilesMenuClicked) keyEquivalent:@""];
+    _saveCopiedFilesMenuItem.target = self;
     
     [menus addItem:NSMenuItem.separatorItem];
     
@@ -66,6 +70,14 @@ void _handle_sigterm(int signal);
     _trayMenu.menu = menus;
 }
 
+- (BOOL)validateMenuItem:(NSMenuItem *)menuItem {
+    if (menuItem == _saveCopiedFilesMenuItem) {
+        return HasRemoteClipboardFiles();
+    }
+
+    return YES;
+}
+
 - (void)onOpenWindowMenuClicked {
     [NSApp activateIgnoringOtherApps:YES];
     [self.mainWindowController showMainWindow];
@@ -73,6 +85,10 @@ void _handle_sigterm(int signal);
 
 - (void)onExitMenuClicked {
     [[NSApplication sharedApplication] terminate:nil];
+}
+
+- (void)onSaveCopiedFilesMenuClicked {
+    StartRemoteClipboardFileCopy();
 }
 
 void _handle_sigterm(int signal) {

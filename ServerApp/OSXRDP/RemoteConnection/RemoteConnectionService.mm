@@ -28,3 +28,15 @@ void StopRemoteConnectionServerService(void) {
 bool IsRemoteConnectionServerServiceRunning(void) {
     return g_server != nullptr;
 }
+
+bool HasRemoteClipboardFiles(void) {
+    return g_server != nullptr && g_server->HasRemoteClipboardFiles();
+}
+
+void StartRemoteClipboardFileCopy(void) {
+    if (g_server == nullptr) {
+        return;
+    }
+
+    g_server->StartRemoteClipboardFileCopy();
+}

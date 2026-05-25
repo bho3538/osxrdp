@@ -1,6 +1,7 @@
 #include "ClipboardManager.h"
 
 #import <AppKit/AppKit.h>
+#import "../UI/ProgressDialog/FileCopyWindow.h"
 #include "osxrdp/packet.h"
 #include <stdint.h>
 #include <stdlib.h>
@@ -44,6 +45,7 @@ static const useconds_t CLIPBOARD_MONITOR_INTERVAL_US = 500000;
 static const int IPC_CLIPBOARD_CHUNK_SIZE = 14 * 1024;
 static const int MAX_CLIPBOARD_DATA_SIZE = 30 * 1024 * 1024; // 30MB
 static const int MAX_FILECONTENTS_CHUNK_SIZE = 4 * 1024 * 1024;
+static const int REMOTE_FILE_COPY_CHUNK_SIZE = 1024 * 1024;
 static const int INVALID_CHANGE_COUNT = -1;
 
 static const int FILECONTENTS_SIZE = 0x00000001;
@@ -61,6 +63,28 @@ static const int DROPEFFECT_COPY = 1;
 
 static const int CB_CAPSTYPE_GENERAL = 1;
 static const int CB_STREAM_FILECLIP_ENABLED = 0x00000004;
+
+static int ReadUInt16LE(const unsigned char* data) {
+    return (int)((uint16_t)data[0] | ((uint16_t)data[1] << 8));
+}
+
+static int ReadUInt32LE(const unsigned char* data) {
+    return (int)((uint32_t)data[0] |
+                 ((uint32_t)data[1] << 8) |
+                 ((uint32_t)data[2] << 16) |
+                 ((uint32_t)data[3] << 24));
+}
+
+static bool IsKnownClipMsgType(int msgType) {
+    return msgType == CB_MONITOR_READY ||
+           msgType == CB_FORMAT_LIST ||
+           msgType == CB_FORMAT_LIST_RESPONSE ||
+           msgType == CB_FORMAT_DATA_REQUEST ||
+           msgType == CB_FORMAT_DATA_RESPONSE ||
+           msgType == CB_CLIP_CAPS ||
+           msgType == CB_FILECONTENTS_REQUEST ||
+           msgType == CB_FILECONTENTS_RESPONSE;
+}
 
 static void WriteFormatName(xstream_t* clipStream, const char* formatName) {
     if (clipStream == NULL) {
@@ -86,6 +110,22 @@ NSMutableArray* ClipboardManager::LocalFileItems() {
     return (__bridge NSMutableArray*)_localFileItems;
 }
 
+static NSMutableArray* RemoteFileItems(void* items) {
+    return (__bridge NSMutableArray*)items;
+}
+
+static FileCopyWindow* FileCopyProgressWindow(void* window) {
+    return (__bridge FileCopyWindow*)window;
+}
+
+static NSFileHandle* FileCopyCurrentHandle(void* handle) {
+    return (__bridge NSFileHandle*)handle;
+}
+
+static NSString* FileCopyCurrentPath(void* path) {
+    return (__bridge NSString*)path;
+}
+
 uint64_t ClipboardManager::ReadUInt64FromLowHigh(int low, int high) {
     return (((uint64_t)(uint32_t)high) << 32) | (uint32_t)low;
 }
@@ -107,7 +147,7 @@ uint64_t ClipboardManager::FileTimeFromDate(NSDate* date) {
 
 void ClipboardManager::WriteFileName(xstream_t* stream, NSString* fileName) {
     unsigned char nameBuffer[520] = {0,};
-    NSString* normalizedName = [fileName stringByReplacingOccurrencesOfString:@"/" withString:@"\\"];
+    NSString* normalizedName = [[fileName precomposedStringWithCanonicalMapping] stringByReplacingOccurrencesOfString:@"/" withString:@"\\"];
     NSData* nameData = [normalizedName dataUsingEncoding:NSUTF16LittleEndianStringEncoding];
 
     NSUInteger copyLen = [nameData length];
@@ -180,6 +220,69 @@ void ClipboardManager::AddLocalFileTree(NSMutableArray* items, NSURL* rootUrl) {
         NSString* childName = [rootName stringByAppendingPathComponent:suffix];
         AddLocalFileItem(items, childUrl, childName);
     }
+}
+
+NSString* ClipboardManager::ReadFileDescriptorName(const unsigned char* data, int dataLen) {
+    if (data == NULL || dataLen <= 0) {
+        return nil;
+    }
+
+    int nameLen = 0;
+    while (nameLen + 1 < dataLen) {
+        if (data[nameLen] == 0 && data[nameLen + 1] == 0) {
+            break;
+        }
+        nameLen += 2;
+    }
+
+    if (nameLen <= 0) {
+        return nil;
+    }
+
+    NSData* nameData = [NSData dataWithBytes:data length:nameLen];
+    NSString* name = [[NSString alloc] initWithData:nameData encoding:NSUTF16LittleEndianStringEncoding];
+    return name;
+}
+
+bool ClipboardManager::IsSafeRelativeFileName(NSString* fileName) {
+    if (fileName == nil || [fileName length] == 0 || [fileName isAbsolutePath] == YES) {
+        return false;
+    }
+
+    NSArray* components = [fileName componentsSeparatedByCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@"\\/"]];
+    for (NSString* component in components) {
+        if ([component length] == 0 || [component isEqualToString:@"."] || [component isEqualToString:@".."]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+NSURL* ClipboardManager::MakeUniqueChildUrl(NSURL* folderUrl, NSString* fileName) {
+    if (folderUrl == nil || fileName == nil || [fileName length] == 0) {
+        return nil;
+    }
+
+    NSFileManager* fileManager = [NSFileManager defaultManager];
+    NSString* baseName = [fileName stringByDeletingPathExtension];
+    NSString* pathExtension = [fileName pathExtension];
+    NSURL* candidate = [folderUrl URLByAppendingPathComponent:fileName];
+    int index = 2;
+
+    while ([fileManager fileExistsAtPath:[candidate path]]) {
+        NSString* nextName = nil;
+        if ([pathExtension length] > 0 && [baseName length] > 0) {
+            nextName = [NSString stringWithFormat:@"%@ (%d).%@", baseName, index, pathExtension];
+        } else {
+            nextName = [NSString stringWithFormat:@"%@ (%d)", fileName, index];
+        }
+
+        candidate = [folderUrl URLByAppendingPathComponent:nextName];
+        index++;
+    }
+
+    return candidate;
 }
 
 static bool BuildDibFromImage(NSImage* image, char** outData, int* outDataLen) {
@@ -407,9 +510,27 @@ ClipboardManager::ClipboardManager()
 , _client(NULL)
 , _lastChangeCount(INVALID_CHANGE_COUNT)
 , _remoteFileClipEnabled(0)
-, _localFileItems(NULL) {
+, _localFileItems(NULL)
+, _remoteFileItems(NULL)
+, _remoteFileGroupFormatId(0)
+, _remoteFileContentsFormatId(0)
+, _remoteFileClipboardReady(0)
+, _fileCopyInProgress(0)
+, _fileCopyChoosingFolder(0)
+, _fileCopyCancelled(0)
+, _fileCopyCurrentItemIndex(0)
+, _fileCopyStreamId(1)
+, _fileCopyExpectedStreamId(0)
+, _fileCopyCurrentLindex(0)
+, _fileCopyCurrentOffset(0)
+, _fileCopyTotalBytes(0)
+, _fileCopyTransferredBytes(0)
+, _fileCopyWindow(NULL)
+, _fileCopyCurrentHandle(NULL)
+, _fileCopyCurrentPath(NULL) {
     pthread_mutex_init(&_lock, NULL);
     _localFileItems = (__bridge_retained void*)[[NSMutableArray alloc] init];
+    _remoteFileItems = (__bridge_retained void*)[[NSMutableArray alloc] init];
 
     NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
     if (pasteboard != nil) {
@@ -455,7 +576,66 @@ ClipboardManager::~ClipboardManager() {
         CFRelease(_localFileItems);
         _localFileItems = NULL;
     }
+    if (_remoteFileItems != NULL) {
+        CFRelease(_remoteFileItems);
+        _remoteFileItems = NULL;
+    }
+    if (_fileCopyWindow != NULL) {
+        CFRelease(_fileCopyWindow);
+        _fileCopyWindow = NULL;
+    }
+    if (_fileCopyCurrentHandle != NULL) {
+        CFRelease(_fileCopyCurrentHandle);
+        _fileCopyCurrentHandle = NULL;
+    }
+    if (_fileCopyCurrentPath != NULL) {
+        CFRelease(_fileCopyCurrentPath);
+        _fileCopyCurrentPath = NULL;
+    }
     pthread_mutex_destroy(&_lock);
+}
+
+bool ClipboardManager::HasRemoteFiles() {
+    pthread_mutex_lock(&_lock);
+    bool result = _remoteFileClipboardReady != 0 && _fileCopyInProgress == 0 && _fileCopyChoosingFolder == 0;
+    pthread_mutex_unlock(&_lock);
+    return result;
+}
+
+void ClipboardManager::StartRemoteFileCopy() {
+    pthread_mutex_lock(&_lock);
+    bool canStart = _remoteFileClipboardReady != 0 && _fileCopyInProgress == 0 && _fileCopyChoosingFolder == 0;
+    if (canStart) {
+        _fileCopyChoosingFolder = 1;
+    }
+    bool busy = _fileCopyInProgress != 0 || _fileCopyChoosingFolder != 0;
+    pthread_mutex_unlock(&_lock);
+
+    if (canStart == false) {
+        ShowFileCopyAlert(NSLocalizedString(busy ? @"filecopy.alert.in_progress" : @"filecopy.alert.no_files", nil));
+        return;
+    }
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSOpenPanel* panel = [NSOpenPanel openPanel];
+        [panel setCanChooseFiles:NO];
+        [panel setCanChooseDirectories:YES];
+        [panel setAllowsMultipleSelection:NO];
+        [panel setCanCreateDirectories:YES];
+        [panel setTitle:NSLocalizedString(@"filecopy.panel.title", nil)];
+        [panel setMessage:NSLocalizedString(@"filecopy.panel.message", nil)];
+        [panel setPrompt:NSLocalizedString(@"filecopy.panel.button", nil)];
+
+        NSModalResponse response = [panel runModal];
+        if (response != NSModalResponseOK || [[panel URL] isFileURL] == NO) {
+            pthread_mutex_lock(&_lock);
+            _fileCopyChoosingFolder = 0;
+            pthread_mutex_unlock(&_lock);
+            return;
+        }
+
+        BeginRemoteFileCopyToFolder([panel URL]);
+    });
 }
 
 // 클라이언트에서 전달된 클립보드 이벤트
@@ -579,50 +759,67 @@ bool ClipboardManager::AssembleChannelData(int channelFlags, int totalLen, const
 }
 
 void ClipboardManager::HandleClipData(xipc_t* client, const void* data, int dataLen) {
-    xstream_t* clipStream = xstream_create_for_read((void*)data, dataLen);
-    if (clipStream == NULL) {
+    if (data == NULL || dataLen < 8) {
         return;
     }
 
-    if (xstream_getRemaining(clipStream) < 8) {
+    const unsigned char* bytes = (const unsigned char*)data;
+    int offset = 0;
+    while (offset + 8 <= dataLen) {
+        int msgType = ReadUInt16LE(bytes + offset);
+
+        if (IsKnownClipMsgType(msgType) == false) {
+            if (offset + 4 <= dataLen && ReadUInt32LE(bytes + offset) == 0) {
+                offset += 4;
+                continue;
+            }
+            break;
+        }
+
+        int msgLen = ReadUInt32LE(bytes + offset + 4);
+        int packetLen = 8 + msgLen;
+        if (msgLen < 0 || packetLen < 8 || packetLen > dataLen - offset) {
+            break;
+        }
+
+        xstream_t* clipStream = xstream_create_for_read((void*)(bytes + offset), packetLen);
+        if (clipStream == NULL) {
+            return;
+        }
+
+        msgType = xstream_readInt16(clipStream);
+        int msgFlags = xstream_readInt16(clipStream);
+        msgLen = xstream_readInt32(clipStream);
+
+        switch (msgType) {
+            case CB_MONITOR_READY:
+                UpdateRemoteClipboardContext(client);
+                break;
+            case CB_CLIP_CAPS:
+                HandleCaps(clipStream, msgLen);
+                break;
+            case CB_FORMAT_LIST:
+                HandleFormatList(client, clipStream, msgFlags, msgLen);
+                break;
+            case CB_FORMAT_DATA_REQUEST:
+                HandleDataRequest(client, clipStream, msgFlags, msgLen);
+                break;
+            case CB_FORMAT_DATA_RESPONSE:
+                HandleDataResponse(clipStream, msgFlags, msgLen);
+                break;
+            case CB_FILECONTENTS_REQUEST:
+                HandleFileContentsRequest(client, clipStream, msgFlags, msgLen);
+                break;
+            case CB_FILECONTENTS_RESPONSE:
+                HandleFileContentsResponse(clipStream, msgFlags, msgLen);
+                break;
+            default:
+                break;
+        }
+
         xstream_free(clipStream);
-        return;
+        offset += packetLen;
     }
-
-    int msgType = xstream_readInt16(clipStream);
-    int msgFlags = xstream_readInt16(clipStream);
-    int msgLen = xstream_readInt32(clipStream);
-    int remaining = xstream_getRemaining(clipStream);
-
-    if (msgLen < 0 || msgLen > remaining) {
-        xstream_free(clipStream);
-        return;
-    }
-
-    switch (msgType) {
-        case CB_MONITOR_READY:
-            UpdateRemoteClipboardContext(client);
-            break;
-        case CB_CLIP_CAPS:
-            HandleCaps(clipStream, msgLen);
-            break;
-        case CB_FORMAT_LIST:
-            HandleFormatList(client, clipStream, msgFlags, msgLen);
-            break;
-        case CB_FORMAT_DATA_REQUEST:
-            HandleDataRequest(client, clipStream, msgFlags, msgLen);
-            break;
-        case CB_FORMAT_DATA_RESPONSE:
-            HandleDataResponse(clipStream, msgFlags, msgLen);
-            break;
-        case CB_FILECONTENTS_REQUEST:
-            HandleFileContentsRequest(client, clipStream, msgFlags, msgLen);
-            break;
-        default:
-            break;
-    }
-
-    xstream_free(clipStream);
 }
 
 void ClipboardManager::HandleCaps(xstream_t* clipStream, int msgLen) {
@@ -655,12 +852,47 @@ void ClipboardManager::HandleCaps(xstream_t* clipStream, int msgLen) {
 }
 
 void ClipboardManager::HandleFormatList(xipc_t* client, xstream_t* clipStream, int msgFlags, int msgLen) {
+    int fileGroupFormatId = 0;
+    int fileContentsFormatId = 0;
+    bool hasRemoteFiles = FindRemoteFileFormats(msgFlags, msgLen, clipStream, &fileGroupFormatId, &fileContentsFormatId);
+
     int formatId = 0;
     PendingClipType clipType = PendingClipType_None;
 
     FindRequestedFormat(msgFlags, msgLen, clipStream, &formatId, &clipType);
 
     SendFormatAck(client, true);
+
+    if (hasRemoteFiles) {
+        pthread_mutex_lock(&_lock);
+        bool busy = _fileCopyInProgress != 0 || _fileCopyChoosingFolder != 0;
+        pthread_mutex_unlock(&_lock);
+        if (busy) {
+            return;
+        }
+
+        pthread_mutex_lock(&_lock);
+        _remoteFileClipboardReady = 0;
+        _remoteFileGroupFormatId = fileGroupFormatId;
+        _remoteFileContentsFormatId = fileContentsFormatId;
+        [RemoteFileItems(_remoteFileItems) removeAllObjects];
+        pthread_mutex_unlock(&_lock);
+
+        _pendingClipType = PendingClipType_FileList;
+        _pendingTextFormatId = 0;
+        _pendingTextRetryCount = 0;
+        SendDataRequest(client, fileGroupFormatId);
+        return;
+    }
+
+    pthread_mutex_lock(&_lock);
+    if (_fileCopyInProgress == 0 && _fileCopyChoosingFolder == 0) {
+        _remoteFileClipboardReady = 0;
+        _remoteFileGroupFormatId = 0;
+        _remoteFileContentsFormatId = 0;
+        [RemoteFileItems(_remoteFileItems) removeAllObjects];
+    }
+    pthread_mutex_unlock(&_lock);
 
     _pendingClipType = clipType;
     _pendingTextFormatId = (clipType == PendingClipType_Text) ? formatId : 0;
@@ -783,7 +1015,9 @@ void ClipboardManager::HandleDataResponse(xstream_t* clipStream, int msgFlags, i
         return;
     }
 
-    if (_pendingClipType == PendingClipType_Text) {
+    if (_pendingClipType == PendingClipType_FileList) {
+        ParseRemoteFileList(data, msgLen);
+    } else if (_pendingClipType == PendingClipType_Text) {
         SetTextToPasteboard(data, msgLen, _pendingTextFormatId);
     } else if (_pendingClipType == PendingClipType_RichText) {
         SetRtfToPasteboard(data, msgLen);
@@ -995,6 +1229,78 @@ void ClipboardManager::FindRequestedFormatShortName(xstream_t* clipStream, int m
         *formatId = 0;
         *clipType = PendingClipType_None;
     }
+}
+
+bool ClipboardManager::FindRemoteFileFormats(int msgFlags, int msgLen, xstream_t* clipStream, int* fileGroupFormatId, int* fileContentsFormatId) {
+    if (clipStream == NULL || fileGroupFormatId == NULL || fileContentsFormatId == NULL) {
+        return false;
+    }
+
+    *fileGroupFormatId = 0;
+    *fileContentsFormatId = 0;
+
+    xstream_resetPos(clipStream);
+    xstream_readInt16(clipStream);
+    xstream_readInt16(clipStream);
+    xstream_readInt32(clipStream);
+
+    int readLen = 0;
+    if ((msgFlags & CB_ASCII_NAMES) != 0 || (msgLen > 0 && msgLen % 36 == 0)) {
+        while (readLen + 36 <= msgLen) {
+            int formatId = xstream_readInt32(clipStream);
+            const char* formatName = (const char*)xstream_readData(clipStream, 32);
+            if (formatName == NULL) {
+                break;
+            }
+
+            if (strncmp(formatName, FILEGROUP_FORMAT_NAME, 32) == 0) {
+                *fileGroupFormatId = formatId;
+            } else if (strncmp(formatName, FILECONTENTS_FORMAT_NAME, 32) == 0) {
+                *fileContentsFormatId = formatId;
+            }
+            readLen += 36;
+        }
+    } else {
+        while (readLen + 4 <= msgLen) {
+            int formatId = xstream_readInt32(clipStream);
+            char formatName[64];
+            int namePos = 0;
+            bool foundTerminator = false;
+
+            readLen += 4;
+            while (readLen + 2 <= msgLen) {
+                int ch = xstream_readInt16(clipStream);
+                readLen += 2;
+
+                if (ch == 0) {
+                    foundTerminator = true;
+                    break;
+                }
+
+                if (namePos + 1 < (int)sizeof(formatName) && ch >= 0 && ch <= 0x7F) {
+                    formatName[namePos++] = (char)ch;
+                }
+            }
+
+            if (foundTerminator == false) {
+                break;
+            }
+
+            formatName[namePos] = 0;
+            if (strcmp(formatName, FILEGROUP_FORMAT_NAME) == 0) {
+                *fileGroupFormatId = formatId;
+            } else if (strcmp(formatName, FILECONTENTS_FORMAT_NAME) == 0) {
+                *fileContentsFormatId = formatId;
+            }
+        }
+    }
+
+    xstream_resetPos(clipStream);
+    xstream_readInt16(clipStream);
+    xstream_readInt16(clipStream);
+    xstream_readInt32(clipStream);
+
+    return *fileGroupFormatId != 0 && *fileContentsFormatId != 0;
 }
 
 void* ClipboardManager::MonitorThreadEntry(void* arg) {
@@ -1237,6 +1543,31 @@ void ClipboardManager::SendDataResponseFailed(xipc_t* client) {
 
     xstream_writeInt16(clipStream, CB_FORMAT_DATA_RESPONSE);
     xstream_writeInt16(clipStream, CB_RESPONSE_FAIL);
+    xstream_writeInt32(clipStream, 0);
+
+    int bufferLen = 0;
+    const void* buffer = xstream_get_raw_buffer(clipStream, &bufferLen);
+    SendChannelData(client, buffer, bufferLen);
+
+    xstream_free(clipStream);
+}
+
+void ClipboardManager::SendFileContentsRequest(xipc_t* client, int streamId, int lindex, int flags, uint64_t offset, int requested) {
+    xstream_t* clipStream = xstream_create(40);
+    if (clipStream == NULL) {
+        return;
+    }
+
+    xstream_writeInt16(clipStream, CB_FILECONTENTS_REQUEST);
+    xstream_writeInt16(clipStream, 0);
+    xstream_writeInt32(clipStream, 28);
+    xstream_writeInt32(clipStream, streamId);
+    xstream_writeInt32(clipStream, lindex);
+    xstream_writeInt32(clipStream, flags);
+    xstream_writeInt32(clipStream, (int)(offset & 0xFFFFFFFF));
+    xstream_writeInt32(clipStream, (int)((offset >> 32) & 0xFFFFFFFF));
+    xstream_writeInt32(clipStream, requested);
+    xstream_writeInt32(clipStream, 0);
     xstream_writeInt32(clipStream, 0);
 
     int bufferLen = 0;
@@ -1494,6 +1825,452 @@ bool ClipboardManager::BuildFileList(char** fileListData, int* fileListLen) {
     *fileListData = result;
     *fileListLen = bufferLen;
     return true;
+}
+
+bool ClipboardManager::ParseRemoteFileList(const void* data, int dataLen) {
+    if (data == NULL || dataLen < 4) {
+        return false;
+    }
+
+    const unsigned char* bytes = (const unsigned char*)data;
+    int itemCount = (int)((uint32_t)bytes[0] |
+                          ((uint32_t)bytes[1] << 8) |
+                          ((uint32_t)bytes[2] << 16) |
+                          ((uint32_t)bytes[3] << 24));
+    if (itemCount <= 0 || itemCount > 65536 || dataLen < 4 + itemCount * CLIPRDR_FILEDESCRIPTOR_SIZE) {
+        return false;
+    }
+
+    NSMutableArray* newItems = [NSMutableArray array];
+    int offset = 4;
+    for (int i = 0; i < itemCount; i++) {
+        const unsigned char* descriptor = bytes + offset;
+        int attributesOffset = 4 + 32;
+        int fileTimeOffset = attributesOffset + 4 + 16;
+        int fileSizeOffset = fileTimeOffset + 8;
+        int nameOffset = fileSizeOffset + 8;
+
+        int attributes = (int)((uint32_t)descriptor[attributesOffset] |
+                               ((uint32_t)descriptor[attributesOffset + 1] << 8) |
+                               ((uint32_t)descriptor[attributesOffset + 2] << 16) |
+                               ((uint32_t)descriptor[attributesOffset + 3] << 24));
+        uint64_t fileSizeHigh = (uint32_t)descriptor[fileSizeOffset] |
+                                ((uint32_t)descriptor[fileSizeOffset + 1] << 8) |
+                                ((uint32_t)descriptor[fileSizeOffset + 2] << 16) |
+                                ((uint32_t)descriptor[fileSizeOffset + 3] << 24);
+        uint64_t fileSizeLow = (uint32_t)descriptor[fileSizeOffset + 4] |
+                               ((uint32_t)descriptor[fileSizeOffset + 5] << 8) |
+                               ((uint32_t)descriptor[fileSizeOffset + 6] << 16) |
+                               ((uint32_t)descriptor[fileSizeOffset + 7] << 24);
+        NSString* fileName = ReadFileDescriptorName(descriptor + nameOffset, 520);
+        if (IsSafeRelativeFileName(fileName)) {
+            BOOL isDir = (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+            NSDictionary* item = [NSDictionary dictionaryWithObjectsAndKeys:
+                                  fileName, @"name",
+                                  [NSNumber numberWithBool:isDir], @"isDir",
+                                  [NSNumber numberWithUnsignedLongLong:(isDir ? 0 : ((fileSizeHigh << 32) | fileSizeLow))], @"size",
+                                  [NSNumber numberWithInt:i], @"lindex",
+                                  nil];
+            [newItems addObject:item];
+        }
+
+        offset += CLIPRDR_FILEDESCRIPTOR_SIZE;
+    }
+
+    pthread_mutex_lock(&_lock);
+    NSMutableArray* items = RemoteFileItems(_remoteFileItems);
+    [items removeAllObjects];
+    [items addObjectsFromArray:newItems];
+    _remoteFileClipboardReady = [items count] > 0 ? 1 : 0;
+    pthread_mutex_unlock(&_lock);
+
+    return [newItems count] > 0;
+}
+
+void ClipboardManager::BeginRemoteFileCopyToFolder(NSURL* folderUrl) {
+    if (CheckWritableFolder(folderUrl) == false) {
+        pthread_mutex_lock(&_lock);
+        _fileCopyChoosingFolder = 0;
+        pthread_mutex_unlock(&_lock);
+        ShowFileCopyAlert(NSLocalizedString(@"filecopy.alert.permission", nil));
+        return;
+    }
+
+    if (PrepareRemoteFileDestinations(folderUrl) == false) {
+        pthread_mutex_lock(&_lock);
+        _fileCopyChoosingFolder = 0;
+        pthread_mutex_unlock(&_lock);
+        ShowFileCopyAlert(NSLocalizedString(@"filecopy.alert.failed", nil));
+        return;
+    }
+
+    FileCopyWindow* window = [[FileCopyWindow alloc] init];
+    window.cancelHandler = ^{
+        CancelRemoteFileCopy();
+    };
+
+    pthread_mutex_lock(&_lock);
+    _fileCopyChoosingFolder = 0;
+    _fileCopyInProgress = 1;
+    _fileCopyCancelled = 0;
+    _fileCopyCurrentItemIndex = 0;
+    _fileCopyExpectedStreamId = 0;
+    _fileCopyCurrentLindex = 0;
+    _fileCopyCurrentOffset = 0;
+    _fileCopyTransferredBytes = 0;
+    if (_fileCopyWindow != NULL) {
+        CFRelease(_fileCopyWindow);
+    }
+    _fileCopyWindow = (__bridge_retained void*)window;
+    pthread_mutex_unlock(&_lock);
+
+    [window showWindow];
+    StartNextRemoteFileItem();
+}
+
+void ClipboardManager::StartNextRemoteFileItem() {
+    @autoreleasepool {
+        while (1) {
+            pthread_mutex_lock(&_lock);
+            bool cancelled = _fileCopyCancelled != 0;
+            xipc_t* client = _client;
+            NSMutableArray* items = RemoteFileItems(_remoteFileItems);
+            int itemIndex = _fileCopyCurrentItemIndex;
+            pthread_mutex_unlock(&_lock);
+
+            if (cancelled || client == NULL) {
+                FinishRemoteFileCopy(false);
+                return;
+            }
+
+            if (itemIndex >= (int)[items count]) {
+                FinishRemoteFileCopy(true);
+                return;
+            }
+
+            NSDictionary* item = [items objectAtIndex:itemIndex];
+            NSString* fileName = [item objectForKey:@"name"];
+            NSString* targetPath = [item objectForKey:@"targetPath"];
+            BOOL isDir = [[item objectForKey:@"isDir"] boolValue];
+            uint64_t fileSize = [[item objectForKey:@"size"] unsignedLongLongValue];
+
+            UpdateFileCopyWindow(fileName);
+
+            NSError* error = nil;
+            if (isDir) {
+                [[NSFileManager defaultManager] createDirectoryAtPath:targetPath withIntermediateDirectories:YES attributes:nil error:&error];
+                if (error != nil) {
+                    FinishRemoteFileCopy(false);
+                    return;
+                }
+
+                pthread_mutex_lock(&_lock);
+                _fileCopyCurrentItemIndex++;
+                pthread_mutex_unlock(&_lock);
+                continue;
+            }
+
+            NSString* parentPath = [targetPath stringByDeletingLastPathComponent];
+            [[NSFileManager defaultManager] createDirectoryAtPath:parentPath withIntermediateDirectories:YES attributes:nil error:&error];
+            if (error != nil || [[NSFileManager defaultManager] createFileAtPath:targetPath contents:nil attributes:nil] == NO) {
+                FinishRemoteFileCopy(false);
+                return;
+            }
+
+            NSFileHandle* handle = [NSFileHandle fileHandleForWritingAtPath:targetPath];
+            if (handle == nil) {
+                FinishRemoteFileCopy(false);
+                return;
+            }
+
+            pthread_mutex_lock(&_lock);
+            if (_fileCopyCurrentHandle != NULL) {
+                CFRelease(_fileCopyCurrentHandle);
+            }
+            if (_fileCopyCurrentPath != NULL) {
+                CFRelease(_fileCopyCurrentPath);
+            }
+            _fileCopyCurrentHandle = (__bridge_retained void*)handle;
+            _fileCopyCurrentPath = (__bridge_retained void*)targetPath;
+            _fileCopyCurrentLindex = [[item objectForKey:@"lindex"] intValue];
+            _fileCopyCurrentOffset = 0;
+            pthread_mutex_unlock(&_lock);
+
+            if (fileSize == 0) {
+                [handle closeFile];
+                pthread_mutex_lock(&_lock);
+                CFRelease(_fileCopyCurrentHandle);
+                CFRelease(_fileCopyCurrentPath);
+                _fileCopyCurrentHandle = NULL;
+                _fileCopyCurrentPath = NULL;
+                _fileCopyCurrentItemIndex++;
+                pthread_mutex_unlock(&_lock);
+                continue;
+            }
+
+            RequestCurrentRemoteFileChunk();
+            return;
+        }
+    }
+}
+
+void ClipboardManager::RequestCurrentRemoteFileChunk() {
+    pthread_mutex_lock(&_lock);
+    xipc_t* client = _client;
+    NSMutableArray* items = RemoteFileItems(_remoteFileItems);
+    int itemIndex = _fileCopyCurrentItemIndex;
+    int lindex = _fileCopyCurrentLindex;
+    uint64_t offset = _fileCopyCurrentOffset;
+    int streamId = _fileCopyStreamId++;
+    _fileCopyExpectedStreamId = streamId;
+    uint64_t fileSize = 0;
+    if (itemIndex >= 0 && itemIndex < (int)[items count]) {
+        fileSize = [[[items objectAtIndex:itemIndex] objectForKey:@"size"] unsignedLongLongValue];
+    }
+    pthread_mutex_unlock(&_lock);
+
+    if (client == NULL || fileSize <= offset) {
+        FinishRemoteFileCopy(false);
+        return;
+    }
+
+    uint64_t remaining = fileSize - offset;
+    int requested = remaining > REMOTE_FILE_COPY_CHUNK_SIZE ? REMOTE_FILE_COPY_CHUNK_SIZE : (int)remaining;
+    SendFileContentsRequest(client, streamId, lindex, FILECONTENTS_RANGE, offset, requested);
+}
+
+void ClipboardManager::HandleFileContentsResponse(xstream_t* clipStream, int msgFlags, int msgLen) {
+    if ((msgFlags & CB_RESPONSE_FAIL) != 0 || (msgFlags & CB_RESPONSE_OK) == 0 || msgLen < 4) {
+        FinishRemoteFileCopy(false);
+        return;
+    }
+
+    int streamId = xstream_readInt32(clipStream);
+    int dataLen = msgLen - 4;
+    const void* data = xstream_readData(clipStream, dataLen);
+
+    pthread_mutex_lock(&_lock);
+    bool valid = _fileCopyInProgress != 0 && _fileCopyExpectedStreamId == streamId && _fileCopyCancelled == 0;
+    NSFileHandle* handle = FileCopyCurrentHandle(_fileCopyCurrentHandle);
+    NSMutableArray* items = RemoteFileItems(_remoteFileItems);
+    int itemIndex = _fileCopyCurrentItemIndex;
+    pthread_mutex_unlock(&_lock);
+
+    if (valid == false || handle == nil || (data == NULL && dataLen > 0)) {
+        return;
+    }
+
+    @try {
+        if (dataLen > 0) {
+            NSData* fileData = [NSData dataWithBytes:data length:dataLen];
+            [handle writeData:fileData];
+        }
+    } @catch (...) {
+        FinishRemoteFileCopy(false);
+        return;
+    }
+
+    pthread_mutex_lock(&_lock);
+    _fileCopyCurrentOffset += dataLen;
+    _fileCopyTransferredBytes += dataLen;
+    uint64_t offset = _fileCopyCurrentOffset;
+    uint64_t fileSize = 0;
+    NSString* fileName = nil;
+    if (itemIndex >= 0 && itemIndex < (int)[items count]) {
+        NSDictionary* item = [items objectAtIndex:itemIndex];
+        fileSize = [[item objectForKey:@"size"] unsignedLongLongValue];
+        fileName = [item objectForKey:@"name"];
+    }
+    pthread_mutex_unlock(&_lock);
+
+    UpdateFileCopyWindow(fileName);
+
+    if (offset >= fileSize) {
+        [handle closeFile];
+        pthread_mutex_lock(&_lock);
+        if (_fileCopyCurrentHandle != NULL) {
+            CFRelease(_fileCopyCurrentHandle);
+            _fileCopyCurrentHandle = NULL;
+        }
+        if (_fileCopyCurrentPath != NULL) {
+            CFRelease(_fileCopyCurrentPath);
+            _fileCopyCurrentPath = NULL;
+        }
+        _fileCopyCurrentItemIndex++;
+        pthread_mutex_unlock(&_lock);
+        StartNextRemoteFileItem();
+        return;
+    }
+
+    RequestCurrentRemoteFileChunk();
+}
+
+void ClipboardManager::FinishRemoteFileCopy(bool success) {
+    pthread_mutex_lock(&_lock);
+    bool cancelled = _fileCopyCancelled != 0;
+    NSFileHandle* handle = FileCopyCurrentHandle(_fileCopyCurrentHandle);
+    NSString* incompletePath = FileCopyCurrentPath(_fileCopyCurrentPath);
+    FileCopyWindow* window = FileCopyProgressWindow(_fileCopyWindow);
+
+    if (handle != nil) {
+        CFRetain((__bridge CFTypeRef)handle);
+    }
+    if (incompletePath != nil) {
+        CFRetain((__bridge CFTypeRef)incompletePath);
+    }
+    if (window != nil) {
+        CFRetain((__bridge CFTypeRef)window);
+    }
+
+    _fileCopyInProgress = 0;
+    _fileCopyChoosingFolder = 0;
+    _fileCopyCancelled = 0;
+    _fileCopyExpectedStreamId = 0;
+    _fileCopyCurrentItemIndex = 0;
+    _fileCopyCurrentOffset = 0;
+    _fileCopyTransferredBytes = 0;
+
+    if (_fileCopyCurrentHandle != NULL) {
+        CFRelease(_fileCopyCurrentHandle);
+        _fileCopyCurrentHandle = NULL;
+    }
+    if (_fileCopyCurrentPath != NULL) {
+        CFRelease(_fileCopyCurrentPath);
+        _fileCopyCurrentPath = NULL;
+    }
+    if (_fileCopyWindow != NULL) {
+        CFRelease(_fileCopyWindow);
+        _fileCopyWindow = NULL;
+    }
+    pthread_mutex_unlock(&_lock);
+
+    if (handle != nil) {
+        @try {
+            [handle closeFile];
+        } @catch (...) {
+        }
+    }
+    if (success == false && incompletePath != nil) {
+        [[NSFileManager defaultManager] removeItemAtPath:incompletePath error:nil];
+    }
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [window closeWindow];
+        if (success == false && cancelled == false) {
+            ShowFileCopyAlert(NSLocalizedString(@"filecopy.alert.failed", nil));
+        }
+        if (window != nil) {
+            CFRelease((__bridge CFTypeRef)window);
+        }
+    });
+
+    if (handle != nil) {
+        CFRelease((__bridge CFTypeRef)handle);
+    }
+    if (incompletePath != nil) {
+        CFRelease((__bridge CFTypeRef)incompletePath);
+    }
+}
+
+void ClipboardManager::CancelRemoteFileCopy() {
+    pthread_mutex_lock(&_lock);
+    _fileCopyCancelled = 1;
+    pthread_mutex_unlock(&_lock);
+    FinishRemoteFileCopy(false);
+}
+
+bool ClipboardManager::PrepareRemoteFileDestinations(NSURL* folderUrl) {
+    if (folderUrl == nil) {
+        return false;
+    }
+
+    pthread_mutex_lock(&_lock);
+    NSArray* snapshot = [NSArray arrayWithArray:RemoteFileItems(_remoteFileItems)];
+    pthread_mutex_unlock(&_lock);
+
+    NSMutableDictionary* rootMap = [NSMutableDictionary dictionary];
+    NSMutableArray* preparedItems = [NSMutableArray array];
+    for (NSDictionary* item in snapshot) {
+        NSString* name = [item objectForKey:@"name"];
+        NSString* normalizedName = [name stringByReplacingOccurrencesOfString:@"\\" withString:@"/"];
+        NSArray* components = [normalizedName componentsSeparatedByString:@"/"];
+        if ([components count] == 0) {
+            return false;
+        }
+
+        NSString* root = [components objectAtIndex:0];
+        NSString* mappedRoot = [rootMap objectForKey:root];
+        if (mappedRoot == nil) {
+            NSURL* uniqueUrl = MakeUniqueChildUrl(folderUrl, root);
+            if (uniqueUrl == nil) {
+                return false;
+            }
+            mappedRoot = [uniqueUrl lastPathComponent];
+            [rootMap setObject:mappedRoot forKey:root];
+        }
+
+        NSString* relativePath = mappedRoot;
+        for (NSUInteger i = 1; i < [components count]; i++) {
+            relativePath = [relativePath stringByAppendingPathComponent:[components objectAtIndex:i]];
+        }
+
+        NSString* targetPath = [[folderUrl path] stringByAppendingPathComponent:relativePath];
+        NSMutableDictionary* preparedItem = [NSMutableDictionary dictionaryWithDictionary:item];
+        [preparedItem setObject:targetPath forKey:@"targetPath"];
+        [preparedItems addObject:preparedItem];
+    }
+
+    uint64_t totalBytes = 0;
+    for (NSDictionary* item in preparedItems) {
+        if ([[item objectForKey:@"isDir"] boolValue] == NO) {
+            totalBytes += [[item objectForKey:@"size"] unsignedLongLongValue];
+        }
+    }
+
+    pthread_mutex_lock(&_lock);
+    NSMutableArray* items = RemoteFileItems(_remoteFileItems);
+    [items removeAllObjects];
+    [items addObjectsFromArray:preparedItems];
+    _fileCopyTotalBytes = totalBytes;
+    pthread_mutex_unlock(&_lock);
+    return true;
+}
+
+bool ClipboardManager::CheckWritableFolder(NSURL* folderUrl) {
+    if (folderUrl == nil || [folderUrl isFileURL] == NO) {
+        return false;
+    }
+
+    NSString* testName = [NSString stringWithFormat:@".osxrdp-write-test-%@", [[NSUUID UUID] UUIDString]];
+    NSURL* testUrl = [folderUrl URLByAppendingPathComponent:testName];
+    NSData* data = [NSData data];
+    BOOL result = [data writeToURL:testUrl atomically:NO];
+    if (result == YES) {
+        [[NSFileManager defaultManager] removeItemAtURL:testUrl error:nil];
+    }
+    return result == YES;
+}
+
+void ClipboardManager::ShowFileCopyAlert(NSString* message) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSAlert* alert = [[NSAlert alloc] init];
+        [alert setMessageText:NSLocalizedString(@"filecopy.alert.title", nil)];
+        [alert setInformativeText:message != nil ? message : @""];
+        [alert addButtonWithTitle:NSLocalizedString(@"permission.button.ok", nil)];
+        [alert runModal];
+    });
+}
+
+void ClipboardManager::UpdateFileCopyWindow(NSString* fileName) {
+    pthread_mutex_lock(&_lock);
+    FileCopyWindow* window = FileCopyProgressWindow(_fileCopyWindow);
+    uint64_t transferred = _fileCopyTransferredBytes;
+    uint64_t total = _fileCopyTotalBytes;
+    pthread_mutex_unlock(&_lock);
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [window updateFileName:fileName transferredBytes:transferred totalBytes:total];
+    });
 }
 
 bool ClipboardManager::GetPasteboardText(char** utf8Text, int* utf8Len, int* changeCount) {
