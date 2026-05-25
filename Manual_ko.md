@@ -34,6 +34,19 @@ osxrdp 1.3 버전부터 가상 모니터 기능을 지원합니다. 이 기능�
 * osxup (no virtual display) :
   가상 모니터를 사용하지 않고 원격 제어를 시작합니다. 가상모니터 사용 시 문제가 발생한 경우 사용하십시오.
 
+## 파일 복사 사용
+osxrdp 2.0.0 이후 버전부터 클라이언트 <---> 서버간 파일/폴더 복사를 지원합니다.
+
+* 서버 (macOS) --> 클라이언트 파일 복사
+  Windows host 에 접속한것과 동일합니다.\ Finder 에서 파일/폴더 를 선택하여 복사 (control c) 한 후 클라이언트 컴퓨터의 탐색기 (explorer 등) 에서 붙혀넣기 (ctrl v) 하면 파일이 복사됩니다.
+* 클라이언트 (mstsc 등) --> 서버 (macOS) 파일 복사
+  다음과 같은 절차를 따라야 합니다.
+  1. 클라이언트 컴퓨터에서 파일/폴더를 선택한 후 복사 (ctrl c) 하십시오.
+  2. 서버 (macOS) 의 상단 메뉴에서 OSXRDP 앱을 선택합니다.
+  3. '복사할 파일 저장'를 선택합니다.<img width="1366" height="800" alt="1" src="https://github.com/user-attachments/assets/85363408-7b64-4a3e-8f37-5227f702993b" />
+  4. 파일을 저장할 폴더 경로를 선택합니다.<img width="1366" height="800" alt="2" src="https://github.com/user-attachments/assets/c4c9c62a-7d47-4e45-86db-ef37a9d4d6d1" />
+  5. 다음과 같이 파일/폴더가 복사되는것을 확인할 수 있습니다.<img width="1366" height="800" alt="3" src="https://github.com/user-attachments/assets/988a260f-7656-4c58-aa1d-b0c0e869e1ac" />
+
 ## 기타
 * 안정적이고 좋은 연결 품질을 유지하기위해 원격 대상 Mac을 유선 네트워크로 연결하십시오.
 

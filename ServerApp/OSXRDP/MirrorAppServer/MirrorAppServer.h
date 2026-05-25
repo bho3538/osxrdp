@@ -19,6 +19,8 @@ public:
     void Start();
     void Stop();
     bool IsRunning();
+    bool HasRemoteClipboardFiles();
+    void StartRemoteClipboardFileCopy();
     
 private:
     // 상태 머신
@@ -65,6 +67,7 @@ private:
     
     // 기타
     ScreenRecorderManager* CreateScreenRecorder();
+    ClipboardManager* GetClipboardManager();
 };
 
 #endif /* MirrorAppServer_hpp */

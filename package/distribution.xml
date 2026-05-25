@@ -30,6 +30,6 @@
         <pkg-ref id="com.byungho.osxrdp.setup"/>
     </choice>
 
-    <pkg-ref id="com.byungho.osxrdp.setup" version="1.9.6" onConclusion="none">osxrdp_component.pkg</pkg-ref>
+    <pkg-ref id="com.byungho.osxrdp.setup" version="2.0.0" onConclusion="none">osxrdp_component.pkg</pkg-ref>
 
 </installer-gui-script>

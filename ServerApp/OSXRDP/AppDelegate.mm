@@ -10,6 +10,7 @@ void _handle_sigterm(int signal);
 @interface AppDelegate ()
 {
     NSStatusItem* _trayMenu;
+    NSMenuItem* _saveCopiedFilesMenuItem;
 }
 
 @property (strong) IBOutlet MainWindowController* mainWindowController;
@@ -57,6 +58,9 @@ void _handle_sigterm(int signal);
     
     NSMenuItem* openItem = [menus addItemWithTitle:NSLocalizedString(@"statusbar.menu.open", nil) action:@selector(onOpenWindowMenuClicked) keyEquivalent:@""];
     openItem.target = self;
+
+    _saveCopiedFilesMenuItem = [menus addItemWithTitle:NSLocalizedString(@"statusbar.menu.save_copied_files", nil) action:@selector(onSaveCopiedFilesMenuClicked) keyEquivalent:@""];
+    _saveCopiedFilesMenuItem.target = self;
     
     [menus addItem:NSMenuItem.separatorItem];
     
@@ -66,13 +70,44 @@ void _handle_sigterm(int signal);
     _trayMenu.menu = menus;
 }
 
+- (BOOL)validateMenuItem:(NSMenuItem *)menuItem {
+    if (menuItem == _saveCopiedFilesMenuItem) {
+        return HasRemoteClipboardFiles();
+    }
+
+    return YES;
+}
+
 - (void)onOpenWindowMenuClicked {
     [NSApp activateIgnoringOtherApps:YES];
     [self.mainWindowController showMainWindow];
 }
 
 - (void)onExitMenuClicked {
+    [NSApp activateIgnoringOtherApps:YES];
+
+    NSAlert* alert = [[NSAlert alloc] init];
+    if (alert == nil) {
+        return;
+    }
+
+    [alert setMessageText:NSLocalizedString(@"statusbar.quit.confirm.title", nil)];
+    [alert setInformativeText:NSLocalizedString(@"statusbar.quit.confirm.message", nil)];
+    [alert setAlertStyle:NSAlertStyleWarning];
+    NSButton* noButton = [alert addButtonWithTitle:NSLocalizedString(@"statusbar.quit.confirm.no", nil)];
+    NSButton* yesButton = [alert addButtonWithTitle:NSLocalizedString(@"statusbar.quit.confirm.yes", nil)];
+    [noButton setKeyEquivalent:@"\r"];
+    [yesButton setKeyEquivalent:@""];
+
+    if ([alert runModal] != NSAlertSecondButtonReturn) {
+        return;
+    }
+
     [[NSApplication sharedApplication] terminate:nil];
+}
+
+- (void)onSaveCopiedFilesMenuClicked {
+    StartRemoteClipboardFileCopy();
 }
 
 void _handle_sigterm(int signal) {

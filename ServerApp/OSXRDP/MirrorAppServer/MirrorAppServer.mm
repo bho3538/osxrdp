@@ -84,6 +84,18 @@ bool MirrorAppServer::IsRunning() {
     return IsState(State_Running);
 }
 
+bool MirrorAppServer::HasRemoteClipboardFiles() {
+    ClipboardManager* clipboard = GetClipboardManager();
+    return clipboard != NULL && clipboard->HasRemoteFiles();
+}
+
+void MirrorAppServer::StartRemoteClipboardFileCopy() {
+    ClipboardManager* clipboard = GetClipboardManager();
+    if (clipboard != NULL) {
+        clipboard->StartRemoteFileCopy();
+    }
+}
+
 bool MirrorAppServer::CreateCommandPipeServer() {
     if (_cmdPipe != NULL) {
         NSLog(@"[MirrorAppServer]::CreateCommandPipeServer cmdPipe already exists.");
@@ -335,4 +347,13 @@ ScreenRecorderManager* MirrorAppServer::CreateScreenRecorder() {
     else {
         return new ScreenRecorderManager(true);
     }
+}
+
+ClipboardManager* MirrorAppServer::GetClipboardManager() {
+    if (_client == NULL || _client->user_data == NULL) {
+        return NULL;
+    }
+
+    struct MirrorAppClientCtx* ctx = (struct MirrorAppClientCtx*)_client->user_data;
+    return ctx != NULL ? ctx->Clipboard : NULL;
 }

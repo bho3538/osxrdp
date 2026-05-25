@@ -1,7 +1,12 @@
 "statusbar.icon.accessibility" = "OSXRDP menu logo";
 "statusbar.menu.title" = "OSXRDP";
 "statusbar.menu.open" = "Open";
+"statusbar.menu.save_copied_files" = "Save Copied Files...";
 "statusbar.menu.close" = "Close";
+"statusbar.quit.confirm.title" = "Are you sure you want to quit?";
+"statusbar.quit.confirm.message" = "Active remote connections will be disconnected.";
+"statusbar.quit.confirm.no" = "No";
+"statusbar.quit.confirm.yes" = "Yes";
 
 "main.alert.title" = "OSXRDP";
 "main.alert.permission_required" = "Please configure all permissions to start remote connection.";
@@ -15,3 +20,15 @@
 "permission.button.close" = "Close";
 "permission.button.refresh" = "Refresh";
 "permission.button.ok" = "OK";
+
+"filecopy.window.title" = "Copying Files";
+"filecopy.button.cancel" = "Cancel";
+"filecopy.status.bytes" = "%llu of %llu bytes";
+"filecopy.panel.title" = "Save copied files";
+"filecopy.panel.message" = "Choose a folder to save the files copied from the remote computer.";
+"filecopy.panel.button" = "Save";
+"filecopy.alert.title" = "File Copy";
+"filecopy.alert.no_files" = "No remote copied files are available.";
+"filecopy.alert.in_progress" = "A file copy is already in progress.";
+"filecopy.alert.permission" = "You do not have permission to write to the selected folder.";
+"filecopy.alert.failed" = "File copy failed.";

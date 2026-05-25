@@ -48,9 +48,12 @@ void ChannelManager::SendClipboardServerInit() {
     }
 
     // 클립보드 가용성 설정
-    // 아직은 기본적인 text 기반의 클립보드만 지원
-    xstream_t* caps = xstream_create(32);
+    xstream_t* caps = xstream_create(28);
     if (caps != NULL) {
+        int flags = CB_USE_LONG_FORMAT_NAMES |
+                    CB_STREAM_FILECLIP_ENABLED |
+                    CB_FILECLIP_NO_FILE_PATHS;
+
         xstream_writeInt16(caps, CB_CLIP_CAPS);
         xstream_writeInt16(caps, 0);
         xstream_writeInt32(caps, 16); // 총 데이터 길이
@@ -59,7 +62,7 @@ void ChannelManager::SendClipboardServerInit() {
         xstream_writeInt16(caps, CB_CAPSTYPE_GENERAL);
         xstream_writeInt16(caps, 12); // 이후 데이터 길이
         xstream_writeInt32(caps, CB_CAPS_VERSION_2);
-        xstream_writeInt32(caps, CB_USE_LONG_FORMAT_NAMES);
+        xstream_writeInt32(caps, flags);
         xstream_writeInt32(caps, 0);
 
         _SendChannelData(caps);
@@ -67,7 +70,7 @@ void ChannelManager::SendClipboardServerInit() {
         xstream_free(caps);
     }
 
-    xstream_t* ready = xstream_create(16);
+    xstream_t* ready = xstream_create(12);
     if (ready != NULL) {
         xstream_writeInt16(ready, CB_MONITOR_READY);
         xstream_writeInt16(ready, 0);
