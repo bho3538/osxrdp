@@ -3,6 +3,10 @@
 "statusbar.menu.open" = "열기";
 "statusbar.menu.save_copied_files" = "복사한 파일 저장...";
 "statusbar.menu.close" = "닫기";
+"statusbar.quit.confirm.title" = "정말로 종료하시겠습니까?";
+"statusbar.quit.confirm.message" = "연결중인 원격 접속이 중단됩니다.";
+"statusbar.quit.confirm.no" = "아니요";
+"statusbar.quit.confirm.yes" = "예";
 
 "main.alert.title" = "OSXRDP";
 "main.alert.permission_required" = "원격 연결을 시작하려면 모든 권한을 설정해 주세요.";

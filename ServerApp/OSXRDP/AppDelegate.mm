@@ -84,6 +84,25 @@ void _handle_sigterm(int signal);
 }
 
 - (void)onExitMenuClicked {
+    [NSApp activateIgnoringOtherApps:YES];
+
+    NSAlert* alert = [[NSAlert alloc] init];
+    if (alert == nil) {
+        return;
+    }
+
+    [alert setMessageText:NSLocalizedString(@"statusbar.quit.confirm.title", nil)];
+    [alert setInformativeText:NSLocalizedString(@"statusbar.quit.confirm.message", nil)];
+    [alert setAlertStyle:NSAlertStyleWarning];
+    NSButton* noButton = [alert addButtonWithTitle:NSLocalizedString(@"statusbar.quit.confirm.no", nil)];
+    NSButton* yesButton = [alert addButtonWithTitle:NSLocalizedString(@"statusbar.quit.confirm.yes", nil)];
+    [noButton setKeyEquivalent:@"\r"];
+    [yesButton setKeyEquivalent:@""];
+
+    if ([alert runModal] != NSAlertSecondButtonReturn) {
+        return;
+    }
+
     [[NSApplication sharedApplication] terminate:nil];
 }
 

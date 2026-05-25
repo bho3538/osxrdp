@@ -3,6 +3,10 @@
 "statusbar.menu.open" = "Open";
 "statusbar.menu.save_copied_files" = "Save Copied Files...";
 "statusbar.menu.close" = "Close";
+"statusbar.quit.confirm.title" = "Are you sure you want to quit?";
+"statusbar.quit.confirm.message" = "Active remote connections will be disconnected.";
+"statusbar.quit.confirm.no" = "No";
+"statusbar.quit.confirm.yes" = "Yes";
 
 "main.alert.title" = "OSXRDP";
 "main.alert.permission_required" = "Please configure all permissions to start remote connection.";
