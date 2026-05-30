@@ -46,6 +46,9 @@ public:
         return (int)_virtualDisplayInfo[index].virtualDisplay.displayID;
     }
     
+    void HoldDisplaySleepAssertion();
+    void ReleaseDisplaySleepAssertion();
+    
     static void WakeupDisplay();
     
 private:
@@ -76,8 +79,6 @@ private:
     int ApplyDisplayLayout();
     
     void WatchThreadPorcInternal();
-    void HoldDisplaySleepAssertion();
-    void ReleaseDisplaySleepAssertion();
     
     static void* WatchThreadProc(void* args);
 };
