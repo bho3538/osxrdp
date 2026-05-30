@@ -75,6 +75,10 @@ bool ScreenRecorderManager::StartRecord(xstream_t* cmd) {
         return false;
     }
     
+    if (_recordParams.useVirtualMon == 0) {
+        _virtualMonitor.HoldDisplaySleepAssertion();
+    }
+    
     for (int i = 0; i < _recordParams.monitorCount; i++) {
         id<IScreenRecorder> impl = nil;
         
@@ -197,10 +201,6 @@ bool ScreenRecorderManager::ParseStartRecordParams(xstream_t* cmd, RecordStartPa
     params->width &= ~0x1;
     params->height &= ~0x1;
 
-    // 절전 모드는 아니지만, 디스플레이가 꺼져 있는 경우 문제가 발생할 수 있음.
-    // 따라서 먼저 디스플레이를 잠시 깨워준다. (가상 디스플레이 사용중일때는 다시 꺼질 예정)
-    VirtualMonitor::WakeupDisplay();
-
     return true;
 }
 
@@ -240,6 +240,8 @@ bool ScreenRecorderManager::ResolveDisplayForRecorder() {
                                        (int)rect.origin.x, (int)rect.origin.y,
                                        (int)rect.size.width, (int)rect.size.height,
                                        _recordParams.monitorInfo[0].displayId);
+        
+        VirtualMonitor::WakeupDisplay();
         
         return true;
     }
@@ -429,6 +431,10 @@ void ScreenRecorderManager::Stop() {
     
     _recorderCnt = 0;
     memset(_recorder, 0x00, sizeof(_recorder));
+    
+    if (_recordParams.useVirtualMon == 0) {
+        _virtualMonitor.ReleaseDisplaySleepAssertion();
+    }
     
     _virtualMonitor.Destroy();
 
