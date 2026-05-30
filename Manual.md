@@ -53,7 +53,9 @@ Starting from **osxrdp 2.0.0**, osxrdp supports file and folder copy between the
   5. You can confirm that the files or folders have been copied as follows.<img width="1366" height="800" alt="3" src="https://github.com/user-attachments/assets/988a260f-7656-4c58-aa1d-b0c0e869e1ac" />
 
 ## Other
-* For the best stability, it is recommended that the remote Mac be connected to a wired network.
+* For the best stability, it is recommended that the remote Mac be connected to a wired network.\
+  Delays may occur due to AWDL when using WI-FI.\
+  Change the channel on your WI-FI AP or disable AWDL on Mac.
 
 * You must disable sleep mode for continuous remote access.
 
