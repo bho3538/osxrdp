@@ -23,6 +23,8 @@ private:
     bool RemoveDirectory(const char* path);
     bool RemoveFile(const char* path);
     bool UnregisterDaemon(const char* path);
+    bool ForgetReceipt(const char* pkgid);
+    bool CleanInstallHistory(const char* pkgidPrefix);
 };
 
 #endif /* UninstallManager_h */

@@ -68,6 +68,10 @@ void UninstallManager::DoUninstall() {
     RemoveDirectory("/usr/local/share/xrdp");
     RemoveFile("/var/log/xrdp.log");
     RemoveDirectory("/Applications/osxrdp");
+
+    // 설치 흔적(receipt) 및 시스템 리포트 > 설치 목록 정리
+    ForgetReceipt("com.byungho.osxrdp.setup");
+    CleanInstallHistory("com.byungho.osxrdp");
 }
 
 
@@ -99,6 +103,33 @@ bool UninstallManager::UnregisterDaemon(const char* path) {
     char* args[] = { "bootout" , (char*)path, NULL};
 
     AuthorizationExecuteWithPrivileges(_authRef, "/bin/launchctl", kAuthorizationFlagDefaults, args, NULL);
-    
+
+    return true;
+}
+
+bool UninstallManager::ForgetReceipt(const char* pkgid) {
+    char* args[] = { "--forget", (char*)pkgid, NULL };
+
+    AuthorizationExecuteWithPrivileges(_authRef, "/usr/sbin/pkgutil", kAuthorizationFlagDefaults, args, NULL);
+
+    return true;
+}
+
+bool UninstallManager::CleanInstallHistory(const char* pkgidPrefix) {
+    static char script[1024];
+    snprintf(script, sizeof(script),
+        "PLIST=/Library/Receipts/InstallHistory.plist; PB=/usr/libexec/PlistBuddy; "
+        "[ -f \"$PLIST\" ] || exit 0; "
+        "i=0; del=(); "
+        "while \"$PB\" -c \"Print :$i\" \"$PLIST\" >/dev/null 2>&1; do "
+        "\"$PB\" -c \"Print :$i:packageIdentifiers\" \"$PLIST\" 2>/dev/null | grep -q \"%s\" && del+=($i); "
+        "i=$((i+1)); done; "
+        "for ((j=${#del[@]}-1;j>=0;j--)); do \"$PB\" -c \"Delete :${del[$j]}\" \"$PLIST\"; done",
+        pkgidPrefix);
+
+    char* args[] = { "-c", script, NULL };
+
+    AuthorizationExecuteWithPrivileges(_authRef, "/bin/bash", kAuthorizationFlagDefaults, args, NULL);
+
     return true;
 }
