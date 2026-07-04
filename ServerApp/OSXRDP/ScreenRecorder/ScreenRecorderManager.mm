@@ -548,6 +548,10 @@ void ScreenRecorderManager::CommitFrameSlot(screenrecord_shm_t* recordInfo, unsi
 
     atomic_store_explicit(&recordInfo->write_pos, writePos + 1, memory_order_release);
 
+    SendNeedPaintMsg(displayIdx);
+}
+
+void ScreenRecorderManager::SendNeedPaintMsg(int displayIdx) {
     union needPaintMsg {
         struct {
             int packetType;
@@ -558,7 +562,7 @@ void ScreenRecorderManager::CommitFrameSlot(screenrecord_shm_t* recordInfo, unsi
         OSXRDP_CMDTYPE_NEEDPAINT,
         displayIdx
     };
-    
+
     xipc_send_data(_client, (void*)&paintMsg.dummy, sizeof(paintMsg.dummy));
 }
 
@@ -826,6 +830,7 @@ void ScreenRecorderManager::HandleNV12PackedRecordData(void* pixelBuffer, const 
     unsigned int writePos = 0;
     if (recorder->AcquireFrameSlot(&recordInfo, &slot, &screenrecord_data, &writePos, displayIdx) == false) {
         recorder->AddPendingDirtyFromPixelBuffer(displayIdx, pixelBuffer, dirtyRects, dirtyRectsCnt);
+        recorder->SendNeedPaintMsg(displayIdx);
         return;
     }
 
@@ -846,6 +851,7 @@ void ScreenRecorderManager::HandleNV12AlignedRecordData(void* pixelBuffer, const
     unsigned int writePos = 0;
     if (recorder->AcquireFrameSlot(&recordInfo, &slot, &screenrecord_data, &writePos, displayIdx) == false) {
         recorder->AddPendingDirtyFromPixelBuffer(displayIdx, pixelBuffer, dirtyRects, dirtyRectsCnt);
+        recorder->SendNeedPaintMsg(displayIdx);
         return;
     }
 
@@ -886,6 +892,7 @@ void ScreenRecorderManager::HandleBGRA32RecordData(void* pixelBuffer, const CGRe
     unsigned int writePos = 0;
     if (recorder->AcquireFrameSlot(&recordInfo, &slot, &screenrecord_data, &writePos, displayIdx) == false) {
         recorder->AddPendingDirtyFromPixelBuffer(displayIdx, pixelBuffer, dirtyRects, dirtyRectsCnt);
+        recorder->SendNeedPaintMsg(displayIdx);
         return;
     }
 
@@ -906,6 +913,7 @@ void ScreenRecorderManager::HandleRFXRecordData(void* pixelBuffer, const CGRect*
     unsigned int writePos = 0;
     if (recorder->AcquireFrameSlot(&recordInfo, &slot, &screenrecord_data, &writePos, displayIdx) == false) {
         recorder->AddPendingDirtyFromPixelBuffer(displayIdx, pixelBuffer, dirtyRects, dirtyRectsCnt);
+        recorder->SendNeedPaintMsg(displayIdx);
         return;
     }
 
