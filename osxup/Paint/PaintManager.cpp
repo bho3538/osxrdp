@@ -206,42 +206,39 @@ void PaintManager::Paint() {
         return;
     }
     
-    // todo : 더 좋은 방법이 있는지 확인 필요
     for (int i = 0; i < _recordShmCnt; i++) {
-        // 그려야 하는 데이타가 있는지 확인
-        if (_needPaintDisplay[i] == 0)
-            continue;
-                
         // 그릴 수 있는 유효한 디스플레이인지 확인
         if (_recordShm[i] == NULL)
             continue;
-        
-        if (_inFlightCountByDisplay[i] >= FRAME_SLOTS) {
-            continue;
-        }
-        
+
         _needPaintDisplay[i] = 0;
 
-        screenrecord_frame_t* frameInfo = NULL;
-        char* imgData = NULL;
-        size_t imgDataSize = 0;
-        int width = 0;
-        int height = 0;
-        unsigned int shm_frame_id = 0;
-        
-        // 읽을 데이터가 있는지 확인
-        if (GetPaintData(&frameInfo, &imgData, &imgDataSize, &width, &height, &shm_frame_id, i) == false) {
-            continue;
-        }
+        // in-flight 여유가 있는 동안 최대 3회 paint
+        int cnt = 0;
+        while (_inFlightCountByDisplay[i] < FRAME_SLOTS && cnt < 3) {
+            screenrecord_frame_t* frameInfo = NULL;
+            char* imgData = NULL;
+            size_t imgDataSize = 0;
+            int width = 0;
+            int height = 0;
+            unsigned int shm_frame_id = 0;
 
-        unsigned int frame_id = 0;
-        if (PushInFlight(i, shm_frame_id, &frame_id) == false) {
-            continue;
+            // 읽을 데이터가 있는지 확인
+            if (GetPaintData(&frameInfo, &imgData, &imgDataSize, &width, &height, &shm_frame_id, i) == false) {
+                break;
+            }
+
+            unsigned int frame_id = 0;
+            if (PushInFlight(i, shm_frame_id, &frame_id) == false) {
+                break;
+            }
+            _inPainting = (_inFlightCount > 0);
+
+            // 그리기
+            _paint->DoPaint(_mod, frameInfo, imgData, imgDataSize, frame_id, i, width, height);
+            
+            cnt++;
         }
-        _inPainting = (_inFlightCount > 0);
-        
-        // 그리기
-        _paint->DoPaint(_mod, frameInfo, imgData, imgDataSize, frame_id, i, width, height);
     }
 }
 

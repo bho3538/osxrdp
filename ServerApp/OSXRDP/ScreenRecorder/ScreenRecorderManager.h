@@ -117,6 +117,9 @@ private:
     // 데이터 작성 완료 flag 설정
     void CommitFrameSlot(screenrecord_shm_t* recordInfo, unsigned int writePos, int displayIdx);
 
+    // osxup 에게 그릴 데이터가 있음을 알림 (NEEDPAINT)
+    void SendNeedPaintMsg(int displayIdx);
+
     // NV12Packed 데이터를 메모리에 기록
     static bool CopyNV12PackedFrame(void* imageBuffer, char* screenrecord_data, int* widthOut, int* heightOut);
     
