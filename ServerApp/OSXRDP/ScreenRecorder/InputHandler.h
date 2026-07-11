@@ -60,6 +60,12 @@ private:
     } _mouseKeyStatus;
     
     int _mouseClickCnt;
+    int _mouseEventNumber;
+    int _leftMouseEventNumber;
+    int _rightMouseEventNumber;
+    int _wheelMouseEventNumber;
+    int _backMouseEventNumber;
+    int _forwardMouseEventNumber;
     int _lastMouseButton;
     long long _lastMouseClickTime;
     long long _lastMouseInputEventTime;
@@ -86,8 +92,14 @@ private:
     
     static long long GetCurrentEventTime();
     
+    enum ModifierStateChange {
+        ModifierStateNotModifier,
+        ModifierStateUnchanged,
+        ModifierStateChanged
+    };
+
     CGKeyCode MapExtendedKey(int scancode);
-    bool UpdateKeyboardModifierState(CGKeyCode key, bool isDown);
+    ModifierStateChange UpdateKeyboardModifierState(CGKeyCode key, bool isDown);
     
     void SwitchIME(bool keyDown);
 };

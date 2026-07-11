@@ -6,10 +6,20 @@
 #include <sys/time.h>
 #include <Carbon/Carbon.h>
 #include <string.h>
+#include <limits.h>
 
 #import "CJKHelper.h"
 
 #define _IME_SWITCH_CODE kVK_RightOption
+
+static const CGEventFlags kDeviceLeftControlFlag = 0x00000001;
+static const CGEventFlags kDeviceLeftShiftFlag = 0x00000002;
+static const CGEventFlags kDeviceRightShiftFlag = 0x00000004;
+static const CGEventFlags kDeviceLeftCommandFlag = 0x00000008;
+static const CGEventFlags kDeviceRightCommandFlag = 0x00000010;
+static const CGEventFlags kDeviceLeftOptionFlag = 0x00000020;
+static const CGEventFlags kDeviceRightOptionFlag = 0x00000040;
+static const CGEventFlags kDeviceRightControlFlag = 0x00002000;
 
 static const CGKeyCode keymap[] = {
     /* 0x00 */ kVK_ANSI_A,                      // Placeholder (No key)
@@ -119,6 +129,12 @@ InputHandler::InputHandler() :
     _eventRef(0),
     _keyboardModifierFlags(0),
     _mouseClickCnt(0),
+    _mouseEventNumber(0),
+    _leftMouseEventNumber(0),
+    _rightMouseEventNumber(0),
+    _wheelMouseEventNumber(0),
+    _backMouseEventNumber(0),
+    _forwardMouseEventNumber(0),
     _lastMouseButton(-1),
     _lastMouseClickTime(0),
     _lastMouseInputEventTime(0),
@@ -206,6 +222,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
     
     CGPoint point = CGPointMake(clientX, clientY);
     CGEventRef ev = NULL;
+    int mouseEventNumber = 0;
 
     switch (key) {
         case XRDP_MOUSE_MOVE: {
@@ -214,10 +231,12 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
             CGEventType mouseMoveFlags = kCGEventMouseMoved;
             if (_mouseKeyStatus.downStatus.leftKeyDown) {
                 mouseMoveFlags = kCGEventLeftMouseDragged;
+                mouseEventNumber = _leftMouseEventNumber;
             }
             else if (_mouseKeyStatus.downStatus.rightKeyDown) {
                 mouseMoveFlags = kCGEventRightMouseDragged;
                 btn = kCGMouseButtonRight;
+                mouseEventNumber = _rightMouseEventNumber;
             }
             
             ev = CGEventCreateMouseEvent(_eventRef, mouseMoveFlags, point, btn);
@@ -236,6 +255,9 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         }
         case XRDP_MOUSE_LBTNDOWN: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventLeftMouseDown, point, kCGMouseButtonLeft);
+            _mouseEventNumber = (_mouseEventNumber == INT_MAX) ? 1 : _mouseEventNumber + 1;
+            _leftMouseEventNumber = _mouseEventNumber;
+            mouseEventNumber = _leftMouseEventNumber;
             
             HandleMouseDoubleClick(ev, true, clientX, clientY, kCGMouseButtonLeft);
             
@@ -245,6 +267,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         }
         case XRDP_MOUSE_LBTNUP: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventLeftMouseUp, point, kCGMouseButtonLeft);
+            mouseEventNumber = _leftMouseEventNumber;
             
             HandleMouseDoubleClick(ev, false, clientX, clientY, kCGMouseButtonLeft);
             
@@ -254,6 +277,9 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         }
         case XRDP_MOUSE_RBTNDOWN: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventRightMouseDown, point, kCGMouseButtonRight);
+            _mouseEventNumber = (_mouseEventNumber == INT_MAX) ? 1 : _mouseEventNumber + 1;
+            _rightMouseEventNumber = _mouseEventNumber;
+            mouseEventNumber = _rightMouseEventNumber;
             
             HandleMouseDoubleClick(ev, true, clientX, clientY, kCGMouseButtonRight);
             
@@ -263,6 +289,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         }
         case XRDP_MOUSE_RBTNUP: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventRightMouseUp, point, kCGMouseButtonRight);
+            mouseEventNumber = _rightMouseEventNumber;
             
             HandleMouseDoubleClick(ev, false, clientX, clientY, kCGMouseButtonRight);
             
@@ -272,6 +299,9 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         }
         case XRDP_MOUSE_MBTNDOWN: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseDown, point, (CGMouseButton)2);
+            _mouseEventNumber = (_mouseEventNumber == INT_MAX) ? 1 : _mouseEventNumber + 1;
+            _wheelMouseEventNumber = _mouseEventNumber;
+            mouseEventNumber = _wheelMouseEventNumber;
             
             _mouseKeyStatus.downStatus.wheelKeyDown = 1;
             
@@ -279,6 +309,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         }
         case XRDP_MOUSE_MBTNUP: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseUp, point, (CGMouseButton)2);
+            mouseEventNumber = _wheelMouseEventNumber;
             
             _mouseKeyStatus.downStatus.wheelKeyDown = 0;
             
@@ -304,6 +335,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         }
         case XRDP_MOUSE_BBTNUP: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseUp, point, (CGMouseButton)3);
+            mouseEventNumber = _backMouseEventNumber;
             
             _mouseKeyStatus.downStatus.backKeyDown = 0;
             
@@ -311,6 +343,9 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         }
         case XRDP_MOUSE_BBTNDOWN: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseDown, point, (CGMouseButton)3);
+            _mouseEventNumber = (_mouseEventNumber == INT_MAX) ? 1 : _mouseEventNumber + 1;
+            _backMouseEventNumber = _mouseEventNumber;
+            mouseEventNumber = _backMouseEventNumber;
             
             _mouseKeyStatus.downStatus.backKeyDown = 1;
             
@@ -318,6 +353,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         }
         case XRDP_MOUSE_FBTNUP: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseUp, point, (CGMouseButton)4);
+            mouseEventNumber = _forwardMouseEventNumber;
             
             _mouseKeyStatus.downStatus.forwardKeyDown = 0;
             
@@ -325,6 +361,9 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         }
         case XRDP_MOUSE_FBTNDOWN: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseDown, point, (CGMouseButton)4);
+            _mouseEventNumber = (_mouseEventNumber == INT_MAX) ? 1 : _mouseEventNumber + 1;
+            _forwardMouseEventNumber = _mouseEventNumber;
+            mouseEventNumber = _forwardMouseEventNumber;
             
             _mouseKeyStatus.downStatus.forwardKeyDown = 1;
 
@@ -334,7 +373,8 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
             return;
     }
     
-    CGEventPost(kCGHIDEventTap, ev);
+    CGEventSetIntegerValueField(ev, kCGMouseEventNumber, mouseEventNumber);
+    CGEventPost(kCGSessionEventTap, ev);
     CFRelease(ev);
 }
 
@@ -366,22 +406,28 @@ void InputHandler::HandleKeyboardInputEvent(xstream_t* cmd) {
         return;
     }
         
-    CGEventRef ev;
+    bool keyDown = false;
     switch (inputType) {
-        case XRDP_KEYBOARD_DOWN: {
-            ev = CGEventCreateKeyboardEvent(_eventRef, keyCode, true);
-            UpdateKeyboardModifierState(keyCode, true);
+        case XRDP_KEYBOARD_DOWN:
+            keyDown = true;
             break;
-        }
-        case XRDP_KEYBOARD_UP: {
-            ev = CGEventCreateKeyboardEvent(_eventRef, keyCode, false);
-            UpdateKeyboardModifierState(keyCode, false);
+        case XRDP_KEYBOARD_UP:
+            keyDown = false;
             break;
-        }
         default:
             return;
     }
     
+    CGEventRef ev = CGEventCreateKeyboardEvent(_eventRef, keyCode, keyDown);
+    ModifierStateChange modifierState = UpdateKeyboardModifierState(keyCode, keyDown);
+    if (modifierState == ModifierStateChanged) {
+        CGEventSetType(ev, kCGEventFlagsChanged);
+    }
+    else if (modifierState == ModifierStateUnchanged) {
+        CFRelease(ev);
+        return;
+    }
+
     // 미션 컨트롤
     CGEventFlags eventFlags = _keyboardModifierFlags;
     if ((eventFlags & kCGEventFlagMaskControl) != 0 &&
@@ -678,41 +724,71 @@ CGKeyCode InputHandler::MapExtendedKey(int scancode) {
     }
 }
 
-bool InputHandler::UpdateKeyboardModifierState(CGKeyCode key, bool isDown) {
-    CGEventFlags flag = 0;
+InputHandler::ModifierStateChange InputHandler::UpdateKeyboardModifierState(CGKeyCode key, bool isDown) {
+    CGEventFlags oldFlags = _keyboardModifierFlags;
+    CGEventFlags deviceFlag = 0;
+    CGEventFlags groupFlag = 0;
+    CGEventFlags groupDeviceFlags = 0;
     switch (key) {
         case 56: // Shift (Left)
+            deviceFlag = kDeviceLeftShiftFlag;
+            groupFlag = kCGEventFlagMaskShift;
+            groupDeviceFlags = kDeviceLeftShiftFlag | kDeviceRightShiftFlag;
+            break;
         case 60: // Shift (Right)
-            flag = kCGEventFlagMaskShift;
+            deviceFlag = kDeviceRightShiftFlag;
+            groupFlag = kCGEventFlagMaskShift;
+            groupDeviceFlags = kDeviceLeftShiftFlag | kDeviceRightShiftFlag;
             break;
         case 59: // Control (Left)
+            deviceFlag = kDeviceLeftControlFlag;
+            groupFlag = kCGEventFlagMaskControl;
+            groupDeviceFlags = kDeviceLeftControlFlag | kDeviceRightControlFlag;
+            break;
         case 62: // Control (Right)
-            flag = kCGEventFlagMaskControl;
+            deviceFlag = kDeviceRightControlFlag;
+            groupFlag = kCGEventFlagMaskControl;
+            groupDeviceFlags = kDeviceLeftControlFlag | kDeviceRightControlFlag;
             break;
         case 58: // Option (Left)
+            deviceFlag = kDeviceLeftOptionFlag;
+            groupFlag = kCGEventFlagMaskAlternate;
+            groupDeviceFlags = kDeviceLeftOptionFlag | kDeviceRightOptionFlag;
+            break;
         case 61: // Option (Right)
-            flag = kCGEventFlagMaskAlternate; // Option key
+            deviceFlag = kDeviceRightOptionFlag;
+            groupFlag = kCGEventFlagMaskAlternate; // Option key
+            groupDeviceFlags = kDeviceLeftOptionFlag | kDeviceRightOptionFlag;
             break;
         //case 29: // Win (Ctrl)
         case 55: // Command (Left)
+            deviceFlag = kDeviceLeftCommandFlag;
+            groupFlag = kCGEventFlagMaskCommand;
+            groupDeviceFlags = kDeviceLeftCommandFlag | kDeviceRightCommandFlag;
+            break;
         case 54: // Command (Right)
-            flag = kCGEventFlagMaskCommand;
+            deviceFlag = kDeviceRightCommandFlag;
+            groupFlag = kCGEventFlagMaskCommand;
+            groupDeviceFlags = kDeviceLeftCommandFlag | kDeviceRightCommandFlag;
             break;
         case 57: // CapsLock
             if (isDown) _keyboardModifierFlags ^= kCGEventFlagMaskAlphaShift;
-            return true;
+            return oldFlags != _keyboardModifierFlags ? ModifierStateChanged : ModifierStateUnchanged;
         default:
-            return false; // normal key
+            return ModifierStateNotModifier; // normal key
     }
 
     if (isDown) {
-        _keyboardModifierFlags |= flag;
+        _keyboardModifierFlags |= deviceFlag | groupFlag;
     }
     else {
-        _keyboardModifierFlags &= ~flag;
+        _keyboardModifierFlags &= ~deviceFlag;
+        if ((_keyboardModifierFlags & groupDeviceFlags) == 0) {
+            _keyboardModifierFlags &= ~groupFlag;
+        }
     }
         
-    return true;
+    return oldFlags != _keyboardModifierFlags ? ModifierStateChanged : ModifierStateUnchanged;
 }
 
 void InputHandler::SwitchIME(bool keyDown) {
