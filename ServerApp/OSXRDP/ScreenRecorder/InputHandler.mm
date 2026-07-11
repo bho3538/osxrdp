@@ -6,6 +6,7 @@
 #include <sys/time.h>
 #include <Carbon/Carbon.h>
 #include <string.h>
+#include <limits.h>
 
 #import "CJKHelper.h"
 
@@ -128,6 +129,12 @@ InputHandler::InputHandler() :
     _eventRef(0),
     _keyboardModifierFlags(0),
     _mouseClickCnt(0),
+    _mouseEventNumber(0),
+    _leftMouseEventNumber(0),
+    _rightMouseEventNumber(0),
+    _wheelMouseEventNumber(0),
+    _backMouseEventNumber(0),
+    _forwardMouseEventNumber(0),
     _lastMouseButton(-1),
     _lastMouseClickTime(0),
     _lastMouseInputEventTime(0),
@@ -215,6 +222,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
     
     CGPoint point = CGPointMake(clientX, clientY);
     CGEventRef ev = NULL;
+    int mouseEventNumber = 0;
 
     switch (key) {
         case XRDP_MOUSE_MOVE: {
@@ -223,10 +231,12 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
             CGEventType mouseMoveFlags = kCGEventMouseMoved;
             if (_mouseKeyStatus.downStatus.leftKeyDown) {
                 mouseMoveFlags = kCGEventLeftMouseDragged;
+                mouseEventNumber = _leftMouseEventNumber;
             }
             else if (_mouseKeyStatus.downStatus.rightKeyDown) {
                 mouseMoveFlags = kCGEventRightMouseDragged;
                 btn = kCGMouseButtonRight;
+                mouseEventNumber = _rightMouseEventNumber;
             }
             
             ev = CGEventCreateMouseEvent(_eventRef, mouseMoveFlags, point, btn);
@@ -245,6 +255,9 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         }
         case XRDP_MOUSE_LBTNDOWN: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventLeftMouseDown, point, kCGMouseButtonLeft);
+            _mouseEventNumber = (_mouseEventNumber == INT_MAX) ? 1 : _mouseEventNumber + 1;
+            _leftMouseEventNumber = _mouseEventNumber;
+            mouseEventNumber = _leftMouseEventNumber;
             
             HandleMouseDoubleClick(ev, true, clientX, clientY, kCGMouseButtonLeft);
             
@@ -254,6 +267,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         }
         case XRDP_MOUSE_LBTNUP: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventLeftMouseUp, point, kCGMouseButtonLeft);
+            mouseEventNumber = _leftMouseEventNumber;
             
             HandleMouseDoubleClick(ev, false, clientX, clientY, kCGMouseButtonLeft);
             
@@ -263,6 +277,9 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         }
         case XRDP_MOUSE_RBTNDOWN: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventRightMouseDown, point, kCGMouseButtonRight);
+            _mouseEventNumber = (_mouseEventNumber == INT_MAX) ? 1 : _mouseEventNumber + 1;
+            _rightMouseEventNumber = _mouseEventNumber;
+            mouseEventNumber = _rightMouseEventNumber;
             
             HandleMouseDoubleClick(ev, true, clientX, clientY, kCGMouseButtonRight);
             
@@ -272,6 +289,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         }
         case XRDP_MOUSE_RBTNUP: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventRightMouseUp, point, kCGMouseButtonRight);
+            mouseEventNumber = _rightMouseEventNumber;
             
             HandleMouseDoubleClick(ev, false, clientX, clientY, kCGMouseButtonRight);
             
@@ -281,6 +299,9 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         }
         case XRDP_MOUSE_MBTNDOWN: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseDown, point, (CGMouseButton)2);
+            _mouseEventNumber = (_mouseEventNumber == INT_MAX) ? 1 : _mouseEventNumber + 1;
+            _wheelMouseEventNumber = _mouseEventNumber;
+            mouseEventNumber = _wheelMouseEventNumber;
             
             _mouseKeyStatus.downStatus.wheelKeyDown = 1;
             
@@ -288,6 +309,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         }
         case XRDP_MOUSE_MBTNUP: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseUp, point, (CGMouseButton)2);
+            mouseEventNumber = _wheelMouseEventNumber;
             
             _mouseKeyStatus.downStatus.wheelKeyDown = 0;
             
@@ -313,6 +335,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         }
         case XRDP_MOUSE_BBTNUP: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseUp, point, (CGMouseButton)3);
+            mouseEventNumber = _backMouseEventNumber;
             
             _mouseKeyStatus.downStatus.backKeyDown = 0;
             
@@ -320,6 +343,9 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         }
         case XRDP_MOUSE_BBTNDOWN: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseDown, point, (CGMouseButton)3);
+            _mouseEventNumber = (_mouseEventNumber == INT_MAX) ? 1 : _mouseEventNumber + 1;
+            _backMouseEventNumber = _mouseEventNumber;
+            mouseEventNumber = _backMouseEventNumber;
             
             _mouseKeyStatus.downStatus.backKeyDown = 1;
             
@@ -327,6 +353,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         }
         case XRDP_MOUSE_FBTNUP: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseUp, point, (CGMouseButton)4);
+            mouseEventNumber = _forwardMouseEventNumber;
             
             _mouseKeyStatus.downStatus.forwardKeyDown = 0;
             
@@ -334,6 +361,9 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
         }
         case XRDP_MOUSE_FBTNDOWN: {
             ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseDown, point, (CGMouseButton)4);
+            _mouseEventNumber = (_mouseEventNumber == INT_MAX) ? 1 : _mouseEventNumber + 1;
+            _forwardMouseEventNumber = _mouseEventNumber;
+            mouseEventNumber = _forwardMouseEventNumber;
             
             _mouseKeyStatus.downStatus.forwardKeyDown = 1;
 
@@ -343,7 +373,8 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
             return;
     }
     
-    CGEventPost(kCGHIDEventTap, ev);
+    CGEventSetIntegerValueField(ev, kCGMouseEventNumber, mouseEventNumber);
+    CGEventPost(kCGSessionEventTap, ev);
     CFRelease(ev);
 }
 
