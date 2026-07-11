@@ -31,5 +31,5 @@ macOS 12.4 or higher version.\
 Support Apple Silicon & Intel mac.
 
 ## Etc
-osxrdp is compatible with original xrdp v0.10.6 version. (no modificated)
+osxrdp is compatible with original xrdp v0.10.6.1 version. (no modificated)
 
