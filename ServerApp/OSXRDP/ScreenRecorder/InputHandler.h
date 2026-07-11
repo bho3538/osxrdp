@@ -86,8 +86,14 @@ private:
     
     static long long GetCurrentEventTime();
     
+    enum ModifierStateChange {
+        ModifierStateNotModifier,
+        ModifierStateUnchanged,
+        ModifierStateChanged
+    };
+
     CGKeyCode MapExtendedKey(int scancode);
-    bool UpdateKeyboardModifierState(CGKeyCode key, bool isDown);
+    ModifierStateChange UpdateKeyboardModifierState(CGKeyCode key, bool isDown);
     
     void SwitchIME(bool keyDown);
 };

@@ -16,6 +16,11 @@ touch /var/log/xrdp.log
 mkdir -p /Library/Logs/osxrdp
 chmod 755 /Library/Logs/osxrdp
 
+# macOS 27 db3? 부터launchd 는 quarantine 된 plist 의 job 실행을 거부하므로 격리 속성 제거
+xattr -d com.apple.quarantine /Library/LaunchDaemons/com.byungho.osxrdp.plist 2>/dev/null
+xattr -d com.apple.quarantine /Library/LaunchDaemons/com.byungho.osxrdp.sessionmanager.plist 2>/dev/null
+xattr -d com.apple.quarantine /Library/LaunchAgents/com.byungho.osxrdp.lockscreen.plist 2>/dev/null
+
 # start service
 launchctl bootstrap system /Library/LaunchDaemons/com.byungho.osxrdp.plist
 launchctl enable system/com.byungho.osxrdp
