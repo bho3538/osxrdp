@@ -15,5 +15,7 @@
     <true/>
     <key>ThrottleInterval</key>
     <integer>20</integer>
+    <key>ProcessType</key>
+    <string>Interactive</string>
 </dict>
 </plist>

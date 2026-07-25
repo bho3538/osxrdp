@@ -14,6 +14,8 @@
 // 가상 모니터 등과 같은 이유로 지금은 다중 사용자의 동시 접속을 지원하지 않음
 MultipleConnectionManager _multipleConn;
 
+int g_FailedAuth = 0;
+
 /******************************************************************************/
 /* return error */
 static int
@@ -44,12 +46,24 @@ lib_mod_connect(struct mod *mod, int fd)
     }
     
     if (osxup_auth_user(mod->username, mod->password, canonicalUsername, sizeof(canonicalUsername)) != 0) {
-        sleep(1);
+        g_FailedAuth++;
+        
+        if (g_FailedAuth > 5) {
+            sleep(10);
+            g_FailedAuth = 0;
+        }
+        else {
+            sleep(1);
+        }
         
         mod->server_msg(mod, "Authentication failed.", 0);
         
         return 1;
     }
+    g_FailedAuth = 0;
+    
+    // 아직 다중접속을 지원하지 않음
+    _multipleConn.AddConnection(mod);
 
     strncpy(mod->username, canonicalUsername, MAX_PATH - 1);
     mod->username[MAX_PATH - 1] = '\0';
@@ -312,8 +326,6 @@ mod_init(void)
         
         return NULL;
     }
-    
-    _multipleConn.AddConnection(mod);
     
     return (void*)mod;
 }

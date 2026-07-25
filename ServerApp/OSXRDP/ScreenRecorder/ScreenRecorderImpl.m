@@ -166,6 +166,12 @@ int SetDirtyAreaInfoFromSampleBuffer(CMSampleBufferRef sampleBuffer, CGRect* rec
 
 - (void)stream:(SCStream *)stream didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer ofType:(SCStreamOutputType)type {
     
+    // dirty area 정보 추출
+    int dirtyAreaCnt = SetDirtyAreaInfoFromSampleBuffer(sampleBuffer, _dirtyRectBuffer);
+    if (dirtyAreaCnt < 0) {
+        return;
+    }
+    
     // ImageBuffer 추출 (CVPixelBufferRef와 동일)
     CVImageBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
     if (pixelBuffer == NULL) {
@@ -173,9 +179,6 @@ int SetDirtyAreaInfoFromSampleBuffer(CMSampleBufferRef sampleBuffer, CGRect* rec
     }
 
     CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
-    
-    // dirty area 정보 추출
-    int dirtyAreaCnt = SetDirtyAreaInfoFromSampleBuffer(sampleBuffer, _dirtyRectBuffer);
     
     // 콜백 호출 (osxup 로 화면 데이터 전송)
     _recordCb(pixelBuffer, _dirtyRectBuffer, dirtyAreaCnt, _recordCbUserData, _displayIdx);
@@ -211,12 +214,22 @@ int SetDirtyAreaInfoFromSampleBuffer(CMSampleBufferRef sampleBuffer, CGRect* rec
 int SetDirtyAreaInfoFromSampleBuffer(CMSampleBufferRef sampleBuffer, CGRect* rects) {
     CFArrayRef arr = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, false);
     if (arr == NULL || CFArrayGetCount(arr) == 0) {
-        return 0;
+        return -1;
     }
 
     CFDictionaryRef att = (CFDictionaryRef)CFArrayGetValueAtIndex(arr, 0);
     if (att == NULL) {
-        return 0;
+        return -1;
+    }
+    
+    NSNumber* status = (__bridge NSNumber*)CFDictionaryGetValue(att, (__bridge CFStringRef)SCStreamFrameInfoStatus);
+    if (status == nil) {
+        return -1;
+    }
+
+    SCFrameStatus frameStatus = (SCFrameStatus)status.integerValue;
+    if (frameStatus != SCFrameStatusComplete) {
+        return -1;
     }
 
     CFArrayRef dirtyArr = (CFArrayRef)CFDictionaryGetValue(att, (__bridge CFStringRef)SCStreamFrameInfoDirtyRects);
