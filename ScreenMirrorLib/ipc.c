@@ -416,6 +416,16 @@ int xipc_send_data(xipc_t* ipc, const void* data, int len)
     
     if (ipc->out_msgs == NULL)
     {
+        // 큐에 보낼 메시지가 없는 경우 즉시 전송
+        int n = (int)write(ipc->fd, msg->data, msg->len);
+        if (n == msg->len) { // 모든 메시지를 보낸 경우 즉시 return
+            pthread_mutex_unlock(&ipc->lock);
+            free(msg);
+            return len;
+        }
+        // 부분 전송
+        if (n > 0) msg->num_send = n;
+
         ipc->out_msgs = msg;
         ipc->out_msgs_end = msg;
     }
