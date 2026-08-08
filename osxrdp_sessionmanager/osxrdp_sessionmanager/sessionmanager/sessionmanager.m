@@ -126,6 +126,22 @@ BOOL osxrdp_usernames_match(ODNode* node, NSString* requestedUsername, uid_t req
     return [normalizedRequested isEqualToString:normalizedSession];
 }
 
+// Read the session owner's uid directly from the CGS session dictionary.
+// kCGSSessionLongUserNameKey contains the full name, so OD reverse lookup may fail for non-ASCII accounts such as Korean names.
+BOOL osxrdp_copy_session_uid(NSDictionary* session, uid_t* uid) {
+    if (session == nil || uid == NULL) {
+        return NO;
+    }
+
+    id value = session[@"kCGSSessionUserIDKey"];
+    if (value == nil || [value isKindOfClass:[NSNumber class]] == NO) {
+        return NO;
+    }
+
+    *uid = (uid_t)[(NSNumber*)value unsignedIntValue];
+    return YES;
+}
+
 BOOL osxrdp_is_loginwindow_user(NSString* sessionUsername) {
     NSString* normalizedSession = osxrdp_normalize_username(sessionUsername);
     if (normalizedSession == nil) {
@@ -191,11 +207,23 @@ int osxrdp_sessionmanager_getsessioninfo(const char* username, session_info_t* s
         for (NSDictionary* session in sessions) {
             NSString* session_username = session[kCGSSessionLongUserNameKey];
             NSNumber* sessionId = session[kCGSSessionIDKey];
-            
-            dzlog_info("[osxrdp_sessionmanager_getsessioninfo] enum session. username : %s, sessionId : %d", session_username != nil ? session_username.UTF8String : "(null)", sessionId.intValue);
-            
-            // 요청된 계정의 uid 와 enum 한 세션의 사용자 uid 를 비교
-            if (session_username != nil && osxrdp_usernames_match(authNode, requestedUsername, requestedUid, hasRequestedUid, session_username)) {
+
+            uid_t sessionUid = 0;
+            BOOL hasSessionUid = osxrdp_copy_session_uid(session, &sessionUid);
+
+            dzlog_info("[osxrdp_sessionmanager_getsessioninfo] enum session. username : %s, uid : %d, sessionId : %d", session_username != nil ? session_username.UTF8String : "(null)", hasSessionUid ? (int)sessionUid : -1, sessionId.intValue);
+
+            // Compare the requested account uid directly with the session uid.
+            // Fall back to the existing username comparison only when the session dictionary has no uid.
+            BOOL isUserSession = NO;
+            if (hasRequestedUid && hasSessionUid) {
+                isUserSession = (sessionUid != 0 && sessionUid == requestedUid);
+            }
+            else {
+                isUserSession = session_username != nil && osxrdp_usernames_match(authNode, requestedUsername, requestedUid, hasRequestedUid, session_username);
+            }
+
+            if (isUserSession) {
                 
                 NSNumber* isLogined = session[@"kCGSessionLoginDoneKey"];
                 NSNumber* isConsoleSession = session[@"kCGSSessionOnConsoleKey"];
@@ -206,7 +234,7 @@ int osxrdp_sessionmanager_getsessioninfo(const char* username, session_info_t* s
                 isMySessionLogined = isLogined.intValue;
                 isMySessionConsole = isConsoleSession.intValue;
             }
-            else if (session_username != nil && osxrdp_is_loginwindow_user(session_username)) {
+            else if ((hasSessionUid && sessionUid == 0) || (session_username != nil && osxrdp_is_loginwindow_user(session_username))) {
                 NSNumber* isConsoleSession = session[@"kCGSSessionOnConsoleKey"];
                 
                 dzlog_info("[osxrdp_sessionmanager_getsessioninfo] found lockscreen session info. id: %d, console: %d", sessionId.intValue, isConsoleSession.intValue);
