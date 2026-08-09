@@ -3,12 +3,49 @@
 #import <Foundation/Foundation.h>
 #include <unistd.h>
 #include <string.h>
+#include <dlfcn.h>
+#include <atomic>
 #include "../Utils/PermissionCheckUtils.h"
 #include "osxrdp/packet.h"
 #include "utils.h"
 
+extern int g_Lockscreen;
+
 static const char* kTrustedClientTeamId = "33X7M69J4B";
 static const char* kTrustedClientSigningIdentifier = "xrdp";
+
+static const char* kLoginFrameworkPath = "/System/Library/PrivateFrameworks/login.framework/login";
+static const int kLockScreenDelayAfterDisconnectSec = 5;
+
+// Bumped on every client connect, active-client disconnect, and server stop.
+// The delayed lock block below only locks the screen when the generation is
+// unchanged, i.e. no reconnect or teardown happened while the lock was pending.
+// Kept at file scope (not on the instance) so the block does not dangle when
+// StopRemoteConnectionServerService deletes the server.
+static std::atomic<uint64_t> g_sessionGeneration(0);
+
+// Lock the OS screen so the console is not left unlocked after a remote
+// session ends. SACLockScreenImmediate is a private API in login.framework,
+// so resolve it at runtime instead of linking against the framework.
+static void LockOsScreen() {
+    void* handle = dlopen(kLoginFrameworkPath, RTLD_LAZY);
+    if (handle == NULL) {
+        NSLog(@"[MirrorAppServer::LockOsScreen] failed to load login framework: %s", dlerror());
+        return;
+    }
+
+    int (*lockScreenImmediate)(void) = (int (*)(void))dlsym(handle, "SACLockScreenImmediate");
+    if (lockScreenImmediate == NULL) {
+        NSLog(@"[MirrorAppServer::LockOsScreen] SACLockScreenImmediate not found: %s", dlerror());
+        dlclose(handle);
+        return;
+    }
+
+    int rc = lockScreenImmediate();
+    NSLog(@"[MirrorAppServer::LockOsScreen] SACLockScreenImmediate rc=%d", rc);
+
+    dlclose(handle);
+}
 
 MirrorAppServer::MirrorAppServer()
 : _cmdPipe(NULL)
@@ -66,7 +103,10 @@ void MirrorAppServer::Stop() {
     }
     
     SetState(State_Stopping);
-    
+
+    // Invalidate any pending delayed screen lock scheduled by OnClientDisconnected
+    g_sessionGeneration.fetch_add(1);
+
     // xipc_loop 탈출 유도
     SignalIoThreadToStop();
     
@@ -204,6 +244,7 @@ int MirrorAppServer::OnClientConnected(xipc_t* t, xipc_t* client) {
         client->user_data = (void*)ctx;
         
         _this->_client = client;
+        g_sessionGeneration.fetch_add(1);
 
         return 0;
     }
@@ -237,9 +278,37 @@ int MirrorAppServer::OnClientDisconnected(xipc_t* t, xipc_t* client) {
     @autoreleasepool {
         MirrorAppServer* _this = (MirrorAppServer*)t->user_data;
         NSLog(@"[MirrorAppServer::OnClientDisconnected] client disconnected");
-        
-        if (_this->_client == client) {
+
+        bool wasActiveClient = (_this->_client == client);
+        if (wasActiveClient) {
             _this->_client = NULL;
+            g_sessionGeneration.fetch_add(1);
+        }
+
+        // Let the OS screen enter lock mode when the remote session ends.
+        // Skip for the loginwindow agent instance (already at the login screen),
+        // for takeover disconnects where a new client already replaced this one,
+        // and for server teardown (the local user stopping the service or the
+        // app terminating should not lock the console).
+        // The lock is delayed and the generation is re-checked so a quick
+        // reconnect (e.g. an xrdp takeover that closes the old socket before
+        // the new client attaches) or a teardown that starts after this check
+        // does not lock the screen of the freshly connected session.
+        // The generation must be loaded before the IsState check: Stop() sets
+        // State_Stopping before bumping the generation, so a teardown that
+        // slips past the IsState check here is still caught by the generation
+        // compare in the block below.
+        uint64_t scheduledGeneration = g_sessionGeneration.load();
+        if (wasActiveClient && g_Lockscreen == 0 && _this->IsState(State_Stopping) == false) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, kLockScreenDelayAfterDisconnectSec * NSEC_PER_SEC),
+                           dispatch_get_main_queue(), ^{
+                if (g_sessionGeneration.load() != scheduledGeneration) {
+                    NSLog(@"[MirrorAppServer::OnClientDisconnected] skip screen lock. session state changed");
+                    return;
+                }
+
+                LockOsScreen();
+            });
         }
 
         if (client->user_data == NULL)

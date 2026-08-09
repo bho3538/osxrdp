@@ -5,12 +5,11 @@
 
 #import "UI/Main/MainWindowController.h"
 
-void _handle_sigterm(int signal);
-
 @interface AppDelegate ()
 {
     NSStatusItem* _trayMenu;
     NSMenuItem* _saveCopiedFilesMenuItem;
+    dispatch_source_t _sigtermSource;
 }
 
 @property (strong) IBOutlet MainWindowController* mainWindowController;
@@ -22,7 +21,7 @@ void _handle_sigterm(int signal);
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
     [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
 
-    signal(SIGTERM, _handle_sigterm);
+    [self setupSigtermHandler];
 
     extern int g_Lockscreen;
     if (g_Lockscreen == 1) {
@@ -110,9 +109,22 @@ void _handle_sigterm(int signal);
     StartRemoteClipboardFileCopy();
 }
 
-void _handle_sigterm(int signal) {
-    NSLog(@"[OSXRDP] on sigterm");
-    StopRemoteConnectionServerService();
+// Handle SIGTERM via a dispatch source instead of a signal handler:
+// stopping the IPC server takes locks and joins threads, which is not
+// async-signal-safe.
+- (void)setupSigtermHandler {
+    signal(SIGTERM, SIG_IGN);
+
+    _sigtermSource = dispatch_source_create(DISPATCH_SOURCE_TYPE_SIGNAL, SIGTERM, 0, dispatch_get_main_queue());
+    if (_sigtermSource == NULL) {
+        return;
+    }
+
+    dispatch_source_set_event_handler(_sigtermSource, ^{
+        NSLog(@"[OSXRDP] on sigterm");
+        StopRemoteConnectionServerService();
+    });
+    dispatch_resume(_sigtermSource);
 }
 
 @end

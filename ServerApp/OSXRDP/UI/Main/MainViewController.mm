@@ -73,11 +73,6 @@
     }
 }
 
-- (void)stopRemoteConnectionServer {
-    StopRemoteConnectionServerService();
-    [self setDisabledBtnStyle:self.startRemoteConnectionBtn];
-}
-
 - (IBAction)aboutUrlClicked:(id)sender {
     NSURL* url = [NSURL URLWithString:@"https://github.com/bho3538/osxrdp"];
     [[NSWorkspace sharedWorkspace] openURL:url];
