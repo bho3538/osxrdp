@@ -24,6 +24,9 @@ public:
 
     void SendClipboardMsg(xipc_t* agentIpc, int channelId, int channelFlags, const char* data, int dataLen, int totalLen);
 
+    void SendAudioMsg(xipc_t* agentIpc, int channelId, int channelFlags, const char* data, int dataLen, int totalLen);
+    void SendAudioReadyMsg(xipc_t* agentIpc);
+
 private:
 
     void _SendScreenStartupMsg(xipc_t* agentIpc, int packetType, int width, int height, int recordFormat, int useVirtualmon, int monitorCount, struct monitor_info* monitorInfo);

@@ -32,6 +32,14 @@
 
 #define OSXRDP_CMDTYPE_NEEDPAINT 4
 
+#define OSXRDP_CMDTYPE_AUDIO 5
+// module -> agent: rdpsnd channel data received from the RDP client
+#define OSXRDP_PACKETTYPE_REQ_SETCLIENTAUDIO 1
+// agent -> module: rdpsnd channel data to send to the RDP client
+#define OSXRDP_PACKETTYPE_REP_SETCLIENTAUDIO 2
+// module -> agent: rdpsnd channel is available for this connection
+#define OSXRDP_PACKETTYPE_AUDIO_READY 3
+
 
 #endif
 
@@ -79,6 +87,7 @@
 #define OSXRDP_CHANNEL_MSG_TYPE
 
 #define OSXRDP_CHANNEL_CLIPBOARD 0
+#define OSXRDP_CHANNEL_AUDIO 1
 #define OSXRDP_CHANNEL_INVALID -1
 
 #endif

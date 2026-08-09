@@ -240,6 +240,7 @@ int MirrorAppServer::OnClientConnected(xipc_t* t, xipc_t* client) {
         
         ctx->ScreenRecorder = _this->CreateScreenRecorder();
         ctx->Clipboard = new ClipboardManager();
+        ctx->Audio = new AudioManager();
         
         client->user_data = (void*)ctx;
         
@@ -327,6 +328,7 @@ int MirrorAppServer::OnClientDisconnected(xipc_t* t, xipc_t* client) {
             NSLog(@"[MirrorAppServer::OnClientDisconnected] recorder stop failed. leak recorder manager");
         }
         delete ctx->Clipboard;
+        delete ctx->Audio;
         free(ctx);
         
         client->user_data = NULL;
@@ -376,6 +378,10 @@ int MirrorAppServer::OnMessageReceived(xipc_t* t, xipc_t* client, void* data, in
             }
             case OSXRDP_CMDTYPE_CLIPBOARD: {
                 ctx->Clipboard->HandleCommand(client, cmd);
+                break;
+            }
+            case OSXRDP_CMDTYPE_AUDIO: {
+                ctx->Audio->HandleCommand(client, cmd);
                 break;
             }
             default:

@@ -160,6 +160,36 @@ void Command::SendClipboardMsg(xipc_t* agentIpc, int channelId, int channelFlags
     xstream_free(stream);
 }
 
+void Command::SendAudioMsg(xipc_t* agentIpc, int channelId, int channelFlags, const char* data, int dataLen, int totalLen) {
+    assert(agentIpc != NULL);
+
+    xstream_t* stream = xstream_create(dataLen + sizeof(int) * 6);
+
+    xstream_writeInt32(stream, OSXRDP_CMDTYPE_AUDIO);
+    xstream_writeInt32(stream, OSXRDP_PACKETTYPE_REQ_SETCLIENTAUDIO);
+    xstream_writeInt32(stream, channelId);
+    xstream_writeInt32(stream, channelFlags);
+    xstream_writeInt32(stream, totalLen);
+    xstream_writeInt32(stream, dataLen);
+    xstream_writeData(stream, (void*)data, dataLen);
+
+    _SendMsg(agentIpc, stream);
+
+    xstream_free(stream);
+}
+
+void Command::SendAudioReadyMsg(xipc_t* agentIpc) {
+    assert(agentIpc != NULL);
+
+    xstream_t* stream = xstream_create(8);
+    xstream_writeInt32(stream, OSXRDP_CMDTYPE_AUDIO);
+    xstream_writeInt32(stream, OSXRDP_PACKETTYPE_AUDIO_READY);
+
+    _SendMsg(agentIpc, stream);
+
+    xstream_free(stream);
+}
+
 void Command::_SendMsg(xipc_t* ipc, xstream_t* stream) {
     assert(stream != NULL);
 

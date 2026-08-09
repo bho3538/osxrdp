@@ -224,9 +224,12 @@ void ConnectionManager::HandleChannelMsg(long param1, long param2, long param3, 
         return;
     }
 
-    // 아직은 클립보드만 처리 (agent 로 전달)
+    // forward to the agent
     if (channel_msg_type == OSXRDP_CHANNEL_CLIPBOARD) {
         _command.SendClipboardMsg(_agentIpc, channelId, channelFlags, data, dataLen, totalLen);
+    }
+    else if (channel_msg_type == OSXRDP_CHANNEL_AUDIO) {
+        _command.SendAudioMsg(_agentIpc, channelId, channelFlags, data, dataLen, totalLen);
     }
 }
 
@@ -365,6 +368,12 @@ bool ConnectionManager::_ConnectToAgent(int sessionId, bool isLockScreen) {
 
     // 클립보드 활성화
     _channelManager.SendClipboardServerInit();
+
+    // Enable audio only when the channel is open and the client chose to
+    // redirect sound (sound_code 1 = leave sound at server)
+    if (_channelManager.HasAudioChannel() && _mod->client_info.sound_code == 0) {
+        _command.SendAudioReadyMsg(ipc);
+    }
 
     _agentIpc = ipc;
 
@@ -508,6 +517,23 @@ int ConnectionManager::_OnReceivedAgentManagerMessage(xipc_t* t, xipc_t* client,
                                                                     dataLen,
                                                                     totalLen,
                                                                     channelFlags);
+                }
+            }
+            break;
+        }
+        case OSXRDP_CMDTYPE_AUDIO: {
+            int packetType = xstream_readInt32(stream);
+            if (packetType == OSXRDP_PACKETTYPE_REP_SETCLIENTAUDIO) {
+                int channelFlags = xstream_readInt32(stream);
+                int totalLen = xstream_readInt32(stream);
+                int dataLen = xstream_readInt32(stream);
+                const void* rawData = xstream_readData(stream, dataLen);
+
+                if (rawData != NULL) {
+                    _this->_channelManager.SendAudioChannelData(rawData,
+                                                                dataLen,
+                                                                totalLen,
+                                                                channelFlags);
                 }
             }
             break;

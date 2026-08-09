@@ -17,7 +17,8 @@ static const int CB_FILECLIP_NO_FILE_PATHS = 0x00000008;
 ChannelManager::ChannelManager() :
     _inited(false),
     _mod(NULL),
-    _clipboardChannelId(-1)
+    _clipboardChannelId(-1),
+    _audioChannelId(-1)
 {}
 
 ChannelManager::~ChannelManager()
@@ -35,7 +36,11 @@ bool ChannelManager::Initialize(const struct mod* mod) {
     if (_clipboardChannelId < 0) {
         return false;
     }
-    
+
+    // Audio channel is optional; clients that do not redirect sound simply
+    // do not join it
+    _audioChannelId = mod->server_get_channel_id((struct mod*)mod, RDPSND_SVC_CHANNEL_NAME);
+
     return true;
 }
 
@@ -94,23 +99,43 @@ void ChannelManager::SendClipboardChannelData(const void* data, int dataLen, int
     _mod->server_send_to_channel((struct mod*)_mod, _clipboardChannelId, (char*)data, dataLen, totalLen, channelFlags);
 }
 
+void ChannelManager::SendAudioChannelData(const void* data, int dataLen, int totalLen, int channelFlags) {
+    assert(_inited == true);
+    assert(_mod != NULL);
+
+    if (_mod == NULL || _audioChannelId < 0 || data == NULL || dataLen <= 0 || totalLen <= 0) {
+        return;
+    }
+
+    _mod->server_send_to_channel((struct mod*)_mod, _audioChannelId, (char*)data, dataLen, totalLen, channelFlags);
+}
+
+bool ChannelManager::HasAudioChannel() {
+    return _inited == true && _audioChannelId >= 0;
+}
+
 void ChannelManager::Release() {
     _mod = NULL;
     _clipboardChannelId = -1;
+    _audioChannelId = -1;
     _inited = false;
 }
 
-// rdp 의 다양한 채널 중 클립보드만 처리 (아직까지는)
+// rdp 의 다양한 채널 중 클립보드/오디오만 처리
 int ChannelManager::IsValidChannelMsg(int channelId, int channelFlags, const char* data, int dataLen, int totalLen) {
     (void)channelFlags;
     (void)data;
     (void)dataLen;
     (void)totalLen;
-    
+
     if (channelId == _clipboardChannelId) {
         return OSXRDP_CHANNEL_CLIPBOARD;
     }
-    
+
+    if (_audioChannelId >= 0 && channelId == _audioChannelId) {
+        return OSXRDP_CHANNEL_AUDIO;
+    }
+
     return OSXRDP_CHANNEL_INVALID;
 }
 
