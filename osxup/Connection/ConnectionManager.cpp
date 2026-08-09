@@ -177,7 +177,12 @@ void ConnectionManager::SendMouseInput(int inputType, short x, short y) {
 }
 
 void ConnectionManager::SendKeyboardInput(int inputType, int keycode, int flags) {
-    assert(_agentIpc != NULL);
+    // The client can send a keyboard sync right after connect, before the agent
+    // IPC is up — drop the event instead of asserting (a fresh session starts
+    // with clean tracked modifier state anyway)
+    if (_agentIpc == NULL) {
+        return;
+    }
 
     _command.SendKeyboardInputMsg(_agentIpc, inputType, keycode, flags);
 }

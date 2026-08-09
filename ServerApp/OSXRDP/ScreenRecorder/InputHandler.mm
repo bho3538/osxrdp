@@ -374,6 +374,10 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
     }
     
     CGEventSetIntegerValueField(ev, kCGMouseEventNumber, mouseEventNumber);
+    // Stamp the session's tracked modifiers so the event does not inherit stale
+    // global modifier state (e.g. a leftover Control flag from a previous session
+    // would turn every left click into a right click)
+    CGEventSetFlags(ev, _keyboardModifierFlags);
     CGEventPost(kCGSessionEventTap, ev);
     CFRelease(ev);
 }
@@ -385,7 +389,11 @@ void InputHandler::HandleKeyboardInputEvent(xstream_t* cmd) {
     int keyCode = xstream_readInt32(cmd);
     int flags = xstream_readInt32(cmd);
 
-    
+    if (inputType == XRDP_KEYBOARD_SYNC) {
+        HandleKeyboardSyncEvent();
+        return;
+    }
+
     if (flags & 0x100) {
         // convert xrdp extended key code to macOS keycode
         keyCode = MapExtendedKey(keyCode & 0x7F);
@@ -439,6 +447,24 @@ void InputHandler::HandleKeyboardInputEvent(xstream_t* cmd) {
     
     CGEventPost(kCGSessionEventTap, ev);
     CFRelease(ev);
+}
+
+void InputHandler::HandleKeyboardSyncEvent() {
+    // The client sent a keyboard Synchronize Event (connect/focus regain).
+    // Drop the modifier state tracked for this session and clear the
+    // system-global modifier flags so stale modifiers (including CapsLock,
+    // possibly left over by a previous session) do not stick to future input.
+    // Posted unconditionally — it is idempotent and the tracked flags being 0
+    // does not mean the global state is clean
+    _keyboardModifierFlags = 0;
+
+    CGEventRef ev = CGEventCreateKeyboardEvent(_eventRef, kVK_Control, false);
+    if (ev != NULL) {
+        CGEventSetType(ev, kCGEventFlagsChanged);
+        CGEventSetFlags(ev, 0);
+        CGEventPost(kCGSessionEventTap, ev);
+        CFRelease(ev);
+    }
 }
 
 void InputHandler::HandleMouseDoubleClick(CGEventRef ev, bool mouseDown, int mouseX, int mouseY, int mouseButton) {
@@ -668,6 +694,8 @@ void InputHandler::PostScrollEvent(int amount, bool continuous) {
         CGEventSetIntegerValueField(ev, kCGScrollWheelEventIsContinuous, 1);
     }
 
+    // Same as mouse buttons: do not inherit stale global modifier state
+    CGEventSetFlags(ev, _keyboardModifierFlags);
     CGEventPost(kCGSessionEventTap, ev);
     CFRelease(ev);
 }
@@ -816,6 +844,7 @@ void InputHandler::RestorePreviousMouseKeydownEvent() {
     if (_mouseKeyStatus.downStatus.leftKeyDown) {
         ev = CGEventCreateMouseEvent(_eventRef, kCGEventLeftMouseUp, point, kCGMouseButtonLeft);
         if (ev != NULL) {
+            CGEventSetFlags(ev, _keyboardModifierFlags);
             CGEventPost(kCGSessionEventTap, ev);
             CFRelease(ev);
         }
@@ -824,6 +853,7 @@ void InputHandler::RestorePreviousMouseKeydownEvent() {
     if (_mouseKeyStatus.downStatus.rightKeyDown) {
         ev = CGEventCreateMouseEvent(_eventRef, kCGEventRightMouseUp, point, kCGMouseButtonRight);
         if (ev != NULL) {
+            CGEventSetFlags(ev, _keyboardModifierFlags);
             CGEventPost(kCGSessionEventTap, ev);
             CFRelease(ev);
         }
@@ -832,6 +862,7 @@ void InputHandler::RestorePreviousMouseKeydownEvent() {
     if (_mouseKeyStatus.downStatus.wheelKeyDown) {
         ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseUp, point, (CGMouseButton)2);
         if (ev != NULL) {
+            CGEventSetFlags(ev, _keyboardModifierFlags);
             CGEventPost(kCGSessionEventTap, ev);
             CFRelease(ev);
         }
@@ -840,6 +871,7 @@ void InputHandler::RestorePreviousMouseKeydownEvent() {
     if (_mouseKeyStatus.downStatus.backKeyDown) {
         ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseUp, point, (CGMouseButton)3);
         if (ev != NULL) {
+            CGEventSetFlags(ev, _keyboardModifierFlags);
             CGEventPost(kCGSessionEventTap, ev);
             CFRelease(ev);
         }
@@ -848,6 +880,7 @@ void InputHandler::RestorePreviousMouseKeydownEvent() {
     if (_mouseKeyStatus.downStatus.forwardKeyDown) {
         ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseUp, point, (CGMouseButton)4);
         if (ev != NULL) {
+            CGEventSetFlags(ev, _keyboardModifierFlags);
             CGEventPost(kCGSessionEventTap, ev);
             CFRelease(ev);
         }

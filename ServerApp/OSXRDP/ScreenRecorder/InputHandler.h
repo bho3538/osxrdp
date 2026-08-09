@@ -80,6 +80,7 @@ private:
     
     CGEventSourceRef _eventRef;
     
+    void HandleKeyboardSyncEvent();
     void HandleMouseDoubleClick(CGEventRef ev, bool mouseDown, int mouseX, int mouseY, int mouseButton);
     bool MapClientPointToDisplayPoint(int clientX, int clientY, int* outX, int* outY);
     int GetMouseWheelMoveAmount(int direction);

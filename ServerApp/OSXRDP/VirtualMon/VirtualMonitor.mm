@@ -212,6 +212,13 @@ bool VirtualMonitor::Resize(int index, int width, int height, int left, int top,
         resolutionOk = IsRightResolution(index);
     }
 
+    if (resolutionOk == true) {
+        // Mark convergence here, while _watchLock is still held, so the watch
+        // thread does not observe a stale 0->1 transition afterwards and fire
+        // the input-layout refresh callback at the wrong time
+        displayInfo->resolution_established = 1;
+    }
+
     pthread_mutex_unlock(&_watchLock);
 
     NSLog(@"[VirtualMonitor::Resize] index=%d %dx%d (%d,%d) primary=%d result=%d",
@@ -569,12 +576,26 @@ int VirtualMonitor::SetResolution(int index) {
 
                 size_t modeWidth = CGDisplayModeGetWidth(mode);
                 size_t modeHeight = CGDisplayModeGetHeight(mode);
+                size_t pixelWidth = CGDisplayModeGetPixelWidth(mode);
+                size_t pixelHeight = CGDisplayModeGetPixelHeight(mode);
 
-                if (modeWidth == displayInfo->width && modeHeight == displayInfo->height) {
+                // Require a genuinely full-pixel mode (no HiDPI variant) so the
+                // non-retina criteria of IsRightResolution can match it
+                if (modeWidth == displayInfo->width && modeHeight == displayInfo->height &&
+                    pixelWidth == displayInfo->width && pixelHeight == displayInfo->height) {
                     NSLog(@"found bestmode\n");
                     bestMode = mode;
                     break;
                 }
+            }
+
+            // The HiDPI (width/2) mode is unavailable and the full-pixel mode will
+            // be applied instead. Treat this display as non-retina from now on so
+            // IsRightResolution can converge and the input layout uses full-pixel
+            // coordinates (otherwise the watchdog would retry forever)
+            if (bestMode != NULL) {
+                NSLog(@"[VirtualMonitor::SetResolution] HiDPI mode not found. fall back to non-retina index=%d", index);
+                displayInfo->is_retina = false;
             }
         }
     }
@@ -851,6 +872,8 @@ void VirtualMonitor::WatchThreadPorcInternal() {
         struct VIRTUALMONITOR_INFO* displayInfo = &_virtualDisplayInfo[i];
 
         if (IsRightResolution(i) == true) {
+            int wasEstablished = displayInfo->resolution_established;
+
             // Target resolution reached — remember the current mode point size
             // so an external change can be detected later
             displayInfo->resolution_established = 1;
@@ -861,6 +884,16 @@ void VirtualMonitor::WatchThreadPorcInternal() {
                     displayInfo->last_mode_width = (int)CGDisplayModeGetWidth(mode);
                     displayInfo->last_mode_height = (int)CGDisplayModeGetHeight(mode);
                     CFRelease(mode);
+                }
+            }
+
+            if (wasEstablished == 0) {
+                NSLog(@"[VirtualMonitor::WatchThreadProc] resolution converged. refresh input layout index=%d", i);
+
+                // Runs on the watch thread while _watchLock is held — the callback
+                // must only set a flag (guaranteed by the ScreenRecorderManager side)
+                if (_modeAdoptedCallback != NULL) {
+                    _modeAdoptedCallback(_modeAdoptedCallbackUserData);
                 }
             }
 

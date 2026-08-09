@@ -378,6 +378,12 @@ bool ScreenRecorderManager::ResolveDisplayForRecorder(bool resizeInPlace) {
                                        _recordParams.monitorInfo[i].displayId);
     }
 
+    // The layouts above are authoritative for the negotiated geometry. Drop any
+    // dirty flag raised while (re)creating the displays so the first input event
+    // does not rebuild the mapping from the bounds of a display that is still
+    // converging to its target mode (clicks would land at wrong coordinates)
+    _inputLayoutDirty.store(false, std::memory_order_release);
+
     _virtualMonitor.StartMonitor();
 
     return true;

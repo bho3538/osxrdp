@@ -119,6 +119,15 @@ lib_mod_event(struct mod *mod, int msg, long param1, long param2,
             break;
         }
 
+        case XRDP_KEYBOARD_SYNC: {
+            // Modifier state resync from the client (connect/focus regain).
+            // Not gated on CanPaint(): it must get through even while painting
+            // is suppressed so stale modifier state is flushed
+            mod->connectionManager->SendKeyboardInput(msg, (int)param3, (int)param4);
+
+            break;
+        }
+
         case XRDP_MOUSE_MOVE:
         case XRDP_MOUSE_LBTNUP:
         case XRDP_MOUSE_LBTNDOWN:

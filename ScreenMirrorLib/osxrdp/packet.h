@@ -48,6 +48,8 @@
 
 #define XRDP_KEYBOARD_DOWN  15
 #define XRDP_KEYBOARD_UP    16
+// Client keyboard Synchronize Event (connect/focus regain) — resets modifier state
+#define XRDP_KEYBOARD_SYNC  17
 
 #endif
 
