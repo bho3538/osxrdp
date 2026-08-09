@@ -86,6 +86,98 @@ static bool IsKnownClipMsgType(int msgType) {
            msgType == CB_FILECONTENTS_RESPONSE;
 }
 
+// Matches a 32-byte short format name field against an expected ASCII name.
+// The field is UTF-16LE by default or ASCII when CB_ASCII_NAMES is set, and
+// names longer than the field are stored truncated, so both encodings are
+// tried and a full-field prefix match is accepted.
+static bool MatchShortFormatName(const unsigned char* field, const char* expected) {
+    if (field == NULL || expected == NULL) {
+        return false;
+    }
+
+    if (strncmp((const char*)field, expected, 32) == 0) {
+        return true;
+    }
+
+    int i = 0;
+    for (i = 0; i < 16; i++) {
+        unsigned char lo = field[i * 2];
+        unsigned char hi = field[i * 2 + 1];
+
+        if (hi != 0) {
+            return false;
+        }
+        if (lo == 0) {
+            break;
+        }
+        if (expected[i] == 0 || (unsigned char)expected[i] != lo) {
+            return false;
+        }
+    }
+
+    if (i == 16) {
+        return true;
+    }
+
+    return expected[i] == 0;
+}
+
+static void ScanFileFormatsShortNames(xstream_t* clipStream, int msgLen, int* fileGroupFormatId, int* fileContentsFormatId) {
+    int readLen = 0;
+
+    while (readLen + 36 <= msgLen) {
+        int formatId = xstream_readInt32(clipStream);
+        const unsigned char* formatName = (const unsigned char*)xstream_readData(clipStream, 32);
+        if (formatName == NULL) {
+            break;
+        }
+
+        if (MatchShortFormatName(formatName, FILEGROUP_FORMAT_NAME)) {
+            *fileGroupFormatId = formatId;
+        } else if (MatchShortFormatName(formatName, FILECONTENTS_FORMAT_NAME)) {
+            *fileContentsFormatId = formatId;
+        }
+        readLen += 36;
+    }
+}
+
+static void ScanFileFormatsLongNames(xstream_t* clipStream, int msgLen, int* fileGroupFormatId, int* fileContentsFormatId) {
+    int readLen = 0;
+
+    while (readLen + 4 <= msgLen) {
+        int formatId = xstream_readInt32(clipStream);
+        char formatName[64];
+        int namePos = 0;
+        bool foundTerminator = false;
+
+        readLen += 4;
+        while (readLen + 2 <= msgLen) {
+            int ch = xstream_readInt16(clipStream);
+            readLen += 2;
+
+            if (ch == 0) {
+                foundTerminator = true;
+                break;
+            }
+
+            if (namePos + 1 < (int)sizeof(formatName) && ch >= 0 && ch <= 0x7F) {
+                formatName[namePos++] = (char)ch;
+            }
+        }
+
+        if (foundTerminator == false) {
+            break;
+        }
+
+        formatName[namePos] = 0;
+        if (strcmp(formatName, FILEGROUP_FORMAT_NAME) == 0) {
+            *fileGroupFormatId = formatId;
+        } else if (strcmp(formatName, FILECONTENTS_FORMAT_NAME) == 0) {
+            *fileContentsFormatId = formatId;
+        }
+    }
+}
+
 static void WriteFormatName(xstream_t* clipStream, const char* formatName) {
     if (clipStream == NULL) {
         return;
@@ -498,6 +590,10 @@ static bool BuildBmpFromDibData(const void* dibData, int dibLen, char** outData,
     return true;
 }
 
+static NSArray* FileCopyItemList(void* items) {
+    return (__bridge NSArray*)items;
+}
+
 ClipboardManager::ClipboardManager()
 : _clipDataBuffer(NULL)
 , _clipDataBufferSize(0)
@@ -505,6 +601,8 @@ ClipboardManager::ClipboardManager()
 , _pendingClipType(PendingClipType_None)
 , _pendingTextFormatId(0)
 , _pendingTextRetryCount(0)
+, _pendingFallbackClipType(PendingClipType_None)
+, _pendingFallbackFormatId(0)
 , _monitorThreadRunning(0)
 , _monitorStopRequested(0)
 , _client(NULL)
@@ -517,6 +615,10 @@ ClipboardManager::ClipboardManager()
 , _remoteFileClipboardReady(0)
 , _fileCopyInProgress(0)
 , _fileCopyChoosingFolder(0)
+, _fileCopyAutoPaste(0)
+, _autoPasteFolder(NULL)
+, _autoPasteBaseChangeCount(INVALID_CHANGE_COUNT)
+, _fileCopyItems(NULL)
 , _fileCopyCancelled(0)
 , _fileCopyCurrentItemIndex(0)
 , _fileCopyStreamId(1)
@@ -585,12 +687,26 @@ ClipboardManager::~ClipboardManager() {
         _fileCopyWindow = NULL;
     }
     if (_fileCopyCurrentHandle != NULL) {
+        @try {
+            [FileCopyCurrentHandle(_fileCopyCurrentHandle) closeFile];
+        } @catch (...) {
+        }
         CFRelease(_fileCopyCurrentHandle);
         _fileCopyCurrentHandle = NULL;
     }
     if (_fileCopyCurrentPath != NULL) {
+        // A transfer was still running; do not leave a truncated file behind
+        [[NSFileManager defaultManager] removeItemAtPath:FileCopyCurrentPath(_fileCopyCurrentPath) error:nil];
         CFRelease(_fileCopyCurrentPath);
         _fileCopyCurrentPath = NULL;
+    }
+    if (_fileCopyItems != NULL) {
+        CFRelease(_fileCopyItems);
+        _fileCopyItems = NULL;
+    }
+    if (_autoPasteFolder != NULL) {
+        CFRelease(_autoPasteFolder);
+        _autoPasteFolder = NULL;
     }
     pthread_mutex_destroy(&_lock);
 }
@@ -861,12 +977,22 @@ void ClipboardManager::HandleFormatList(xipc_t* client, xstream_t* clipStream, i
 
     FindRequestedFormat(msgFlags, msgLen, clipStream, &formatId, &clipType);
 
+    NSLog(@"[ClipboardManager] Format list: msgFlags=0x%X msgLen=%d hasFiles=%d fileGroupFormatId=0x%X requestedFormatId=0x%X",
+          msgFlags, msgLen, hasRemoteFiles ? 1 : 0, fileGroupFormatId, formatId);
+
     SendFormatAck(client, true);
 
     if (hasRemoteFiles) {
         pthread_mutex_lock(&_lock);
         bool busy = _fileCopyInProgress != 0 || _fileCopyChoosingFolder != 0;
+        bool autoBusy = busy && _fileCopyAutoPaste != 0;
         pthread_mutex_unlock(&_lock);
+        if (autoBusy) {
+            // A newer client copy supersedes the in-flight auto download,
+            // and this also recovers from a stalled transfer
+            CancelRemoteFileCopy();
+            busy = false;
+        }
         if (busy) {
             return;
         }
@@ -881,6 +1007,10 @@ void ClipboardManager::HandleFormatList(xipc_t* client, xstream_t* clipStream, i
         _pendingClipType = PendingClipType_FileList;
         _pendingTextFormatId = 0;
         _pendingTextRetryCount = 0;
+        // Remember the text/image format so a failed file-list request can
+        // still paste something
+        _pendingFallbackClipType = clipType;
+        _pendingFallbackFormatId = formatId;
         SendDataRequest(client, fileGroupFormatId);
         return;
     }
@@ -897,6 +1027,8 @@ void ClipboardManager::HandleFormatList(xipc_t* client, xstream_t* clipStream, i
     _pendingClipType = clipType;
     _pendingTextFormatId = (clipType == PendingClipType_Text) ? formatId : 0;
     _pendingTextRetryCount = 0;
+    _pendingFallbackClipType = PendingClipType_None;
+    _pendingFallbackFormatId = 0;
 
     if (formatId == 0 || clipType == PendingClipType_None) {
         _pendingClipType = PendingClipType_None;
@@ -1001,6 +1133,9 @@ void ClipboardManager::HandleDataResponse(xstream_t* clipStream, int msgFlags, i
             SendDataRequest(_client, CF_UNICODETEXT);
             return;
         }
+        if (_pendingClipType == PendingClipType_FileList && TryRequestFallbackFormat()) {
+            return;
+        }
         _pendingClipType = PendingClipType_None;
         _pendingTextFormatId = 0;
         _pendingTextRetryCount = 0;
@@ -1016,7 +1151,13 @@ void ClipboardManager::HandleDataResponse(xstream_t* clipStream, int msgFlags, i
     }
 
     if (_pendingClipType == PendingClipType_FileList) {
-        ParseRemoteFileList(data, msgLen);
+        if (ParseRemoteFileList(data, msgLen)) {
+            // Finder only pastes real file URLs, so download to a temp
+            // folder right away and register the URLs when done
+            StartAutoRemoteFileCopy();
+        } else if (TryRequestFallbackFormat()) {
+            return;
+        }
     } else if (_pendingClipType == PendingClipType_Text) {
         SetTextToPasteboard(data, msgLen, _pendingTextFormatId);
     } else if (_pendingClipType == PendingClipType_RichText) {
@@ -1028,6 +1169,27 @@ void ClipboardManager::HandleDataResponse(xstream_t* clipStream, int msgFlags, i
     _pendingClipType = PendingClipType_None;
     _pendingTextFormatId = 0;
     _pendingTextRetryCount = 0;
+}
+
+// Falls back to the text/image format remembered from the same format list
+// when the file-list request cannot be served
+bool ClipboardManager::TryRequestFallbackFormat() {
+    if (_pendingFallbackClipType == PendingClipType_None ||
+        _pendingFallbackFormatId == 0 ||
+        _client == NULL) {
+        return false;
+    }
+
+    int fallbackFormatId = _pendingFallbackFormatId;
+    _pendingClipType = _pendingFallbackClipType;
+    _pendingTextFormatId = (_pendingFallbackClipType == PendingClipType_Text) ? fallbackFormatId : 0;
+    _pendingTextRetryCount = 0;
+    _pendingFallbackClipType = PendingClipType_None;
+    _pendingFallbackFormatId = 0;
+
+    NSLog(@"[ClipboardManager] File list unavailable, falling back to formatId=0x%X", fallbackFormatId);
+    SendDataRequest(_client, fallbackFormatId);
+    return true;
 }
 
 void ClipboardManager::HandleFileContentsRequest(xipc_t* client, xstream_t* clipStream, int msgFlags, int msgLen) {
@@ -1213,7 +1375,7 @@ void ClipboardManager::FindRequestedFormatShortName(xstream_t* clipStream, int m
             currentClipType = PendingClipType_Image;
         }
 
-        if (strncmp(formatName, RTF_FORMAT_NAME, 32) == 0) {
+        if (MatchShortFormatName((const unsigned char*)formatName, RTF_FORMAT_NAME)) {
             currentClipType = PendingClipType_RichText;
         }
 
@@ -1244,55 +1406,21 @@ bool ClipboardManager::FindRemoteFileFormats(int msgFlags, int msgLen, xstream_t
     xstream_readInt16(clipStream);
     xstream_readInt32(clipStream);
 
-    int readLen = 0;
-    if ((msgFlags & CB_ASCII_NAMES) != 0 || (msgLen > 0 && msgLen % 36 == 0)) {
-        while (readLen + 36 <= msgLen) {
-            int formatId = xstream_readInt32(clipStream);
-            const char* formatName = (const char*)xstream_readData(clipStream, 32);
-            if (formatName == NULL) {
-                break;
-            }
-
-            if (strncmp(formatName, FILEGROUP_FORMAT_NAME, 32) == 0) {
-                *fileGroupFormatId = formatId;
-            } else if (strncmp(formatName, FILECONTENTS_FORMAT_NAME, 32) == 0) {
-                *fileContentsFormatId = formatId;
-            }
-            readLen += 36;
+    if ((msgFlags & CB_ASCII_NAMES) != 0) {
+        ScanFileFormatsShortNames(clipStream, msgLen, fileGroupFormatId, fileContentsFormatId);
+    } else if (msgLen > 0 && msgLen % 36 == 0) {
+        ScanFileFormatsShortNames(clipStream, msgLen, fileGroupFormatId, fileContentsFormatId);
+        if (*fileGroupFormatId == 0) {
+            // A long-name list can coincidentally be a multiple of 36 bytes
+            *fileContentsFormatId = 0;
+            xstream_resetPos(clipStream);
+            xstream_readInt16(clipStream);
+            xstream_readInt16(clipStream);
+            xstream_readInt32(clipStream);
+            ScanFileFormatsLongNames(clipStream, msgLen, fileGroupFormatId, fileContentsFormatId);
         }
     } else {
-        while (readLen + 4 <= msgLen) {
-            int formatId = xstream_readInt32(clipStream);
-            char formatName[64];
-            int namePos = 0;
-            bool foundTerminator = false;
-
-            readLen += 4;
-            while (readLen + 2 <= msgLen) {
-                int ch = xstream_readInt16(clipStream);
-                readLen += 2;
-
-                if (ch == 0) {
-                    foundTerminator = true;
-                    break;
-                }
-
-                if (namePos + 1 < (int)sizeof(formatName) && ch >= 0 && ch <= 0x7F) {
-                    formatName[namePos++] = (char)ch;
-                }
-            }
-
-            if (foundTerminator == false) {
-                break;
-            }
-
-            formatName[namePos] = 0;
-            if (strcmp(formatName, FILEGROUP_FORMAT_NAME) == 0) {
-                *fileGroupFormatId = formatId;
-            } else if (strcmp(formatName, FILECONTENTS_FORMAT_NAME) == 0) {
-                *fileContentsFormatId = formatId;
-            }
-        }
+        ScanFileFormatsLongNames(clipStream, msgLen, fileGroupFormatId, fileContentsFormatId);
     }
 
     xstream_resetPos(clipStream);
@@ -1300,7 +1428,9 @@ bool ClipboardManager::FindRemoteFileFormats(int msgFlags, int msgLen, xstream_t
     xstream_readInt16(clipStream);
     xstream_readInt32(clipStream);
 
-    return *fileGroupFormatId != 0 && *fileContentsFormatId != 0;
+    // FileContents is not required: its id is never used for transfer, and
+    // some clients advertise only FileGroupDescriptorW
+    return *fileGroupFormatId != 0;
 }
 
 void* ClipboardManager::MonitorThreadEntry(void* arg) {
@@ -1887,27 +2017,124 @@ bool ClipboardManager::ParseRemoteFileList(const void* data, int dataLen) {
     return [newItems count] > 0;
 }
 
+void ClipboardManager::StartAutoRemoteFileCopy() {
+    pthread_mutex_lock(&_lock);
+    bool canStart = _remoteFileClipboardReady != 0 && _fileCopyInProgress == 0 && _fileCopyChoosingFolder == 0;
+    if (canStart) {
+        _fileCopyChoosingFolder = 1;
+        if (_autoPasteFolder != NULL) {
+            CFRelease(_autoPasteFolder);
+            _autoPasteFolder = NULL;
+        }
+    }
+    int itemCount = (int)[RemoteFileItems(_remoteFileItems) count];
+    pthread_mutex_unlock(&_lock);
+
+    if (canStart == false) {
+        return;
+    }
+
+    NSFileManager* fileManager = [NSFileManager defaultManager];
+    NSString* parentPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"osxrdp-clip"];
+    // Drop folders left over from earlier transfers, including past sessions
+    [fileManager removeItemAtPath:parentPath error:nil];
+
+    NSString* folderPath = [parentPath stringByAppendingPathComponent:[[NSUUID UUID] UUIDString]];
+    NSURL* folderUrl = [NSURL fileURLWithPath:folderPath isDirectory:YES];
+    NSError* error = nil;
+    if ([fileManager createDirectoryAtURL:folderUrl withIntermediateDirectories:YES attributes:nil error:&error] == NO) {
+        NSLog(@"[ClipboardManager] Failed to create temp folder for clipboard files: %@", error);
+        pthread_mutex_lock(&_lock);
+        _fileCopyChoosingFolder = 0;
+        pthread_mutex_unlock(&_lock);
+        return;
+    }
+
+    NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+    int baseChangeCount = pasteboard != nil ? (int)[pasteboard changeCount] : INVALID_CHANGE_COUNT;
+
+    NSLog(@"[ClipboardManager] Start auto download of %d clipboard file items", itemCount);
+
+    pthread_mutex_lock(&_lock);
+    _fileCopyAutoPaste = 1;
+    _autoPasteBaseChangeCount = baseChangeCount;
+    _autoPasteFolder = (__bridge_retained void*)folderUrl;
+    pthread_mutex_unlock(&_lock);
+
+    BeginRemoteFileCopyToFolder(folderUrl);
+}
+
+bool ClipboardManager::SetFileUrlsToPasteboard(NSURL* folderUrl) {
+    if (folderUrl == nil) {
+        return false;
+    }
+
+    NSArray* fileUrls = [[NSFileManager defaultManager] contentsOfDirectoryAtURL:folderUrl
+                                                      includingPropertiesForKeys:nil
+                                                                         options:0
+                                                                           error:nil];
+    if (fileUrls == nil || [fileUrls count] == 0) {
+        return false;
+    }
+
+    NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
+    if (pasteboard == nil) {
+        return false;
+    }
+
+    [pasteboard clearContents];
+    BOOL result = [pasteboard writeObjects:fileUrls];
+
+    if (result == YES) {
+        // Keep the monitor thread from echoing our own write back to the client
+        pthread_mutex_lock(&_lock);
+        _lastChangeCount = (int)[pasteboard changeCount];
+        pthread_mutex_unlock(&_lock);
+    }
+
+    return result == YES;
+}
+
 void ClipboardManager::BeginRemoteFileCopyToFolder(NSURL* folderUrl) {
+    pthread_mutex_lock(&_lock);
+    bool autoPaste = _fileCopyAutoPaste != 0;
+    pthread_mutex_unlock(&_lock);
+
+    NSString* failureMessageKey = nil;
     if (CheckWritableFolder(folderUrl) == false) {
+        failureMessageKey = @"filecopy.alert.permission";
+    } else if (PrepareRemoteFileDestinations(folderUrl) == false) {
+        failureMessageKey = @"filecopy.alert.failed";
+    }
+
+    if (failureMessageKey != nil) {
         pthread_mutex_lock(&_lock);
         _fileCopyChoosingFolder = 0;
+        if (autoPaste) {
+            _fileCopyAutoPaste = 0;
+            if (_autoPasteFolder != NULL) {
+                CFRelease(_autoPasteFolder);
+                _autoPasteFolder = NULL;
+            }
+        }
         pthread_mutex_unlock(&_lock);
-        ShowFileCopyAlert(NSLocalizedString(@"filecopy.alert.permission", nil));
+
+        if (autoPaste) {
+            [[NSFileManager defaultManager] removeItemAtURL:folderUrl error:nil];
+        } else {
+            ShowFileCopyAlert(NSLocalizedString(failureMessageKey, nil));
+        }
         return;
     }
 
-    if (PrepareRemoteFileDestinations(folderUrl) == false) {
-        pthread_mutex_lock(&_lock);
-        _fileCopyChoosingFolder = 0;
-        pthread_mutex_unlock(&_lock);
-        ShowFileCopyAlert(NSLocalizedString(@"filecopy.alert.failed", nil));
-        return;
+    // The auto paste download runs silently without a progress window
+    FileCopyWindow* window = nil;
+    if (autoPaste == false) {
+        window = [[FileCopyWindow alloc] init];
+        window.cancelHandler = ^{
+            CancelRemoteFileCopy();
+        };
     }
-
-    FileCopyWindow* window = [[FileCopyWindow alloc] init];
-    window.cancelHandler = ^{
-        CancelRemoteFileCopy();
-    };
 
     pthread_mutex_lock(&_lock);
     _fileCopyChoosingFolder = 0;
@@ -1924,7 +2151,9 @@ void ClipboardManager::BeginRemoteFileCopyToFolder(NSURL* folderUrl) {
     _fileCopyWindow = (__bridge_retained void*)window;
     pthread_mutex_unlock(&_lock);
 
-    [window showWindow];
+    if (window != nil) {
+        [window showWindow];
+    }
     StartNextRemoteFileItem();
 }
 
@@ -1932,11 +2161,17 @@ void ClipboardManager::StartNextRemoteFileItem() {
     @autoreleasepool {
         while (1) {
             pthread_mutex_lock(&_lock);
+            bool inProgress = _fileCopyInProgress != 0;
             bool cancelled = _fileCopyCancelled != 0;
             xipc_t* client = _client;
-            NSMutableArray* items = RemoteFileItems(_remoteFileItems);
+            NSArray* items = FileCopyItemList(_fileCopyItems);
             int itemIndex = _fileCopyCurrentItemIndex;
             pthread_mutex_unlock(&_lock);
+
+            if (inProgress == false) {
+                // The transfer was finished elsewhere; its owner cleaned up
+                return;
+            }
 
             if (cancelled || client == NULL) {
                 FinishRemoteFileCopy(false);
@@ -2016,8 +2251,9 @@ void ClipboardManager::StartNextRemoteFileItem() {
 
 void ClipboardManager::RequestCurrentRemoteFileChunk() {
     pthread_mutex_lock(&_lock);
+    bool inProgress = _fileCopyInProgress != 0;
     xipc_t* client = _client;
-    NSMutableArray* items = RemoteFileItems(_remoteFileItems);
+    NSArray* items = FileCopyItemList(_fileCopyItems);
     int itemIndex = _fileCopyCurrentItemIndex;
     int lindex = _fileCopyCurrentLindex;
     uint64_t offset = _fileCopyCurrentOffset;
@@ -2028,6 +2264,10 @@ void ClipboardManager::RequestCurrentRemoteFileChunk() {
         fileSize = [[[items objectAtIndex:itemIndex] objectForKey:@"size"] unsignedLongLongValue];
     }
     pthread_mutex_unlock(&_lock);
+
+    if (inProgress == false) {
+        return;
+    }
 
     if (client == NULL || fileSize <= offset) {
         FinishRemoteFileCopy(false);
@@ -2041,7 +2281,16 @@ void ClipboardManager::RequestCurrentRemoteFileChunk() {
 
 void ClipboardManager::HandleFileContentsResponse(xstream_t* clipStream, int msgFlags, int msgLen) {
     if ((msgFlags & CB_RESPONSE_FAIL) != 0 || (msgFlags & CB_RESPONSE_OK) == 0 || msgLen < 4) {
-        FinishRemoteFileCopy(false);
+        // A stale failure for an already-cancelled stream must not abort
+        // the current transfer
+        int failedStreamId = msgLen >= 4 ? xstream_readInt32(clipStream) : 0;
+        pthread_mutex_lock(&_lock);
+        bool current = _fileCopyInProgress != 0 &&
+                       (msgLen < 4 || _fileCopyExpectedStreamId == failedStreamId);
+        pthread_mutex_unlock(&_lock);
+        if (current) {
+            FinishRemoteFileCopy(false);
+        }
         return;
     }
 
@@ -2052,7 +2301,7 @@ void ClipboardManager::HandleFileContentsResponse(xstream_t* clipStream, int msg
     pthread_mutex_lock(&_lock);
     bool valid = _fileCopyInProgress != 0 && _fileCopyExpectedStreamId == streamId && _fileCopyCancelled == 0;
     NSFileHandle* handle = FileCopyCurrentHandle(_fileCopyCurrentHandle);
-    NSMutableArray* items = RemoteFileItems(_remoteFileItems);
+    NSArray* items = FileCopyItemList(_fileCopyItems);
     int itemIndex = _fileCopyCurrentItemIndex;
     pthread_mutex_unlock(&_lock);
 
@@ -2106,8 +2355,31 @@ void ClipboardManager::HandleFileContentsResponse(xstream_t* clipStream, int msg
 }
 
 void ClipboardManager::FinishRemoteFileCopy(bool success) {
+    NSPasteboard* generalPasteboard = [NSPasteboard generalPasteboard];
+    int currentChangeCount = generalPasteboard != nil ? (int)[generalPasteboard changeCount] : INVALID_CHANGE_COUNT;
+
     pthread_mutex_lock(&_lock);
     bool cancelled = _fileCopyCancelled != 0;
+    bool autoPaste = _fileCopyAutoPaste != 0;
+    bool autoPasteSuperseded = false;
+    NSURL* autoPasteFolder = nil;
+    if (autoPaste) {
+        // Something else was copied during the download; the files are stale
+        autoPasteSuperseded = _autoPasteBaseChangeCount != INVALID_CHANGE_COUNT &&
+                              currentChangeCount != INVALID_CHANGE_COUNT &&
+                              currentChangeCount != _autoPasteBaseChangeCount;
+        autoPasteFolder = (__bridge NSURL*)_autoPasteFolder;
+        _fileCopyAutoPaste = 0;
+        _autoPasteBaseChangeCount = INVALID_CHANGE_COUNT;
+        if ((success == false || autoPasteSuperseded) && _autoPasteFolder != NULL) {
+            CFRelease(_autoPasteFolder);
+            _autoPasteFolder = NULL;
+        }
+    }
+    if (_fileCopyItems != NULL) {
+        CFRelease(_fileCopyItems);
+        _fileCopyItems = NULL;
+    }
     NSFileHandle* handle = FileCopyCurrentHandle(_fileCopyCurrentHandle);
     NSString* incompletePath = FileCopyCurrentPath(_fileCopyCurrentPath);
     FileCopyWindow* window = FileCopyProgressWindow(_fileCopyWindow);
@@ -2154,9 +2426,25 @@ void ClipboardManager::FinishRemoteFileCopy(bool success) {
         [[NSFileManager defaultManager] removeItemAtPath:incompletePath error:nil];
     }
 
+    if (autoPaste) {
+        if (success && autoPasteSuperseded == false) {
+            bool pasted = SetFileUrlsToPasteboard(autoPasteFolder);
+            NSLog(@"[ClipboardManager] Auto clipboard file download finished, pasteboard updated=%d", pasted ? 1 : 0);
+        } else {
+            if (success) {
+                NSLog(@"[ClipboardManager] Auto clipboard file download superseded by a newer clipboard change");
+            } else {
+                NSLog(@"[ClipboardManager] Auto clipboard file download failed, cancelled=%d", cancelled ? 1 : 0);
+            }
+            if (autoPasteFolder != nil) {
+                [[NSFileManager defaultManager] removeItemAtURL:autoPasteFolder error:nil];
+            }
+        }
+    }
+
     dispatch_async(dispatch_get_main_queue(), ^{
         [window closeWindow];
-        if (success == false && cancelled == false) {
+        if (success == false && cancelled == false && autoPaste == false) {
             ShowFileCopyAlert(NSLocalizedString(@"filecopy.alert.failed", nil));
         }
         if (window != nil) {
@@ -2230,9 +2518,10 @@ bool ClipboardManager::PrepareRemoteFileDestinations(NSURL* folderUrl) {
     }
 
     pthread_mutex_lock(&_lock);
-    NSMutableArray* items = RemoteFileItems(_remoteFileItems);
-    [items removeAllObjects];
-    [items addObjectsFromArray:preparedItems];
+    if (_fileCopyItems != NULL) {
+        CFRelease(_fileCopyItems);
+    }
+    _fileCopyItems = (__bridge_retained void*)[NSArray arrayWithArray:preparedItems];
     _fileCopyTotalBytes = totalBytes;
     pthread_mutex_unlock(&_lock);
     return true;

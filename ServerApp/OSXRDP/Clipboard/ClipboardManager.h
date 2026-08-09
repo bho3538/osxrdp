@@ -43,6 +43,8 @@ private:
     PendingClipType _pendingClipType;
     int _pendingTextFormatId;
     int _pendingTextRetryCount;
+    PendingClipType _pendingFallbackClipType;
+    int _pendingFallbackFormatId;
     xipc_t* _client;
     int _lastChangeCount;
     int _remoteFileClipEnabled;
@@ -54,6 +56,10 @@ private:
 
     int _fileCopyInProgress;
     int _fileCopyChoosingFolder;
+    int _fileCopyAutoPaste;
+    void* _autoPasteFolder;
+    int _autoPasteBaseChangeCount;
+    void* _fileCopyItems;
     int _fileCopyCancelled;
     int _fileCopyCurrentItemIndex;
     int _fileCopyStreamId;
@@ -77,6 +83,7 @@ private:
     static int GetRequestedFormatPriority(PendingClipType clipType, int formatId);
 
     void HandleClipData(xipc_t* client, const void* data, int dataLen);
+    bool TryRequestFallbackFormat();
     void HandleCaps(xstream_t* clipStream, int msgLen);
     void HandleFormatList(xipc_t* client, xstream_t* clipStream, int msgFlags, int msgLen);
     void HandleDataRequest(xipc_t* client, xstream_t* clipStream, int msgFlags, int msgLen);
@@ -117,6 +124,8 @@ private:
     static bool IsSafeRelativeFileName(NSString* fileName);
 
     bool ParseRemoteFileList(const void* data, int dataLen);
+    void StartAutoRemoteFileCopy();
+    bool SetFileUrlsToPasteboard(NSURL* folderUrl);
     void BeginRemoteFileCopyToFolder(NSURL* folderUrl);
     void StartNextRemoteFileItem();
     void RequestCurrentRemoteFileChunk();
