@@ -249,8 +249,14 @@ int MirrorAppServer::OnClientDisconnected(xipc_t* t, xipc_t* client) {
         if (ctx == NULL)
             return 0;
         
-        ctx->ScreenRecorder->Stop();
-        delete ctx->ScreenRecorder;
+        if (ctx->ScreenRecorder->Stop() == true) {
+            delete ctx->ScreenRecorder;
+        }
+        else {
+            // A capture callback may still be running — deliberately leak the
+            // recorder manager instead of freeing memory a live callback can touch
+            NSLog(@"[MirrorAppServer::OnClientDisconnected] recorder stop failed. leak recorder manager");
+        }
         delete ctx->Clipboard;
         free(ctx);
         

@@ -2,6 +2,11 @@
 #ifndef ScreenRecorder_hpp
 #define ScreenRecorder_hpp
 
+// Must be included before headers that pull in C11 <stdatomic.h>
+// (its function-like macros break a later inclusion of <atomic>)
+#include <atomic>
+#include <mutex>
+
 #include "ipc.h"
 #include "xstream.h"
 #include "xshm.h"
@@ -11,13 +16,17 @@
 #include "../VirtualMon/VirtualMonitor.h"
 
 class ScreenRecorderManager {
-    
+
 public:
     ScreenRecorderManager(bool useLegacyRecorder);
     ~ScreenRecorderManager();
-        
+
     void HandleCommand(xipc_t* client, xstream_t* cmd);
-    void Stop();
+
+    // Returns false when a recorder could not be stopped — the record resources
+    // were intentionally leaked and this object must NOT be deleted
+    bool Stop();
+
     void SendDisconnectMsgToClient();
 
 private:
@@ -30,7 +39,7 @@ private:
         int recordFormat;
         int useVirtualMon;
         int monitorCount;
-        
+
         struct MONITOR_INFO {
             int left;
             int top;
@@ -41,31 +50,35 @@ private:
             int outputIndex;
         } monitorInfo[16];
     };
-    
+
     struct RecordStartParams _recordParams;
 
     void* _recorder[16];
     int _recorderCnt;
-    
+
     bool _useLegacyRecorder;
-    
+
     // 녹화 데이터가 저장되는 공유 메모리
     xshm_t* _recordShm[16];
     int _recordShmCnt;
-    
+
     // 마우스 커서 이미지가 저장되는 공유 메모리
     xshm_t* _cursorShm;
-    
+
     // osxup 로 명령을 보내기 위한 파이프
     xipc_t* _client;
-    
+
     // Input handler (mouse, keyboard)
     InputHandler _inputHandler;
-    
+
     // Mouse cursor handler
     CursorHandler _cursorHandler;
-    
+
     VirtualMonitor _virtualMonitor;
+
+    // Set by the virtual monitor watch thread when the user changed the
+    // display mode externally; consumed on the IPC thread before input handling
+    std::atomic<bool> _inputLayoutDirty;
 
     // RFX YUV444 canonical buffer — dirty 영역만 변환해 누적한 뒤, 해당 타일만 SHM slot 에
     // 포장(indices + tileData)해 내보낸다.
@@ -75,45 +88,62 @@ private:
     int      _rfxCanonicalHeight;
     size_t   _rfxTileCols;
     size_t   _rfxTileRows;
-    
+
     // 다음 프레임을 full redraw 로 내보내야 하는지 표시.
     bool     _rfxFullRedrawRequired;
+
+    // Serializes the RFX canonical buffer and slot-fill path between the capture
+    // queue (HandleRFXRecordData) and the IPC thread (PushRFXFullFrame)
+    std::mutex _rfxFrameLock;
 
     screenrecord_frame_t _pendingDirty[16];
     bool _pendingDirtyFull[16];
 
     bool CreateRecordShm(int recordIdx);
     void DestroyRecordShm();
-    
+
     bool CreateCursorShm();
     void DestroyCursorShm();
-    
+
     bool StartRecord(xstream_t* cmd);
-    
+
+    // Dynamic resolution change (stop recording -> rebuild virtual monitors/shared memory -> restart recording)
+    bool ResizeRecord(xstream_t* cmd);
+
     bool ParseStartRecordParams(xstream_t* cmd, RecordStartParams* params);
     bool PrepareRecordResources();
-    
+
+    // Create/start and stop the recorders.
+    // StopRecorders returns false when a recorder could not be stopped — in that case
+    // the capture callback may still be running and the record SHM must NOT be destroyed.
+    bool StartRecorders();
+    bool StopRecorders();
+
     // 녹화기 설정
-    bool ResolveDisplayForRecorder();
+    bool ResolveDisplayForRecorder(bool resizeInPlace = false);
     int GetMonitorRecordWidth(int recordIdx);
     int GetMonitorRecordHeight(int recordIdx);
 
     // 녹화 데이터 처리기
     static void HandleBGRA32RecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx);
     static void HandleBGRA32DirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data);
-    
+
     static void HandleNV12PackedRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx);
     static void HandleNV12PackedDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data);
-    
+
     static void HandleNV12AlignedRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx);
     static void HandleNV12AlignedDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data);
-    
+
     static void HandleRFXRecordData(void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt, void* userData, int displayIdx);
     bool HandleRFXDirtyArea(void* pixelBuffer, screenrecord_frame* current_frame, const CGRect* dirtyRects, int dirtyRectsCnt, char* screenrecord_data, int displayIdx);
-    
+
+    // Synthesize a full RFX frame from the canonical buffer without a new capture
+    // (used to service REQ_FULLFRAME on the IPC thread when the screen is static)
+    bool PushRFXFullFrame();
+
     // 데이터를 작성할 slot 찾기
     bool AcquireFrameSlot(screenrecord_shm_t** recordInfoOut, screenrecord_frame** frameOut, char** dataOut, unsigned int* writePosOut, int displayIdx);
-    
+
     // 데이터 작성 완료 flag 설정
     void CommitFrameSlot(screenrecord_shm_t* recordInfo, unsigned int writePos, int displayIdx);
 
@@ -122,10 +152,10 @@ private:
 
     // NV12Packed 데이터를 메모리에 기록
     static bool CopyNV12PackedFrame(void* imageBuffer, char* screenrecord_data, int* widthOut, int* heightOut);
-    
+
     // NV12Aligned 데이터를 메모리에 기록
     static bool CopyNV12AlignedFrame(void* imageBuffer, char* screenrecord_data, int* widthOut, int* heightOut);
-    
+
     // BGRA32 데이터를 메모리에 기록
     static bool CopyBGRA32Frame(void* imageBuffer, char* screenrecord_data, int* widthOut, int* heightOut);
 
@@ -135,20 +165,28 @@ private:
     void InvalidateRFXCanonical();
     void ReleaseRFXCanonical();
     bool ConvertRFXTile(const uint8_t* bgraBase, size_t bgraStride, int width, int height, int tileCol, int tileRow, uint8_t* tileBase);
-    
+
     // dirty area (변화한 구역) 정보 처리
     inline static void ProcessDirtyArea(const CGRect* rect, int limitX, int limitY, struct RECT* dst);
-    
+
     void ResetPendingDirty();
     void ResetPendingDirty(int displayIdx);
     void AddPendingDirty(int displayIdx, const CGRect* dirtyRects, int dirtyRectsCnt, int width, int height);
     void AddPendingDirtyFromPixelBuffer(int displayIdx, void* pixelBuffer, const CGRect* dirtyRects, int dirtyRectsCnt);
     void ApplyPendingDirty(int displayIdx, screenrecord_frame* current_frame);
-    
+
     static void PopulateDirtyRectsFromSampleBuffer(void* sampleBuffer, int width, int height, screenrecord_frame* current_frame);
     static void PopulateDirtyRectsFromArray(const CGRect* dirtyRects, int dirtyRectsCnt, int width, int height, screenrecord_frame* current_frame);
-    
+
     static void HandleRecordCommand(int cmd, void* userData);
+
+    // Called from the virtual monitor watch thread when a user-selected
+    // display mode was adopted — only sets _inputLayoutDirty
+    static void HandleDisplayModeAdopted(void* userData);
+
+    // Rebuild the input display layout on the IPC thread when needed
+    void RefreshInputDisplayLayoutIfNeeded();
+    void RefreshInputDisplayLayout();
 };
 
 #endif /* ScreenRecorder_hpp */

@@ -16,6 +16,12 @@
 #define OSXRDP_PACKETTYPE_REP_SCREENOFF 4
 #define OSXRDP_PACKETTYPE_MOUSEEVT      5
 #define OSXRDP_PACKETTYPE_KEYBOARDEVT   6
+// Dynamic resolution change (MS-RDPEDISP). Payload is identical to REQ_SCREEN
+#define OSXRDP_PACKETTYPE_REQ_RESIZE    7
+#define OSXRDP_PACKETTYPE_REP_RESIZE    8
+// Ask the agent to synthesize a full frame without waiting for new capture
+// activity (used by dirty-only formats such as RFX). No payload, no reply
+#define OSXRDP_PACKETTYPE_REQ_FULLFRAME 9
 
 #define OSXRDP_CMDTYPE_CLIPBOARD 2
 #define OSXRDP_PACKETTYPE_REQ_SETCLIENTCLIP 1

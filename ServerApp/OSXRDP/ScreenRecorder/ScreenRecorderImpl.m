@@ -15,7 +15,10 @@
     void* _recordCbUserData;
     void* _recordCmdCbUserData;
     int _displayIdx;
-    
+    // Set while an intentional stop is in progress (e.g. dynamic resize) so a
+    // stop-related delegate callback is not reported as an unexpected stop
+    atomic_bool _stopRequested;
+
     CGRect _dirtyRectBuffer[MAX_DIRTY_COUNT];
 }
 
@@ -28,8 +31,9 @@
         _recordStream = nil;
         _recordCb = NULL;
         _recordCbUserData = NULL;
+        atomic_store(&_stopRequested, false);
     }
-    
+
     return self;
 }
 
@@ -136,6 +140,7 @@ int SetDirtyAreaInfoFromSampleBuffer(CMSampleBufferRef sampleBuffer, CGRect* rec
     if (_recordStream == nil) return YES;
     
     // 녹화 정지 요청 후 완전히 종료될때까지 대기
+    atomic_store(&_stopRequested, true);
     __block NSError* stopError = nil;
     dispatch_semaphore_t sema = dispatch_semaphore_create(0);
     [_recordStream stopCaptureWithCompletionHandler:^(NSError* _Nullable err) {
@@ -187,7 +192,9 @@ int SetDirtyAreaInfoFromSampleBuffer(CMSampleBufferRef sampleBuffer, CGRect* rec
 }
 
 - (void)stream:(SCStream *)stream didStopWithError:(NSError *)error {
-    // 녹화 정지 요청
+    // Only unexpected stops are reported; an intentional stop is handled synchronously in stop
+    if (atomic_load(&_stopRequested)) return;
+
     _recordCmdCb(1, _recordCmdCbUserData);
 }
 

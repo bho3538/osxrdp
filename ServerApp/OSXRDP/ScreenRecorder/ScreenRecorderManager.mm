@@ -46,12 +46,15 @@ ScreenRecorderManager::ScreenRecorderManager(bool useLegacyRecorder) :
     _rfxTileCols(0),
     _rfxTileRows(0),
     _rfxFullRedrawRequired(true),
+    _inputLayoutDirty(false),
     _recorderCnt(0),
     _useLegacyRecorder(useLegacyRecorder),
     _recordShmCnt(0)
 {
     memset(_recordShm, 0x00, sizeof(_recordShm));
     ResetPendingDirty();
+
+    _virtualMonitor.SetModeAdoptedCallback(HandleDisplayModeAdopted, this);
 }
 
 ScreenRecorderManager::~ScreenRecorderManager() {
@@ -62,7 +65,7 @@ ScreenRecorderManager::~ScreenRecorderManager() {
 
 bool ScreenRecorderManager::StartRecord(xstream_t* cmd) {
     memset(&_recordParams, 0x00, sizeof(struct RecordStartParams));
-    
+
     if (ParseStartRecordParams(cmd, &_recordParams) == false) {
         return false;
     }
@@ -74,21 +77,31 @@ bool ScreenRecorderManager::StartRecord(xstream_t* cmd) {
     if (PrepareRecordResources() == false) {
         return false;
     }
-    
+
     if (_recordParams.useVirtualMon == 0) {
         _virtualMonitor.HoldDisplaySleepAssertion();
     }
-    
+
+    if (StartRecorders() == false) {
+        DestroyRecordShm();
+        DestroyCursorShm();
+        return false;
+    }
+
+    return true;
+}
+
+bool ScreenRecorderManager::StartRecorders() {
     for (int i = 0; i < _recordParams.monitorCount; i++) {
         id<IScreenRecorder> impl = nil;
-        
+
         if (_useLegacyRecorder == false) {
             impl = [[ScreenRecorderImpl alloc] init];
         }
         else {
             impl = [[ScreenRecorderFallbackImpl alloc] init];
         }
-        
+
         on_record_data recordDataCb = HandleBGRA32RecordData;
         if (_recordParams.recordFormat == OSXRDP_RECORDFORMAT_NV12_PACKED) {
             recordDataCb = HandleNV12PackedRecordData;
@@ -103,7 +116,7 @@ bool ScreenRecorderManager::StartRecord(xstream_t* cmd) {
         int outputIndex = _recordParams.monitorInfo[i].outputIndex;
         int recordWidth = GetMonitorRecordWidth(i);
         int recordHeight = GetMonitorRecordHeight(i);
-        
+
         [impl initializeWithDisplayId:_recordParams.monitorInfo[i].displayId
                     DisplayIndex:outputIndex
                     RecordWidth:recordWidth RecordHeight:recordHeight
@@ -112,13 +125,79 @@ bool ScreenRecorderManager::StartRecord(xstream_t* cmd) {
                     RecordCmdCallback:HandleRecordCommand RecordCmdCallbackUserData:this];
 
         if ([impl start] == NO) {
-            DestroyRecordShm();
-            DestroyCursorShm();
+            // Stop the recorders already started; SHM cleanup is up to the caller
+            StopRecorders();
             return false;
         }
-        
+
         _recorder[_recorderCnt] = (__bridge_retained void*)impl;
         _recorderCnt++;
+    }
+
+    return true;
+}
+
+bool ScreenRecorderManager::ResizeRecord(xstream_t* cmd) {
+    if (_recorderCnt == 0) {
+        // Not recording
+        return false;
+    }
+
+    RecordStartParams newParams;
+    memset(&newParams, 0x00, sizeof(struct RecordStartParams));
+
+    if (ParseStartRecordParams(cmd, &newParams) == false) {
+        return false;
+    }
+
+    if (StopRecorders() == false) {
+        // A capture callback may still be running — do not touch the record SHM
+        NSLog(@"[ScreenRecorderManager::ResizeRecord] could not stop recorder. abort resize");
+        return false;
+    }
+
+    // The consumer (osxup) has already unmapped its side
+    DestroyRecordShm();
+    ReleaseRFXCanonical();
+    ResetPendingDirty();
+
+    bool wasVirtual = (_recordParams.useVirtualMon != 0);
+    bool nowVirtual = (newParams.useVirtualMon != 0);
+    int prevMonitorCount = _recordParams.monitorCount;
+    _recordParams = newParams;
+
+    bool inPlace = wasVirtual && nowVirtual && (prevMonitorCount == _recordParams.monitorCount);
+    if (nowVirtual == true && inPlace == false) {
+        // Monitor count changed etc. -> recreate everything
+        _virtualMonitor.Destroy();
+    }
+
+    if (ResolveDisplayForRecorder(inPlace) == false) {
+        return false;
+    }
+
+    for (int i = 0; i < _recordParams.monitorCount; i++) {
+        if (CreateRecordShm(i) == false) {
+            NSLog(@"[ScreenRecorderManager::ResizeRecord] could not create record shm");
+            return false;
+        }
+    }
+    // Keep the cursor shm since its size is fixed
+
+    InvalidateRFXCanonical();
+    ResetPendingDirty();
+
+    if (_recordParams.useVirtualMon == 0) {
+        _virtualMonitor.HoldDisplaySleepAssertion();
+    }
+
+    // Retry once — the resized/recreated virtual display may not be capturable yet
+    if (StartRecorders() == false) {
+        usleep(500 * 1000);
+
+        if (StartRecorders() == false) {
+            return false;
+        }
     }
 
     return true;
@@ -141,7 +220,7 @@ bool ScreenRecorderManager::ParseStartRecordParams(xstream_t* cmd, RecordStartPa
     int requestedMonitorCount = params->monitorCount;
     RecordStartParams::MONITOR_INFO requestedMonitorInfo[16];
     memset(requestedMonitorInfo, 0x00, sizeof(requestedMonitorInfo));
-    
+
     for (int i = 0; i < params->monitorCount; i++) {
         requestedMonitorInfo[i].left = xstream_readInt32(cmd);
         requestedMonitorInfo[i].top = xstream_readInt32(cmd);
@@ -167,7 +246,7 @@ bool ScreenRecorderManager::ParseStartRecordParams(xstream_t* cmd, RecordStartPa
             params->framerate = 30;
         }
     }
-    
+
     bool forceSingleMonitor = (params->useVirtualMon == 0 || params->recordFormat != OSXRDP_RECORDFORMAT_NV12_PACKED);
     if (forceSingleMonitor == true) {
         int monitorIndex = 0;
@@ -205,14 +284,14 @@ bool ScreenRecorderManager::ParseStartRecordParams(xstream_t* cmd, RecordStartPa
 }
 
 bool ScreenRecorderManager::PrepareRecordResources() {
-    
+
     for (int i = 0; i < _recordParams.monitorCount; i++) {
         if (CreateRecordShm(i) == false) {
             NSLog(@"[ScreenRecorderManager::StartRecord] could not create record shm");
             return false;
         }
     }
-    
+
     if (CreateCursorShm() == false) {
         NSLog(@"[ScreenRecorderManager::StartRecord] could not create cursor shm");
         DestroyRecordShm();
@@ -226,13 +305,13 @@ bool ScreenRecorderManager::PrepareRecordResources() {
     return true;
 }
 
-bool ScreenRecorderManager::ResolveDisplayForRecorder() {
+bool ScreenRecorderManager::ResolveDisplayForRecorder(bool resizeInPlace) {
 
     if (_recordParams.useVirtualMon == 0) {
         _recordParams.monitorInfo[0].displayId = (int)CGMainDisplayID();
-        
+
         CGRect rect = CGDisplayBounds(_recordParams.monitorInfo[0].displayId);
-        
+
         _inputHandler.UpdateDisplayRes((int)rect.size.width, (int)rect.size.height, GetMonitorRecordWidth(0), GetMonitorRecordHeight(0));
         _inputHandler.ResetDisplayLayout();
         _inputHandler.AddDisplayLayout(_recordParams.monitorInfo[0].left, _recordParams.monitorInfo[0].top,
@@ -240,12 +319,12 @@ bool ScreenRecorderManager::ResolveDisplayForRecorder() {
                                        (int)rect.origin.x, (int)rect.origin.y,
                                        (int)rect.size.width, (int)rect.size.height,
                                        _recordParams.monitorInfo[0].displayId);
-        
+
         VirtualMonitor::WakeupDisplay();
-        
+
         return true;
     }
-    
+
     _inputHandler.UpdateDisplayRes(_recordParams.width, _recordParams.height, _recordParams.width, _recordParams.height);
     _inputHandler.ResetDisplayLayout();
 
@@ -259,6 +338,7 @@ bool ScreenRecorderManager::ResolveDisplayForRecorder() {
         }
     }
 
+    bool inPlace = resizeInPlace;
     for (int i = 0; i < _recordParams.monitorCount; i++) {
         // todo : 성공,실패 판별
 
@@ -267,7 +347,23 @@ bool ScreenRecorderManager::ResolveDisplayForRecorder() {
         int displayOriginX = _recordParams.monitorInfo[i].left - primaryLeft;
         int displayOriginY = _recordParams.monitorInfo[i].top - primaryTop;
 
-        _virtualMonitor.Create(monitorWidth, monitorHeight, _recordParams.monitorInfo[i].left, _recordParams.monitorInfo[i].top, _recordParams.monitorInfo[i].outputIndex, _recordParams.monitorInfo[i].is_primary != 0);
+        if (inPlace == true) {
+            // Change only the resolution without destroying the existing virtual monitor (keeps the session's window layout)
+            if (_virtualMonitor.Resize(i, monitorWidth, monitorHeight, _recordParams.monitorInfo[i].left, _recordParams.monitorInfo[i].top, _recordParams.monitorInfo[i].is_primary != 0) == false) {
+                NSLog(@"[ScreenRecorderManager::ResolveDisplayForRecorder] in-place resize failed. recreate virtual monitors. index=%d", i);
+
+                // On failure, fall back to full recreation (Destroy also stops the watch thread)
+                _virtualMonitor.Destroy();
+                _inputHandler.ResetDisplayLayout();
+
+                inPlace = false;
+                i = -1;
+                continue;
+            }
+        }
+        else {
+            _virtualMonitor.Create(monitorWidth, monitorHeight, _recordParams.monitorInfo[i].left, _recordParams.monitorInfo[i].top, _recordParams.monitorInfo[i].outputIndex, _recordParams.monitorInfo[i].is_primary != 0);
+        }
 
         _recordParams.monitorInfo[i].displayId = _virtualMonitor.GetDisplayId(i);
 
@@ -291,9 +387,9 @@ int ScreenRecorderManager::GetMonitorRecordWidth(int recordIdx) {
     if (recordIdx < 0 || recordIdx >= 16) {
         return 0;
     }
-    
+
     int width = _recordParams.monitorInfo[recordIdx].right - _recordParams.monitorInfo[recordIdx].left;
-    
+
     // xrdp 의 실제 monitor rect 는 right/bottom inclusive 이다.
     // osxup 이 단일 모니터용으로 보낸 synthetic rect(right=width)는 그대로 둔다.
     if (!(_recordParams.monitorCount == 1 &&
@@ -301,7 +397,7 @@ int ScreenRecorderManager::GetMonitorRecordWidth(int recordIdx) {
           _recordParams.monitorInfo[recordIdx].right == _recordParams.width)) {
         width++;
     }
-    
+
     return _ALIGN_DOWN_EVEN(width);
 }
 
@@ -309,9 +405,9 @@ int ScreenRecorderManager::GetMonitorRecordHeight(int recordIdx) {
     if (recordIdx < 0 || recordIdx >= 16) {
         return 0;
     }
-    
+
     int height = _recordParams.monitorInfo[recordIdx].bottom - _recordParams.monitorInfo[recordIdx].top;
-    
+
     // xrdp 의 실제 monitor rect 는 right/bottom inclusive 이다.
     // osxup 이 단일 모니터용으로 보낸 synthetic rect(bottom=height)는 그대로 둔다.
     if (!(_recordParams.monitorCount == 1 &&
@@ -319,7 +415,7 @@ int ScreenRecorderManager::GetMonitorRecordHeight(int recordIdx) {
           _recordParams.monitorInfo[recordIdx].bottom == _recordParams.height)) {
         height++;
     }
-    
+
     return _ALIGN_DOWN_EVEN(height);
 }
 
@@ -335,54 +431,72 @@ bool ScreenRecorderManager::CreateRecordShm(int recordIdx) {
 
     // todo : format 마다 정확한 크기 설정하기
     int rawDataSize = width * height * 5 + (sizeof(size_t) * 2);
-    
+
+    if (_recordParams.recordFormat == OSXRDP_RECORDFORMAT_RFX) {
+        // A full RFX frame is [imgSize][tileCount][indices][64px tiles]; tile
+        // rounding can exceed width * height * 5 at small resolutions
+        const size_t tileCols = ((size_t)width + 63) / 64;
+        const size_t tileRows = ((size_t)height + 63) / 64;
+        const size_t tileTotal = tileCols * tileRows;
+        const size_t rfxSlotSize = sizeof(size_t) + sizeof(int)
+                                 + tileTotal * (sizeof(int) + (size_t)OSXRDP_RFX_TILE_BYTES);
+
+        if ((size_t)rawDataSize < rfxSlotSize) {
+            rawDataSize = (int)rfxSlotSize;
+        }
+    }
+
     char shm_name[512];
     if (get_object_name_by_sessionid("/osxrdpshm", shm_name, 512, is_root_process()) == 0) {
         return false;
     }
-    
+
     char shm_name_with_idx[512];
     snprintf(shm_name_with_idx, sizeof(shm_name_with_idx), "%s_%d", shm_name, outputIndex);
 
     _recordShm[outputIndex] = xshm_create(shm_name_with_idx, sizeof(screenrecord_shm_t) + (rawDataSize * FRAME_SLOTS));
     if (_recordShm[outputIndex] == NULL) {
         NSLog(@"[ScreenRecorderManager::CreateRecordShm] xshm_create failed. outputIndex = %d", outputIndex);
-        
+
         return false;
     }
-    
+
     memset(_recordShm[outputIndex]->mem, 0x00, sizeof(screenrecord_shm_t) + (rawDataSize * FRAME_SLOTS));
-    
+
     screenrecord_shm_t* shm = (screenrecord_shm_t*)_recordShm[outputIndex]->mem;
     shm->width = width;
     shm->height = height;
     shm->fps = 60;
     shm->screenrecord_data_size = rawDataSize;
-    
+
     _recordShmCnt++;
-    
+
     return true;
 }
 
 void ScreenRecorderManager::DestroyRecordShm() {
     for (int i = 0; i < 16; i++) {
         if (_recordShm[i] != NULL) {
-            xshm_close(_recordShm[i]);
-            xshm_destroy(_recordShm[i]);
+            // Clear the slot before unmapping to narrow the race window against
+            // a capture callback that may still read the pointer
+            xshm_t* shm = _recordShm[i];
             _recordShm[i] = NULL;
+
+            xshm_close(shm);
+            xshm_destroy(shm);
         }
     }
-    
+
     _recordShmCnt = 0;
 }
 
 bool ScreenRecorderManager::CreateCursorShm() {
     if (_cursorShm != NULL) {
         NSLog(@"[ScreenRecorderManager::CreateCursorShm] cursorShm is already exists.");
-        
+
         return false;
     }
-    
+
     char shm_name[512];
     if (get_object_name_by_sessionid("/osxrdpcursorshm", shm_name, 512, is_root_process()) == 0) {
         return false;
@@ -391,16 +505,16 @@ bool ScreenRecorderManager::CreateCursorShm() {
     _cursorShm = xshm_create(shm_name, sizeof(cursor_data_t));
     if (_cursorShm == NULL) {
         NSLog(@"[ScreenRecorderManager::CreateCursorShm] xshm_create failed.");
-        
+
         return false;
     }
-    
+
     memset(_cursorShm->mem, 0x00, sizeof(cursor_data_t));
-    
+
     // init cursor mask
     cursor_data_t* cursor_data = (cursor_data_t*)_cursorShm->mem;
     memset(cursor_data->cursorMaskData, 0xFF, MAX_CURSOR_IMG_BUFFER_SIZE);
-    
+
     return true;
 }
 
@@ -408,35 +522,63 @@ void ScreenRecorderManager::DestroyCursorShm() {
     if (_cursorShm == NULL) {
         return;
     }
-    
+
     xshm_close(_cursorShm);
     xshm_destroy(_cursorShm);
     _cursorShm = NULL;
 }
 
-void ScreenRecorderManager::Stop() {
-    // 화면 녹화를 먼저 정지
+bool ScreenRecorderManager::StopRecorders() {
+    int remainCnt = 0;
+
     for (int i = 0; i < _recorderCnt; i++) {
         id<IScreenRecorder> impl = (__bridge id<IScreenRecorder>)_recorder[i];
-        if ([impl stop] == NO) {
+        BOOL recorderStopped = [impl stop];
+        if (recorderStopped == NO) {
             // 정지 실패 (간혹 빠르게 호출하면 이럼)
             sleep(1);
-            
+
             // 재시도
-            [impl stop];
+            recorderStopped = [impl stop];
         }
-        
+
+        if (recorderStopped == NO) {
+            // Keep the recorder so a later Stop() retries — its capture callback
+            // may still be running and must stay tracked
+            _recorder[remainCnt] = _recorder[i];
+            if (remainCnt != i) {
+                _recorder[i] = NULL;
+            }
+            remainCnt++;
+
+            continue;
+        }
+
         CFRelease(_recorder[i]);
+        _recorder[i] = NULL;
     }
-    
-    _recorderCnt = 0;
-    memset(_recorder, 0x00, sizeof(_recorder));
-    
+
+    _recorderCnt = remainCnt;
+
+    return remainCnt == 0;
+}
+
+bool ScreenRecorderManager::Stop() {
+    // 화면 녹화를 먼저 정지
+    bool stopped = StopRecorders();
+
     if (_recordParams.useVirtualMon == 0) {
         _virtualMonitor.ReleaseDisplaySleepAssertion();
     }
-    
+
     _virtualMonitor.Destroy();
+
+    if (stopped == false) {
+        // A capture callback may still be running — deliberately leak the shared
+        // memory and buffers instead of freeing memory a live callback can touch
+        NSLog(@"[ScreenRecorderManager::Stop] could not stop recorder. skip releasing record resources");
+        return false;
+    }
 
     // 공유 메모리 정리
     DestroyRecordShm();
@@ -444,17 +586,74 @@ void ScreenRecorderManager::Stop() {
 
     ReleaseRFXCanonical();
     ResetPendingDirty();
+
+    return true;
+}
+
+void ScreenRecorderManager::HandleDisplayModeAdopted(void* userData) {
+    if (userData == NULL) return;
+
+    // Called from the virtual monitor watch thread while its lock is held —
+    // only set the flag here; the layout refresh runs on the IPC thread
+    ScreenRecorderManager* _this = (ScreenRecorderManager*)userData;
+    _this->_inputLayoutDirty.store(true, std::memory_order_release);
+}
+
+void ScreenRecorderManager::RefreshInputDisplayLayoutIfNeeded() {
+    if (_inputLayoutDirty.exchange(false, std::memory_order_acq_rel) == false) {
+        return;
+    }
+
+    RefreshInputDisplayLayout();
+}
+
+void ScreenRecorderManager::RefreshInputDisplayLayout() {
+    if (_recorderCnt == 0 || _recordParams.useVirtualMon == 0) {
+        return;
+    }
+
+    // The user picked a different display mode (scaling) in System Settings, so the
+    // cached point size/origin per display is stale. Rebuild the input mapping from
+    // the live display geometry so client record pixels map to the current point
+    // coordinates and remote mouse positions stay correct.
+    _inputHandler.ResetDisplayLayout();
+
+    bool incomplete = false;
+
+    for (int i = 0; i < _recordParams.monitorCount; i++) {
+        int displayId = _recordParams.monitorInfo[i].displayId;
+
+        // A display mid-reconfiguration can report empty bounds — retry later
+        CGRect bounds = CGDisplayBounds((CGDirectDisplayID)displayId);
+        if ((int)bounds.size.width == 0 || (int)bounds.size.height == 0) {
+            incomplete = true;
+            continue;
+        }
+
+        if (_inputHandler.AddDisplayLayout(_recordParams.monitorInfo[i].left, _recordParams.monitorInfo[i].top,
+                                           GetMonitorRecordWidth(i), GetMonitorRecordHeight(i),
+                                           (int)bounds.origin.x, (int)bounds.origin.y,
+                                           (int)bounds.size.width, (int)bounds.size.height,
+                                           displayId) == false) {
+            incomplete = true;
+        }
+    }
+
+    if (incomplete == true) {
+        // Re-arm the flag so the next input event retries the rebuild
+        _inputLayoutDirty.store(true, std::memory_order_release);
+    }
 }
 
 void ScreenRecorderManager::HandleCommand(xipc_t* client, xstream_t* cmd) {
     if (cmd == NULL) return;
-    
+
     int packetType = xstream_readInt32(cmd);
     switch (packetType) {
         case OSXRDP_PACKETTYPE_REQ_SCREEN: {
             _client = client;
             bool re = StartRecord(cmd);
-            
+
             NSLog(@"[ScreenRecorderManager::HandleCommand] start record. result %d", re);
 
             xstream* result = xstream_create(32);
@@ -462,24 +661,59 @@ void ScreenRecorderManager::HandleCommand(xipc_t* client, xstream_t* cmd) {
                 xstream_writeInt32(result, OSXRDP_CMDTYPE_SCREEN);
                 xstream_writeInt32(result, OSXRDP_PACKETTYPE_REP_SCREEN);
                 xstream_writeInt32(result, re ? 1 : 0);
-                
+
                 int rawBufferLen = 0;
                 const void* rawBuffer = xstream_get_raw_buffer(result, &rawBufferLen);
-                
+
                 xipc_send_data(client, rawBuffer, rawBufferLen);
-                
+
                 xstream_free(result);
             }
-            
+
+            break;
+        }
+        case OSXRDP_PACKETTYPE_REQ_RESIZE: {
+            _client = client;
+            bool re = ResizeRecord(cmd);
+
+            NSLog(@"[ScreenRecorderManager::HandleCommand] resize record. result %d", re);
+
+            xstream* result = xstream_create(32);
+            if (result != NULL) {
+                xstream_writeInt32(result, OSXRDP_CMDTYPE_SCREEN);
+                xstream_writeInt32(result, OSXRDP_PACKETTYPE_REP_RESIZE);
+                xstream_writeInt32(result, re ? 1 : 0);
+
+                int rawBufferLen = 0;
+                const void* rawBuffer = xstream_get_raw_buffer(result, &rawBufferLen);
+
+                xipc_send_data(client, rawBuffer, rawBufferLen);
+
+                xstream_free(result);
+            }
+
             break;
         }
         case OSXRDP_PACKETTYPE_REQ_SCREENOFF: {
             NSLog(@"[ScreenRecorderManager::HandleCommand] stop record");
-            
+
             Stop();
             break;
         }
+        case OSXRDP_PACKETTYPE_REQ_FULLFRAME: {
+            _client = client;
+
+            // RFX slots are dirty-only, so synthesize a full frame from the
+            // canonical buffer without waiting for a new capture. No reply.
+            bool re = PushRFXFullFrame();
+
+            NSLog(@"[ScreenRecorderManager::HandleCommand] full frame request. result %d", re);
+            break;
+        }
         case OSXRDP_PACKETTYPE_MOUSEEVT: {
+            // Refresh the input mapping on this (IPC) thread before handling the event
+            RefreshInputDisplayLayoutIfNeeded();
+
             _inputHandler.HandleMousseInputEvent(cmd);
 
             if (_cursorShm != NULL && _cursorShm->mem != NULL) {
@@ -488,6 +722,9 @@ void ScreenRecorderManager::HandleCommand(xipc_t* client, xstream_t* cmd) {
             break;
         }
         case OSXRDP_PACKETTYPE_KEYBOARDEVT: {
+            // Refresh the input mapping on this (IPC) thread before handling the event
+            RefreshInputDisplayLayoutIfNeeded();
+
             _inputHandler.HandleKeyboardInputEvent(cmd);
             break;
         }
@@ -499,11 +736,11 @@ void ScreenRecorderManager::SendDisconnectMsgToClient() {
         int cmdType;
         int packetType;
     };
-    
+
     // 가상 모니터를 먼저 파괴 (todo : 정확한 정리 타이밍을 다시 정하기)
     // 2개 이상의 클라이언트가 겹치면 충돌나서 원본 물리 화면이 안나오는 경우가 발생.
     //_virtualMonitor.Destroy();
-    
+
     struct stop_msg msg = { OSXRDP_CMDTYPE_MSGFROMAGENT, OSXRDP_PACKETTYPE_TERMINATE };
     if (_client != NULL) {
         xipc_send_data(_client, &msg, sizeof(msg));
@@ -606,40 +843,40 @@ bool ScreenRecorderManager::CopyNV12AlignedFrame(void* imageBufferRef, char* scr
     if (imageBufferRef == NULL || screenrecord_data == NULL || widthOut == NULL || heightOut == NULL) {
         return false;
     }
-    
+
     CVImageBufferRef imageBuffer = (CVImageBufferRef)imageBufferRef;
     size_t width = CVPixelBufferGetWidth(imageBuffer);
     size_t height = CVPixelBufferGetHeight(imageBuffer);
     if (width == 0 || height == 0) {
         return false;
     }
-    
+
     uint8_t* ySrcBase = (uint8_t*)CVPixelBufferGetBaseAddressOfPlane(imageBuffer, 0);
     uint8_t* uvSrcBase = (uint8_t*)CVPixelBufferGetBaseAddressOfPlane(imageBuffer, 1);
     if (ySrcBase == NULL || uvSrcBase == NULL) {
         return false;
     }
-    
+
     size_t yStride = CVPixelBufferGetBytesPerRowOfPlane(imageBuffer, 0);
     size_t uvStride = CVPixelBufferGetBytesPerRowOfPlane(imageBuffer, 1);
     const size_t uvHeight = height / 2;
-    
+
     size_t alignedImgSize = (yStride * height) + (uvStride * uvHeight) + sizeof(size_t); // stride value hack
-    
+
     memcpy(screenrecord_data, &alignedImgSize, sizeof(size_t));
-    
+
     // hack (to pass stride value to xrdp vtoolbox encorder)
     memcpy((uint8_t*)screenrecord_data + sizeof(size_t), &yStride, sizeof(size_t));
-    
+
     uint8_t* dstData = (uint8_t*)(screenrecord_data + (sizeof(size_t) * 2));
     memcpy(dstData, ySrcBase, yStride * height);
-    
+
     uint8_t* dstUV = dstData + (yStride * height);
     memcpy(dstUV, uvSrcBase, uvStride * uvHeight);
 
     *widthOut = (int)width;
     *heightOut = (int)height;
-    
+
     return true;
 }
 
@@ -836,6 +1073,13 @@ void ScreenRecorderManager::HandleNV12PackedRecordData(void* pixelBuffer, const 
 
     HandleNV12PackedDirtyArea(pixelBuffer, slot, dirtyRects, dirtyRectsCnt, screenrecord_data);
     recorder->ApplyPendingDirty(displayIdx, slot);
+
+    // Frames are self-contained, so a requested full repaint only needs dirtyCount = 0
+    int wantFull = atomic_exchange_explicit(&recordInfo->consumer_request_full, 0, memory_order_acquire);
+    if (wantFull != 0) {
+        slot->dirtyCount = 0;
+    }
+
     recorder->CommitFrameSlot(recordInfo, writePos, displayIdx);
     recorder->ResetPendingDirty(displayIdx);
 }
@@ -857,6 +1101,13 @@ void ScreenRecorderManager::HandleNV12AlignedRecordData(void* pixelBuffer, const
 
     HandleNV12AlignedDirtyArea(pixelBuffer, slot, dirtyRects, dirtyRectsCnt, screenrecord_data);
     recorder->ApplyPendingDirty(displayIdx, slot);
+
+    // Frames are self-contained, so a requested full repaint only needs dirtyCount = 0
+    int wantFull = atomic_exchange_explicit(&recordInfo->consumer_request_full, 0, memory_order_acquire);
+    if (wantFull != 0) {
+        slot->dirtyCount = 0;
+    }
+
     recorder->CommitFrameSlot(recordInfo, writePos, displayIdx);
     recorder->ResetPendingDirty(displayIdx);
 }
@@ -898,6 +1149,13 @@ void ScreenRecorderManager::HandleBGRA32RecordData(void* pixelBuffer, const CGRe
 
     HandleBGRA32DirtyArea(pixelBuffer, slot, dirtyRects, dirtyRectsCnt, screenrecord_data);
     recorder->ApplyPendingDirty(displayIdx, slot);
+
+    // Frames are self-contained, so a requested full repaint only needs dirtyCount = 0
+    int wantFull = atomic_exchange_explicit(&recordInfo->consumer_request_full, 0, memory_order_acquire);
+    if (wantFull != 0) {
+        slot->dirtyCount = 0;
+    }
+
     recorder->CommitFrameSlot(recordInfo, writePos, displayIdx);
     recorder->ResetPendingDirty(displayIdx);
 }
@@ -906,6 +1164,10 @@ void ScreenRecorderManager::HandleRFXRecordData(void* pixelBuffer, const CGRect*
     if (pixelBuffer == NULL || userData == NULL) return;
 
     ScreenRecorderManager* recorder = (ScreenRecorderManager*)userData;
+
+    // The canonical buffer and the slot-fill path are shared with PushRFXFullFrame
+    // running on the IPC thread — never let them interleave
+    std::lock_guard<std::mutex> frameLock(recorder->_rfxFrameLock);
 
     screenrecord_shm_t* recordInfo = NULL;
     screenrecord_frame* slot = NULL;
@@ -977,6 +1239,17 @@ bool ScreenRecorderManager::HandleRFXDirtyArea(void* pixelBuffer, screenrecord_f
     const size_t tileRows  = _rfxTileRows;
     const size_t tileTotal = tileCols * tileRows;
     if (tileCols == 0 || tileRows == 0 || tileTotal == 0) {
+        return false;
+    }
+
+    // The slot must be able to hold a full-redraw frame (see CreateRecordShm sizing)
+    if (_recordShm[displayIdx] == NULL) {
+        return false;
+    }
+    const size_t slotCapacity = (size_t)((screenrecord_shm_t*)_recordShm[displayIdx]->mem)->screenrecord_data_size;
+    const size_t maxImgSize = sizeof(size_t) + sizeof(int)
+                            + tileTotal * (sizeof(int) + (size_t)OSXRDP_RFX_TILE_BYTES);
+    if (maxImgSize > slotCapacity) {
         return false;
     }
 
@@ -1108,7 +1381,90 @@ bool ScreenRecorderManager::HandleRFXDirtyArea(void* pixelBuffer, screenrecord_f
     }
 
     if (mask != stackMask) free(mask);
-    
+
+    return true;
+}
+
+bool ScreenRecorderManager::PushRFXFullFrame() {
+    if (_recorderCnt == 0) {
+        return false;
+    }
+
+    if (_recordParams.recordFormat != OSXRDP_RECORDFORMAT_RFX) {
+        return false;
+    }
+
+    // Never interleave with a capture callback writing the canonical buffer/slots
+    std::lock_guard<std::mutex> frameLock(_rfxFrameLock);
+
+    if (_rfxCanonical == NULL) {
+        return false;
+    }
+
+    // Canonical is stale/incomplete — the next real capture frame will deliver
+    // the full redraw instead
+    if (_rfxFullRedrawRequired == true) {
+        return false;
+    }
+
+    // RFX always records a single monitor (see ParseStartRecordParams forceSingleMonitor)
+    if (_rfxCanonicalWidth != GetMonitorRecordWidth(0) || _rfxCanonicalHeight != GetMonitorRecordHeight(0)) {
+        return false;
+    }
+
+    const size_t tileCols  = _rfxTileCols;
+    const size_t tileRows  = _rfxTileRows;
+    const size_t tileTotal = tileCols * tileRows;
+    if (tileTotal == 0) {
+        return false;
+    }
+
+    // Same display index the RFX capture path receives (see StartRecorders)
+    const int displayIdx = _recordParams.monitorInfo[0].outputIndex;
+
+    screenrecord_shm_t* recordInfo = NULL;
+    screenrecord_frame* slot = NULL;
+    char* screenrecord_data = NULL;
+    unsigned int writePos = 0;
+    if (AcquireFrameSlot(&recordInfo, &slot, &screenrecord_data, &writePos, displayIdx) == false) {
+        // Frames are in flight — the consumer_request_full flag path will service it
+        return false;
+    }
+
+    // The slot must be able to hold a full-redraw frame (see CreateRecordShm sizing)
+    const size_t fullFrameSize = sizeof(size_t) + sizeof(int)
+                               + tileTotal * (sizeof(int) + (size_t)OSXRDP_RFX_TILE_BYTES);
+    if (fullFrameSize > (size_t)recordInfo->screenrecord_data_size) {
+        return false;
+    }
+
+    // This frame IS the requested full redraw, so the next capture frame does not
+    // need to redo it
+    atomic_exchange_explicit(&recordInfo->consumer_request_full, 0, memory_order_acquire);
+
+    // layout: [size_t imgSize][int tileCount][int indices[tileCount]][uint8 tileData[tileCount*16384]]
+    int* slotCountPtr = (int*)(screenrecord_data + sizeof(size_t));
+    int* slotIndices  = (int*)(screenrecord_data + sizeof(size_t) + sizeof(int));
+
+    *slotCountPtr = (int)tileTotal;
+    for (size_t i = 0; i < tileTotal; ++i) {
+        slotIndices[i] = (int)i;
+    }
+
+    // The canonical buffer already stores tiles row-major in the slot tile format
+    // (16384-byte YUV444 planar tiles), so a full frame is a straight copy
+    uint8_t* slotTileData = (uint8_t*)(slotIndices + tileTotal);
+    memcpy(slotTileData, _rfxCanonical, tileTotal * OSXRDP_RFX_TILE_BYTES);
+
+    const size_t imgSize = sizeof(int)
+                         + sizeof(int) * tileTotal
+                         + tileTotal * OSXRDP_RFX_TILE_BYTES;
+    memcpy(screenrecord_data, &imgSize, sizeof(size_t));
+
+    slot->dirtyCount = 0; // full redraw
+
+    CommitFrameSlot(recordInfo, writePos, displayIdx);
+
     return true;
 }
 
@@ -1138,7 +1494,7 @@ bool ScreenRecorderManager::EnsureRFXCanonical(int width, int height) {
     _rfxTileCols           = tileCols;
     _rfxTileRows           = tileRows;
     _rfxFullRedrawRequired = true;
-    
+
     memset(_rfxCanonical, 0, size);
     for (size_t ty = 0; ty < tileRows; ++ty) {
         const int top = (int)ty * 64;

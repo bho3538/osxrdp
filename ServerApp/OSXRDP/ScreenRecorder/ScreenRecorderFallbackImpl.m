@@ -1,5 +1,6 @@
 #import "ScreenRecorderFallbackImpl.h"
 #include "osxrdp/packet.h"
+#include <stdatomic.h>
 
 @implementation ScreenRecorderFallbackImpl {
     CGDisplayStreamRef _displayStream;
@@ -10,6 +11,9 @@
     void* _recordCbUserData;
     void* _recordCmdCbUserData;
     int _displayIdx;
+    // Set while an intentional stop is in progress (e.g. dynamic resize) so the
+    // final Stopped notification is not reported as an unexpected stop
+    atomic_bool _stopRequested;
 }
 
 - (instancetype)init {
@@ -22,6 +26,7 @@
         _recordCbUserData = NULL;
         _recordCmdCb = NULL;
         _recordCmdCbUserData = NULL;
+        atomic_store(&_stopRequested, false);
     }
     return self;
 }
@@ -121,7 +126,8 @@
 
 - (BOOL)stop {
     if (_displayStream == NULL) return YES;
-    
+
+    atomic_store(&_stopRequested, true);
     CGDisplayStreamStop(_displayStream);
     
     if (_recordQue) {
@@ -160,6 +166,9 @@
 }
 
 - (void)processStreamStopped {
+    // An intentional stop delivers a final Stopped status; only unexpected stops are reported
+    if (atomic_load(&_stopRequested)) return;
+
     _recordCmdCb(1, _recordCmdCbUserData);
 }
 

@@ -23,6 +23,7 @@ inline void AddWaitObject(void* read_objs, int* rcount, int fd) {
 
 ConnectionManager::ConnectionManager() :
     _inited(false),
+    _resizePending(false),
     _sessionIpc(NULL),
     _agentIpc(NULL),
     _sessionId(0),
@@ -35,66 +36,66 @@ int ConnectionManager::Initialize() {
     assert(_inited == false);
     assert(_agentIpc == NULL);
     assert(_sessionIpc == NULL);
-    
+
     // 처음에는 무조건 세션 메니저에 연결
     if (_ConnectToSessionManager() == false) {
         // log
         return -1;
     }
-    
+
     _inited = true;
-    
+
     // log
-    
+
     return 0;
 }
 
 bool ConnectionManager::Connect(const mod* mod) {
     assert(mod != NULL);
-    
+
     if (mod == NULL) {
         // log
         return false;
     }
-    
+
     if (PaintManager::CheckRecordFormat(mod) == -1) {
         // log
         return false;
     }
-    
+
     size_t usernameLen = strlen(mod->username);
     if (usernameLen == 0 || usernameLen > 260) {
         // log
         return false;
     }
-    
+
     _mod = mod;
     _channelManager.Initialize(mod);
-    
+
     _command.SendSessionRequestMsg(_sessionIpc, mod->username, (int)usernameLen);
-    
+
     return true;
 }
 
 void ConnectionManager::Release() {
     if (_inited == false) return;
-    
+
     // close all ipc
     if (_agentIpc != NULL) {
         xipc_loop_once(_agentIpc);
         xipc_destroy(_agentIpc);
         _agentIpc = NULL;
     }
-    
+
     if (_sessionIpc != NULL) {
         xipc_loop_once(_sessionIpc);
         xipc_destroy(_sessionIpc);
         _sessionIpc = NULL;
     }
-    
+
     _paintManager.Release();
     _channelManager.Release();
-    
+
     _inited = false;
 }
 
@@ -111,35 +112,35 @@ void ConnectionManager::KeepAlive() {
             _agentIpc = NULL;
         }
     }
-    
+
     // 세션 ipc 와 연결된 경우
     if (_sessionIpc != NULL) {
         // 쌓인 메시지를 처리
         xipc_loop_once(_sessionIpc);
-        
+
         if (_sessionIpc->closed == 1) {
             // 파괴
             xipc_destroy(_sessionIpc);
             _sessionIpc = NULL;
-            
+
             // 세션 ipc 가 끊긴 경우 접속 종료 처리
             _statusManager.SetStopping();
-            
+
             return;
         }
     }
-    
+
     // 에이전트 연결이 끊긴 경우 (맨 처음 연결 init 제외)
     if (_agentIpc == NULL && _statusManager.CheckInitStatus() == false) {
-        
+
         _sessionId = -1;
-        
+
         // painter 와 커서 manager 는 재생성해야함 (agent 에 종속적)
         // 단, in-flight 프레임 ACK가 끝나기 전에는 공유메모리를 즉시 해제하지 않는다.
         if (_paintManager.TryReleaseForReconnect() == false) {
             return;
         }
-        
+
         // 마지막 시도가 락스크린일 경우 재접속
         if (_statusManager.CheckReconnection() == false) {
             // 그렇지 않은 경우 종료
@@ -171,7 +172,7 @@ void ConnectionManager::GetWaitObjects(void* read_objs, int* rcount) {
 
 void ConnectionManager::SendMouseInput(int inputType, short x, short y) {
     assert(_agentIpc != NULL);
-    
+
     _command.SendMouseInputMsg(_agentIpc, inputType, x, y);
 }
 
@@ -197,7 +198,7 @@ void ConnectionManager::Terminate() {
     _statusManager.SetStopping();
 }
 
-void ConnectionManager::Paint() {    
+void ConnectionManager::Paint() {
     _paintManager.Paint();
 }
 
@@ -212,7 +213,7 @@ void ConnectionManager::HandleChannelMsg(long param1, long param2, long param3, 
     int dataLen = (int)param2;
     const char* data = (const char*)param3;
     int totalLen = (int)param4;
-    
+
     // 유효한 (처리하는) 이벤트인지 확인
     int channel_msg_type = _channelManager.IsValidChannelMsg(channelId, channelFlags, data, dataLen, totalLen);
     if (channel_msg_type == OSXRDP_CHANNEL_INVALID) {
@@ -222,10 +223,57 @@ void ConnectionManager::HandleChannelMsg(long param1, long param2, long param3, 
     if (_agentIpc == NULL) {
         return;
     }
-    
+
     // 아직은 클립보드만 처리 (agent 로 전달)
     if (channel_msg_type == OSXRDP_CHANNEL_CLIPBOARD) {
         _command.SendClipboardMsg(_agentIpc, channelId, channelFlags, data, dataLen, totalLen);
+    }
+}
+
+bool ConnectionManager::RequestResize() {
+    if (_agentIpc == NULL || _mod == NULL) {
+        return false;
+    }
+
+    // Release the previous SHM immediately (xrdp has already destroyed the encoder/surface before the resize)
+    _paintManager.Release();
+
+    // Re-request screen recording with the new resolution
+    if (_mod->client_info.display_sizes.monitorCount == 0) {
+        _command.SendResizeMsg(_agentIpc, _mod->width, _mod->height, PaintManager::CheckRecordFormat(_mod), _mod->usevirtualmon, 0, 0);
+    }
+    else {
+        _command.SendResizeMsg(_agentIpc, _mod->width, _mod->height, PaintManager::CheckRecordFormat(_mod), _mod->usevirtualmon, _mod->client_info.display_sizes.monitorCount, (struct monitor_info*)_mod->client_info.display_sizes.minfo_wm);
+    }
+
+    _resizePending = true;
+
+    return true;
+}
+
+void ConnectionManager::RequestFullRepaint() {
+    _paintManager.RequestFullRepaint();
+
+    // RFX slots are dirty-only, so ask the agent to synthesize a full frame from
+    // its canonical buffer (self-contained formats were already handled above by
+    // re-submitting the last slot). Without this a fully static screen would stay
+    // blank because capture is change-driven and the SHM flag is only polled
+    // inside capture callbacks.
+    if (_agentIpc != NULL && _mod != NULL && PaintManager::CheckRecordFormat(_mod) == OSXRDP_RECORDFORMAT_RFX) {
+        _command.SendFullFrameRequestMsg(_agentIpc);
+    }
+}
+
+void ConnectionManager::_CompleteResizePending() {
+    if (_resizePending == false) {
+        return;
+    }
+
+    _resizePending = false;
+
+    // Notify xrdp that the resize is done (xrdp waits for this callback indefinitely)
+    if (_mod != NULL && _mod->server_monitor_resize_done != NULL) {
+        _mod->server_monitor_resize_done((struct mod*)_mod);
     }
 }
 
@@ -234,46 +282,51 @@ bool ConnectionManager::_ConnectToSessionManager() {
     if (ipc == NULL) {
         return false;
     }
-    
+
     if (xipc_connect_server(ipc, OSXRDP_SESSIONMANAGER_NAME) != 0) {
         xipc_destroy(ipc);
-        
+
         return false;
     }
-    
+
     // 상태 변경
     _statusManager.SetRequestSession();
-    
+
     _sessionIpc = ipc;
-    
+
     return true;
 }
 
 bool ConnectionManager::_ConnectToAgent(int sessionId, bool isLockScreen) {
     assert(sessionId > 0);
-    
+
     printf("Connect to agent %d %d\n", sessionId, isLockScreen);
-    
+
+    // A REQ_RESIZE in flight on the previous connection is lost with it — complete
+    // the resize here so xrdp is not left waiting, and so a REP_SCREEN failure on
+    // this fresh connection takes the normal termination path
+    _CompleteResizePending();
+
     // 상태 변경
     _statusManager.SetAgentConnecting(isLockScreen);
-    
+
     // session id 저장
     _sessionId = sessionId;
-    
+
     // agent 에 접속
     xipc_t* ipc = xipc_ctx_create(_OnReceivedAgentManagerMessage, this);
     if (ipc == NULL) {
         // log
         return false;
     }
-    
+
     // 상태에 맞는 agent 주소 찾기
     char server_name[512] = {0,};
     if (get_object_name(sessionId, OSXRDP_AGENT_NAME, server_name, sizeof(server_name), isLockScreen) == 0) {
         // log
         return false;
     }
-    
+
     // agent 에 연결
     // agent 가 늦게 뜰 수 있으므로 여러번 시도 (timeout을 둔다)
     bool connected = false;
@@ -282,25 +335,25 @@ bool ConnectionManager::_ConnectToAgent(int sessionId, bool isLockScreen) {
             connected = true;
             break;
         }
-        
+
         // 연결 시도 중 종료 요청이 이미 온 경우 (가능한가?)
         if (_statusManager.CheckNeedTerminate()) {
             connected = false;
             break;
         }
-      
+
         sleep(1);
     }
-    
+
     if (connected == false) {
         xipc_destroy(ipc);
-        
+
         return false;
     }
-    
+
     // 접속 완료 상태 갱신
     _statusManager.SetAgentConnected(isLockScreen);
-    
+
     // 화면 녹화 데이터 요청
     if (_mod->client_info.display_sizes.monitorCount == 0) {
         _command.SendRecordStartMsg(ipc, _mod->width, _mod->height, PaintManager::CheckRecordFormat(_mod), _mod->usevirtualmon, 0, 0);
@@ -308,27 +361,27 @@ bool ConnectionManager::_ConnectToAgent(int sessionId, bool isLockScreen) {
     else {
         _command.SendRecordStartMsg(ipc, _mod->width, _mod->height, PaintManager::CheckRecordFormat(_mod), _mod->usevirtualmon, _mod->client_info.display_sizes.monitorCount, (struct monitor_info*)_mod->client_info.display_sizes.minfo_wm);
     }
-    
-    
+
+
     // 클립보드 활성화
     _channelManager.SendClipboardServerInit();
-    
+
     _agentIpc = ipc;
 
     return true;
 }
 
 bool ConnectionManager::_PreparePaint() {
-    
+
     bool inLockscreen = _statusManager.CheckInLockscreen();
     if (_paintManager.Initialize(_mod, PaintManager::CheckRecordFormat(_mod), _sessionId, inLockscreen) == false) {
         // log
-        
+
         return false;
     }
-    
+
     _statusManager.SetAgentRecordStart(inLockscreen);
-    
+
     return true;
 }
 
@@ -338,7 +391,7 @@ void ConnectionManager::_HandleSessionMessage(int sessionId, int isLockScreen) {
         _statusManager.SetStopping();
         return;
     }
-    
+
     if (_ConnectToAgent(sessionId, isLockScreen) == false) {
         // log
         _statusManager.SetStopping();
@@ -350,27 +403,27 @@ int ConnectionManager::_OnReceivedSessionManagerMessage(xipc_t* t, xipc_t* clien
     assert(t != NULL);
     assert(data != NULL);
     assert(len > 0);
-    
+
     if (t == NULL) {
         return -1;
     }
-    
+
     if (data == NULL || len <= 0) {
         return -1;
     }
-    
+
     ConnectionManager* _this = (ConnectionManager*)t->user_data;
-    
+
     xstream_t* stream = xstream_create_for_read(data, len);
     int cmdType = xstream_readInt32(stream);
-    
+
     switch (cmdType) {
         case OSXRDP_SESSMAN_REPLY_SESSION: {
             int sessionId = xstream_readInt32(stream);
             int isLogined = xstream_readInt32(stream);
-                        
+
             _this->_HandleSessionMessage(sessionId, isLogined == 0 ? true : false);
-        
+
             break;
         }
         default:
@@ -378,7 +431,7 @@ int ConnectionManager::_OnReceivedSessionManagerMessage(xipc_t* t, xipc_t* clien
     }
 
     xstream_free(stream);
-    
+
     return 0;
 }
 
@@ -386,26 +439,26 @@ int ConnectionManager::_OnReceivedAgentManagerMessage(xipc_t* t, xipc_t* client,
     assert(t != NULL);
     assert(data != NULL);
     assert(len > 0);
-    
+
     if (t == NULL) {
         return -1;
     }
-    
+
     if (data == NULL || len <= 0) {
         return -1;
     }
-    
+
     ConnectionManager* _this = (ConnectionManager*)t->user_data;
-    
+
     xstream_t* stream = xstream_create_for_read(data, len);
     int cmdType = xstream_readInt32(stream);
-    
+
     switch (cmdType) {
         case OSXRDP_CMDTYPE_NEEDPAINT: {
             int displayIdx = xstream_readInt32(stream);
-            
+
             _this->_paintManager.PreparePaint(displayIdx);
-            
+
             break;
         }
         case OSXRDP_CMDTYPE_SCREEN: {
@@ -413,6 +466,29 @@ int ConnectionManager::_OnReceivedAgentManagerMessage(xipc_t* t, xipc_t* client,
             if (packetType == OSXRDP_PACKETTYPE_REP_SCREEN) {
                 int re = xstream_readInt32(stream);
                 if (re != 1 || _this->_PreparePaint() == false) {
+                    // While a resize is pending the SHM may be mid-recreation by the agent;
+                    // tolerate the failure here and let the upcoming REP_RESIZE decide
+                    if (_this->_resizePending == false) {
+                        // log
+                        _this->_statusManager.SetStopping();
+                    }
+                }
+
+                // Even if the agent restarted mid-resize and reconnected via REQ_SCREEN,
+                // complete the resize so xrdp does not wait for resize_done forever
+                _this->_CompleteResizePending();
+            }
+            else if (packetType == OSXRDP_PACKETTYPE_REP_RESIZE) {
+                int re = xstream_readInt32(stream);
+
+                // Reopen the recreated SHM and rebuild the painter
+                // (release first in case this overlapped with REP_SCREEN handling right after connecting)
+                _this->_paintManager.Release();
+                bool ok = (re == 1) && _this->_PreparePaint();
+
+                _this->_CompleteResizePending();
+
+                if (ok == false) {
                     // log
                     _this->_statusManager.SetStopping();
                 }
@@ -447,7 +523,7 @@ int ConnectionManager::_OnReceivedAgentManagerMessage(xipc_t* t, xipc_t* client,
         default:
             break;
     }
-    
+
     xstream_free(stream);
     return 0;
 }
