@@ -5,10 +5,12 @@
 #include "../../Utils/PermissionCheckUtils.h"
 
 #import "../PermissionSettingsWindow.h"
+#import "../../Settings/AdvancedSettings.h"
 
 @interface MainViewController ()
 
 @property (strong) PermissionSettingsWindow* permSettingsWindow;
+@property (strong) AdvancedSettings* advancedSettingsWindow;
 @property (strong) IBOutlet NSTextField* aboutLinkLabel;
 @property (strong) IBOutlet NSButton* startRemoteConnectionBtn;
 @property (strong) IBOutlet NSTextField* startupLabel;
@@ -46,6 +48,14 @@
     self.permSettingsWindow = [[PermissionSettingsWindow alloc] initWithWindowNibName:@"PermissionSettingsWindow"];
 
     NSWindow* settingsModalWindow = [self.permSettingsWindow window];
+    [self.view.window beginSheet:settingsModalWindow completionHandler:^(NSModalResponse returnCode) {
+    }];
+}
+
+- (IBAction)openAdvancedSettingsWindowBtnClicked:(id)sender {
+    self.advancedSettingsWindow = [[AdvancedSettings alloc] initWithWindowNibName:@"AdvancedSettings"];
+
+    NSWindow* settingsModalWindow = [self.advancedSettingsWindow window];
     [self.view.window beginSheet:settingsModalWindow completionHandler:^(NSModalResponse returnCode) {
     }];
 }

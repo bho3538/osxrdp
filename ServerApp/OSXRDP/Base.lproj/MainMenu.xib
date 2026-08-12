@@ -331,7 +331,7 @@
             <windowStyleMask key="styleMask" titled="YES" closable="YES" miniaturizable="YES" resizable="YES"/>
             <windowPositionMask key="initialPositionMask" leftStrut="YES" rightStrut="YES" topStrut="YES" bottomStrut="YES"/>
             <rect key="contentRect" x="335" y="390" width="521" height="306"/>
-            <rect key="screenRect" x="0.0" y="0.0" width="1855" height="968"/>
+            <rect key="screenRect" x="0.0" y="0.0" width="1512" height="948"/>
             <value key="minSize" type="size" width="521" height="306"/>
             <view key="contentView" id="EiT-Mj-1SZ">
                 <rect key="frame" x="0.0" y="0.0" width="521" height="306"/>
@@ -367,8 +367,28 @@
                                                 <action selector="openPermissionWindowBtnClicked:" target="c2a-Xj-7nZ" id="Fe9-8p-KXf"/>
                                             </connections>
                                         </button>
+                                        <textField focusRingType="none" horizontalHuggingPriority="251" verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="d4v-by-DFP" userLabel="AdvancedSettingsLabel">
+                                            <rect key="frame" x="15" y="182" width="202" height="16"/>
+                                            <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
+                                            <textFieldCell key="cell" lineBreakMode="clipping" title="Advanced Settings" id="a3s-F7-vfs">
+                                                <font key="font" usesAppearanceFont="YES"/>
+                                                <color key="textColor" name="labelColor" catalog="System" colorSpace="catalog"/>
+                                                <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>
+                                            </textFieldCell>
+                                        </textField>
+                                        <button verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="kHa-dd-XKL" userLabel="AdvancedSettingsBtn">
+                                            <rect key="frame" x="325" y="178" width="143" height="24"/>
+                                            <autoresizingMask key="autoresizingMask" flexibleMinX="YES" flexibleMinY="YES"/>
+                                            <buttonCell key="cell" type="push" title="Check" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="EOa-gu-bBl">
+                                                <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
+                                                <font key="font" metaFont="system"/>
+                                            </buttonCell>
+                                            <connections>
+                                                <action selector="openAdvancedSettingsWindowBtnClicked:" target="c2a-Xj-7nZ" id="eEy-gH-1QO"/>
+                                            </connections>
+                                        </button>
                                         <textField focusRingType="none" horizontalHuggingPriority="251" verticalHuggingPriority="750" fixedFrame="YES" translatesAutoresizingMaskIntoConstraints="NO" id="Umh-VF-aFj" userLabel="StartOnLogonLabel">
-                                            <rect key="frame" x="15" y="179" width="200" height="16"/>
+                                            <rect key="frame" x="15" y="143" width="200" height="16"/>
                                             <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
                                             <textFieldCell key="cell" lineBreakMode="clipping" title="Start on logon" id="m2c-d1-dAs">
                                                 <font key="font" metaFont="system"/>
@@ -397,7 +417,7 @@
                                             </textFieldCell>
                                         </textField>
                                         <switch horizontalHuggingPriority="750" verticalHuggingPriority="750" fixedFrame="YES" baseWritingDirection="leftToRight" alignment="left" translatesAutoresizingMaskIntoConstraints="NO" id="hT6-xE-TQj">
-                                            <rect key="frame" x="414" y="175" width="54" height="24"/>
+                                            <rect key="frame" x="414" y="139" width="54" height="24"/>
                                             <autoresizingMask key="autoresizingMask" flexibleMinX="YES" flexibleMinY="YES"/>
                                             <connections>
                                                 <action selector="onStartupChanged:" target="c2a-Xj-7nZ" id="rLh-cV-Rho"/>
