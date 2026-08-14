@@ -5,7 +5,7 @@
 #include "../../Utils/PermissionCheckUtils.h"
 
 #import "../PermissionSettingsWindow.h"
-#import "../../Settings/AdvancedSettings.h"
+#import "../AdvancedSettings.h"
 
 @interface MainViewController ()
 

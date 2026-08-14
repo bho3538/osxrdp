@@ -21,6 +21,13 @@
 "permission.button.refresh" = "Refresh";
 "permission.button.ok" = "OK";
 
+"advanced.window.title" = "Advanced Settings";
+"advanced.label.dynamic_resolution" = "Enable Dynamic resolution";
+"advanced.label.audio" = "Enable Audio";
+"advanced.button.save" = "Save";
+"advanced.help.dynamic_resolution" = "Automatically adjusts the screen resolution to match the remote client's window size.";
+"advanced.help.audio" = "Sends this Mac's audio output to the remote client.";
+
 "filecopy.window.title" = "Copying Files";
 "filecopy.button.cancel" = "Cancel";
 "filecopy.status.bytes" = "%llu of %llu bytes";

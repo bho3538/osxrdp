@@ -21,6 +21,13 @@
 "permission.button.refresh" = "새로 고침";
 "permission.button.ok" = "확인";
 
+"advanced.window.title" = "고급 설정";
+"advanced.label.dynamic_resolution" = "동적 해상도 사용";
+"advanced.label.audio" = "오디오 사용";
+"advanced.button.save" = "저장";
+"advanced.help.dynamic_resolution" = "원격 클라이언트의 창 크기에 맞춰 화면 해상도를 자동으로 조정합니다.";
+"advanced.help.audio" = "이 Mac의 오디오 출력을 원격 클라이언트로 전송합니다.";
+
 "filecopy.window.title" = "파일 복사 중";
 "filecopy.button.cancel" = "취소";
 "filecopy.status.bytes" = "%llu / %llu 바이트";
