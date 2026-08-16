@@ -13,6 +13,7 @@ static const int CB_CAPS_VERSION_2 = 2;
 static const int CB_USE_LONG_FORMAT_NAMES = 0x00000002;
 static const int CB_STREAM_FILECLIP_ENABLED = 0x00000004;
 static const int CB_FILECLIP_NO_FILE_PATHS = 0x00000008;
+static const int CB_CAN_LOCK_CLIPDATA = 0x00000010;
 
 ChannelManager::ChannelManager() :
     _inited(false),
@@ -52,7 +53,8 @@ void ChannelManager::SendClipboardServerInit() {
     if (caps != NULL) {
         int flags = CB_USE_LONG_FORMAT_NAMES |
                     CB_STREAM_FILECLIP_ENABLED |
-                    CB_FILECLIP_NO_FILE_PATHS;
+                    CB_FILECLIP_NO_FILE_PATHS |
+                    CB_CAN_LOCK_CLIPDATA;
 
         xstream_writeInt16(caps, CB_CLIP_CAPS);
         xstream_writeInt16(caps, 0);

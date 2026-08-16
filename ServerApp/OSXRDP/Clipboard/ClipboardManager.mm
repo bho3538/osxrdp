@@ -19,6 +19,8 @@ static const int CB_FORMAT_DATA_RESPONSE = 5;
 static const int CB_CLIP_CAPS = 7;
 static const int CB_FILECONTENTS_REQUEST = 8;
 static const int CB_FILECONTENTS_RESPONSE = 9;
+static const int CB_LOCK_CLIPDATA = 10;
+static const int CB_UNLOCK_CLIPDATA = 11;
 
 static const int CB_RESPONSE_OK = 0x0001;
 static const int CB_RESPONSE_FAIL = 0x0002;
@@ -63,6 +65,7 @@ static const int DROPEFFECT_COPY = 1;
 
 static const int CB_CAPSTYPE_GENERAL = 1;
 static const int CB_STREAM_FILECLIP_ENABLED = 0x00000004;
+static const int CB_CAN_LOCK_CLIPDATA = 0x00000010;
 
 static int ReadUInt16LE(const unsigned char* data) {
     return (int)((uint16_t)data[0] | ((uint16_t)data[1] << 8));
@@ -510,6 +513,7 @@ ClipboardManager::ClipboardManager()
 , _client(NULL)
 , _lastChangeCount(INVALID_CHANGE_COUNT)
 , _remoteFileClipEnabled(0)
+, _remoteCanLockClipData(0)
 , _localFileItems(NULL)
 , _remoteFileItems(NULL)
 , _remoteFileGroupFormatId(0)
@@ -520,6 +524,8 @@ ClipboardManager::ClipboardManager()
 , _fileCopyCancelled(0)
 , _fileCopyCurrentItemIndex(0)
 , _fileCopyStreamId(1)
+, _fileCopyClipDataId(0)
+, _nextClipDataId(1)
 , _fileCopyExpectedStreamId(0)
 , _fileCopyCurrentLindex(0)
 , _fileCopyCurrentOffset(0)
@@ -605,8 +611,15 @@ bool ClipboardManager::HasRemoteFiles() {
 void ClipboardManager::StartRemoteFileCopy() {
     pthread_mutex_lock(&_lock);
     bool canStart = _remoteFileClipboardReady != 0 && _fileCopyInProgress == 0 && _fileCopyChoosingFolder == 0;
+    xipc_t* client = _client;
+    bool canLock = _remoteCanLockClipData != 0 && client != NULL;
+    int clipDataId = 0;
     if (canStart) {
         _fileCopyChoosingFolder = 1;
+        if (canLock) {
+            clipDataId = _fileCopyClipDataId = _nextClipDataId;
+            _nextClipDataId = _nextClipDataId == 0x7FFFFFFF ? 1 : _nextClipDataId + 1;
+        }
     }
     bool busy = _fileCopyInProgress != 0 || _fileCopyChoosingFolder != 0;
     pthread_mutex_unlock(&_lock);
@@ -614,6 +627,10 @@ void ClipboardManager::StartRemoteFileCopy() {
     if (canStart == false) {
         ShowFileCopyAlert(NSLocalizedString(busy ? @"filecopy.alert.in_progress" : @"filecopy.alert.no_files", nil));
         return;
+    }
+
+    if (clipDataId != 0) {
+        SendClipboardDataId(client, CB_LOCK_CLIPDATA, clipDataId);
     }
 
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -628,6 +645,7 @@ void ClipboardManager::StartRemoteFileCopy() {
 
         NSModalResponse response = [panel runModal];
         if (response != NSModalResponseOK || [[panel URL] isFileURL] == NO) {
+            UnlockRemoteFileCopy();
             pthread_mutex_lock(&_lock);
             _fileCopyChoosingFolder = 0;
             pthread_mutex_unlock(&_lock);
@@ -699,6 +717,7 @@ void ClipboardManager::UpdateRemoteClipboardContext(xipc_t* client) {
     pthread_mutex_lock(&_lock);
     if (client != NULL && _client != client) {
         shouldSendInitialFormatList = 1;
+        _remoteCanLockClipData = 0;
     }
 
     _client = client;
@@ -840,7 +859,10 @@ void ClipboardManager::HandleCaps(xstream_t* clipStream, int msgLen) {
         if (type == CB_CAPSTYPE_GENERAL && len >= 12) {
             xstream_readInt32(clipStream);
             int flags = xstream_readInt32(clipStream);
+            pthread_mutex_lock(&_lock);
             _remoteFileClipEnabled = ((flags & CB_STREAM_FILECLIP_ENABLED) != 0) ? 1 : 0;
+            _remoteCanLockClipData = ((flags & CB_CAN_LOCK_CLIPDATA) != 0) ? 1 : 0;
+            pthread_mutex_unlock(&_lock);
             if (len > 12) {
                 xstream_readData(clipStream, len - 12);
             }
@@ -1552,22 +1574,42 @@ void ClipboardManager::SendDataResponseFailed(xipc_t* client) {
     xstream_free(clipStream);
 }
 
-void ClipboardManager::SendFileContentsRequest(xipc_t* client, int streamId, int lindex, int flags, uint64_t offset, int requested) {
-    xstream_t* clipStream = xstream_create(40);
+void ClipboardManager::SendClipboardDataId(xipc_t* client, int msgType, int clipDataId) {
+    xstream_t* clipStream = xstream_create(16);
+    if (clipStream == NULL) {
+        return;
+    }
+
+    xstream_writeInt16(clipStream, msgType);
+    xstream_writeInt16(clipStream, 0);
+    xstream_writeInt32(clipStream, 4);
+    xstream_writeInt32(clipStream, clipDataId);
+    xstream_writeInt32(clipStream, 0);
+
+    int bufferLen = 0;
+    SendChannelData(client, xstream_get_raw_buffer(clipStream, &bufferLen), bufferLen);
+    xstream_free(clipStream);
+}
+
+void ClipboardManager::SendFileContentsRequest(xipc_t* client, int streamId, int lindex, int flags, uint64_t offset, int requested, int clipDataId) {
+    int dataLen = clipDataId != 0 ? 28 : 24;
+    xstream_t* clipStream = xstream_create(dataLen + 12);
     if (clipStream == NULL) {
         return;
     }
 
     xstream_writeInt16(clipStream, CB_FILECONTENTS_REQUEST);
     xstream_writeInt16(clipStream, 0);
-    xstream_writeInt32(clipStream, 28);
+    xstream_writeInt32(clipStream, dataLen);
     xstream_writeInt32(clipStream, streamId);
     xstream_writeInt32(clipStream, lindex);
     xstream_writeInt32(clipStream, flags);
     xstream_writeInt32(clipStream, (int)(offset & 0xFFFFFFFF));
     xstream_writeInt32(clipStream, (int)((offset >> 32) & 0xFFFFFFFF));
     xstream_writeInt32(clipStream, requested);
-    xstream_writeInt32(clipStream, 0);
+    if (clipDataId != 0) {
+        xstream_writeInt32(clipStream, clipDataId);
+    }
     xstream_writeInt32(clipStream, 0);
 
     int bufferLen = 0;
@@ -1889,6 +1931,7 @@ bool ClipboardManager::ParseRemoteFileList(const void* data, int dataLen) {
 
 void ClipboardManager::BeginRemoteFileCopyToFolder(NSURL* folderUrl) {
     if (CheckWritableFolder(folderUrl) == false) {
+        UnlockRemoteFileCopy();
         pthread_mutex_lock(&_lock);
         _fileCopyChoosingFolder = 0;
         pthread_mutex_unlock(&_lock);
@@ -1897,6 +1940,7 @@ void ClipboardManager::BeginRemoteFileCopyToFolder(NSURL* folderUrl) {
     }
 
     if (PrepareRemoteFileDestinations(folderUrl) == false) {
+        UnlockRemoteFileCopy();
         pthread_mutex_lock(&_lock);
         _fileCopyChoosingFolder = 0;
         pthread_mutex_unlock(&_lock);
@@ -2021,6 +2065,7 @@ void ClipboardManager::RequestCurrentRemoteFileChunk() {
     int itemIndex = _fileCopyCurrentItemIndex;
     int lindex = _fileCopyCurrentLindex;
     uint64_t offset = _fileCopyCurrentOffset;
+    int clipDataId = _fileCopyClipDataId;
     int streamId = _fileCopyStreamId++;
     _fileCopyExpectedStreamId = streamId;
     uint64_t fileSize = 0;
@@ -2036,7 +2081,7 @@ void ClipboardManager::RequestCurrentRemoteFileChunk() {
 
     uint64_t remaining = fileSize - offset;
     int requested = remaining > REMOTE_FILE_COPY_CHUNK_SIZE ? REMOTE_FILE_COPY_CHUNK_SIZE : (int)remaining;
-    SendFileContentsRequest(client, streamId, lindex, FILECONTENTS_RANGE, offset, requested);
+    SendFileContentsRequest(client, streamId, lindex, FILECONTENTS_RANGE, offset, requested, clipDataId);
 }
 
 void ClipboardManager::HandleFileContentsResponse(xstream_t* clipStream, int msgFlags, int msgLen) {
@@ -2106,6 +2151,7 @@ void ClipboardManager::HandleFileContentsResponse(xstream_t* clipStream, int msg
 }
 
 void ClipboardManager::FinishRemoteFileCopy(bool success) {
+    UnlockRemoteFileCopy();
     pthread_mutex_lock(&_lock);
     bool cancelled = _fileCopyCancelled != 0;
     NSFileHandle* handle = FileCopyCurrentHandle(_fileCopyCurrentHandle);
@@ -2177,6 +2223,18 @@ void ClipboardManager::CancelRemoteFileCopy() {
     _fileCopyCancelled = 1;
     pthread_mutex_unlock(&_lock);
     FinishRemoteFileCopy(false);
+}
+
+void ClipboardManager::UnlockRemoteFileCopy() {
+    pthread_mutex_lock(&_lock);
+    xipc_t* client = _client;
+    int clipDataId = _fileCopyClipDataId;
+    _fileCopyClipDataId = 0;
+    pthread_mutex_unlock(&_lock);
+
+    if (clipDataId != 0) {
+        SendClipboardDataId(client, CB_UNLOCK_CLIPDATA, clipDataId);
+    }
 }
 
 bool ClipboardManager::PrepareRemoteFileDestinations(NSURL* folderUrl) {
