@@ -266,7 +266,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 33X7M69J4B;
 				ENABLE_HARDENED_RUNTIME = YES;
-				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../../osxrdp_private/extern_lib/zlog/lib";
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../extern_lib/zlog/lib";
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
@@ -286,7 +286,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 33X7M69J4B;
 				ENABLE_HARDENED_RUNTIME = YES;
-				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../../osxrdp_private/extern_lib/zlog/lib";
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/../extern_lib/zlog/lib";
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
 				OTHER_LDFLAGS = (
 					"$(inherited)",

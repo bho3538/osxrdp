@@ -46,6 +46,7 @@ private:
     xipc_t* _client;
     int _lastChangeCount;
     int _remoteFileClipEnabled;
+    int _remoteCanLockClipData;
     void* _localFileItems;
     void* _remoteFileItems;
     int _remoteFileGroupFormatId;
@@ -57,6 +58,8 @@ private:
     int _fileCopyCancelled;
     int _fileCopyCurrentItemIndex;
     int _fileCopyStreamId;
+    int _fileCopyClipDataId;
+    int _nextClipDataId;
     int _fileCopyExpectedStreamId;
     int _fileCopyCurrentLindex;
     uint64_t _fileCopyCurrentOffset;
@@ -99,7 +102,8 @@ private:
     void SendDataResponse(xipc_t* client, const void* data, int dataLen);
     void SendDataResponseText(xipc_t* client, const char* utf8Text, int utf8Len, int formatId);
     void SendDataResponseFailed(xipc_t* client);
-    void SendFileContentsRequest(xipc_t* client, int streamId, int lindex, int flags, uint64_t offset, int requested);
+    void SendClipboardDataId(xipc_t* client, int msgType, int clipDataId);
+    void SendFileContentsRequest(xipc_t* client, int streamId, int lindex, int flags, uint64_t offset, int requested, int clipDataId);
     void SendFileContentsResponse(xipc_t* client, int streamId, const void* data, int dataLen);
     void SendFileContentsResponseFailed(xipc_t* client, int streamId);
     void SendChannelData(xipc_t* client, const void* data, int dataLen);
@@ -122,6 +126,7 @@ private:
     void RequestCurrentRemoteFileChunk();
     void FinishRemoteFileCopy(bool success);
     void CancelRemoteFileCopy();
+    void UnlockRemoteFileCopy();
     bool PrepareRemoteFileDestinations(NSURL* folderUrl);
     bool CheckWritableFolder(NSURL* folderUrl);
     void ShowFileCopyAlert(NSString* message);
