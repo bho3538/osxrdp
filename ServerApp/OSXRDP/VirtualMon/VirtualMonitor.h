@@ -14,6 +14,7 @@ struct VIRTUALMONITOR_INFO {
     int is_retina;
     int is_primary;
     CGVirtualDisplay* virtualDisplay;
+    int refresh_rate;
 };
 
 class VirtualMonitor {
@@ -46,6 +47,11 @@ public:
         return (int)_virtualDisplayInfo[index].virtualDisplay.displayID;
     }
     
+    int GetDisplayRefreshRate(int index) {
+        if (index >= _virtualDisplayInfoCnt) return 30;
+        return (int)_virtualDisplayInfo[index].refresh_rate;
+    }
+    
     void HoldDisplaySleepAssertion();
     void ReleaseDisplaySleepAssertion();
     
@@ -72,6 +78,7 @@ private:
     int GetPrimaryDisplayIndex();
     bool IsRightPrimaryDisplay();
     bool IsRightDisplayLayout();
+    int CalcRefreshRate(int width, int height);
 
     int SetResolution(int index);
     bool IsRightResolution(int index);

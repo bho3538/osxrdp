@@ -6,6 +6,14 @@
 
 static const int kDisplayReconfigSettleUsec = 500 * 1000;
 
+// 가상 모니터 해상도 목록
+//  이와 같이 구성을 채우지 않으면 macOS 가 이를 모니터가 아닌 다른 무언가로 인식하여 대화상자를 띄우는것 같음 (airplay 수신기?)
+//  따라서 기본 구성을 진짜 모니터처럼 넣고 xrdp 해상도를 마지막에 넣는다.
+static const int baseModes[][2] = {
+    { 3840, 2160 }, { 2560, 1440 }, { 1920, 1080 }, { 1600, 900 }, { 1366, 768 }, { 1280, 720 },
+    { 2560, 1600 }, { 1920, 1200 }, { 1680, 1050 }, { 1440, 900 }, { 1280, 800 }
+};
+
 VirtualMonitor::VirtualMonitor() :
     _virtualDisplayInfoCnt(0),
     _init(false),
@@ -26,82 +34,84 @@ VirtualMonitor::~VirtualMonitor() {
 }
 
 bool VirtualMonitor::Create(int width, int height, int left, int top, int index, bool isPrimary) {
-
     if (_virtualDisplayInfoCnt >= 16) return false;
 
     HoldDisplaySleepAssertion();
     WakeupDisplay();
-    
+
+    // retina 여부 판단
+    int scale = ((width > 3440) || (width > 2300 && height > 1500)) == true ? 2 : 1;
+    int refreshRate = CalcRefreshRate(width, height);
+
     // 가상 디스플레이를 생성
     CGVirtualDisplayDescriptor* desc = [[CGVirtualDisplayDescriptor alloc] init];
     if (desc == nil) return false;
-    
+
     // 가상 디스플레이의 기본 속성
     desc.queue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0);
     desc.name = @"OSXRDP Virtual Display";
     desc.maxPixelsWide = width;
     desc.maxPixelsHigh = height;
-    desc.sizeInMillimeters = CGSizeMake(width * 25.4 / 96,
-                                        height * 25.4 / 96);
-    
+    desc.sizeInMillimeters = CGSizeMake((double)(width / scale) * 25.4 / 96.0,
+                                        (double)(height / scale) * 25.4 / 96.0);
     desc.productID = 0x5969 + index;
     desc.vendorID = 0x1207;
     desc.serialNum = 0x0007 + index;
-    
-    CGVirtualDisplayMode* mode = [[CGVirtualDisplayMode alloc] initWithWidth:width height:height refreshRate:60];
-    if (mode == nil) return false;
-    
-    CGVirtualDisplayMode* retinaMode = [[CGVirtualDisplayMode alloc] initWithWidth:width / 2 height:height / 2 refreshRate:60];
-    if (retinaMode == nil) return false;
-    
+
     CGVirtualDisplaySettings* settings = [[CGVirtualDisplaySettings alloc] init];
-    if (settings == nil) return false;
-    
-    // 특정 해상도 이상일 경우 hidpi 모드 (hack?)
-    if (width > 2300 && height > 1500) {
-        settings.hiDPI = 1;
+    if (settings == nil)
+        return false;
+
+    settings.hiDPI = scale == 2 ? 1 : 0;
+
+    NSMutableArray* modes = [NSMutableArray array];
+
+    for (int i = 0; i < (int)(sizeof(baseModes) / sizeof(baseModes[0])); i++) {
+        int baseWidth = baseModes[i][0];
+        int baseHeight = baseModes[i][1];
+
+        // 원격 클라이언트 해상도와 중복되는 모드는 skip
+        if (baseWidth == width && baseHeight == height)
+            continue;
+
+        [modes addObject:[[CGVirtualDisplayMode alloc] initWithWidth:baseWidth height:baseHeight refreshRate:refreshRate]];
     }
-    else {
-        settings.hiDPI = 0;
+
+    [modes addObject:[[CGVirtualDisplayMode alloc] initWithWidth:width height:height refreshRate:refreshRate]];
+
+    if (scale == 2) {
+        [modes addObject:[[CGVirtualDisplayMode alloc] initWithWidth:width / 2 height:height / 2 refreshRate:refreshRate]];
     }
-    
-    // 이와 같이 구성을 채우지 않으면 macOS 가 이를 모니터가 아닌 다른 무언가로 인식하여 대화상자를 띄우는것 같음 (airplay 수신기?)
-    // 따라서 기본 구성을 진짜 모니터처럼 넣고 xrdp 해상도를 마지막에 넣는다.
-    settings.modes = @[
-        [[CGVirtualDisplayMode alloc] initWithWidth:3840 height:2160 refreshRate:60],
-        [[CGVirtualDisplayMode alloc] initWithWidth:2560 height:1440 refreshRate:60],
-        [[CGVirtualDisplayMode alloc] initWithWidth:1920 height:1080 refreshRate:60],
-        [[CGVirtualDisplayMode alloc] initWithWidth:1600 height:900 refreshRate:60],
-        [[CGVirtualDisplayMode alloc] initWithWidth:1366 height:768 refreshRate:60],
-        [[CGVirtualDisplayMode alloc] initWithWidth:1280 height:720 refreshRate:60],
-        [[CGVirtualDisplayMode alloc] initWithWidth:2560 height:1600 refreshRate:60],
-        [[CGVirtualDisplayMode alloc] initWithWidth:1920 height:1200 refreshRate:60],
-        [[CGVirtualDisplayMode alloc] initWithWidth:1680 height:1050 refreshRate:60],
-        [[CGVirtualDisplayMode alloc] initWithWidth:1440 height:900 refreshRate:60],
-        [[CGVirtualDisplayMode alloc] initWithWidth:1280 height:800 refreshRate:60],
-        mode,
-        retinaMode
-    ];
-    
+
+    settings.modes = modes;
+
     CGVirtualDisplay* virtualDisplay = [[CGVirtualDisplay alloc] initWithDescriptor:desc];
-    if (virtualDisplay == nil) return false;
-    
+    if (virtualDisplay == nil)
+        return false;
+
     // 가상 디스플레이 속성 적용
-    [virtualDisplay applySettings:settings];
-    
+    if ([virtualDisplay applySettings:settings] == NO) {
+        NSLog(@"[VirtualMonitor::Create] applySettings failed %dx%d@%dHz scale=%d", width, height, refreshRate, scale);
+
+        return false;
+    }
+
     WakeupDisplay();
-    
+
+    if (DisplayUtils::WaitDisplayOnlineState(virtualDisplay.displayID, true, 5000) == false) {
+        NSLog(@"[VirtualMonitor::Create] display is not online yet; continue waiting in monitor thread %dx%d@%dHz scale=%d", width, height, refreshRate, scale);
+    }
+
     _virtualDisplayInfo[_virtualDisplayInfoCnt].left = left;
     _virtualDisplayInfo[_virtualDisplayInfoCnt].top = top;
     _virtualDisplayInfo[_virtualDisplayInfoCnt].width = width;
     _virtualDisplayInfo[_virtualDisplayInfoCnt].height = height;
-    _virtualDisplayInfo[_virtualDisplayInfoCnt].is_retina = settings.hiDPI > 0 ? true : false;
+    _virtualDisplayInfo[_virtualDisplayInfoCnt].is_retina = scale == 2 ? true : false;
     _virtualDisplayInfo[_virtualDisplayInfoCnt].is_primary = isPrimary ? true : false;
     _virtualDisplayInfo[_virtualDisplayInfoCnt].virtualDisplay = virtualDisplay;
-
-    _virtualDisplayInfoCnt++;
+    _virtualDisplayInfo[_virtualDisplayInfoCnt].refresh_rate = refreshRate;
     
-    DisplayUtils::WaitDisplayOnlineState(virtualDisplay.displayID, true, 5000);
+    _virtualDisplayInfoCnt++;
 
     ApplyDisplayLayout();
 
@@ -725,4 +735,24 @@ void VirtualMonitor::WatchThreadPorcInternal() {
         NSLog(@"[VirtualMonitor::WatchThreadProc] virtual display has invalid layout. try change it");
         ApplyDisplayLayout();
     }
+}
+
+// EDID 의 픽셀 클럭 필드는 10kHz 단위 16비트라 macOS 는 655.35MHz 를 넘는 타이밍을 담지 못하는것으로 보인다. (추측, 여러 테스트를 기반)
+// 따라서 655.35 를 넘는 경우 주사율을 낮추는 식으로 우회한다.
+int VirtualMonitor::CalcRefreshRate(int width, int height) {
+    if (width <= 0 || height <= 0) return 45;
+    
+    int refreshRate = (int)(655350000.0 / ((double)width * (double)height * 1.35));
+
+    if (refreshRate > 60) refreshRate = 60;
+    else if (refreshRate < 1) refreshRate = 45;
+    
+    // hw 가속 인코딩이 아직 지원되지 않으므로 주사율을 좀 낮추어 cpu 점유율을 감소 (temp)
+    if (width >= 3000 && height >= 2000) {
+        if (refreshRate > 45) {
+            refreshRate = 45;
+        }
+    }
+
+    return refreshRate;
 }
