@@ -39,6 +39,7 @@ private:
             int is_primary;
             int displayId;
             int outputIndex;
+            int refresh_rate;
         } monitorInfo[16];
     };
     

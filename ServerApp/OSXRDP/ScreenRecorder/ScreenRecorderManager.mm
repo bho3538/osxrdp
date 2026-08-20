@@ -107,7 +107,8 @@ bool ScreenRecorderManager::StartRecord(xstream_t* cmd) {
         [impl initializeWithDisplayId:_recordParams.monitorInfo[i].displayId
                     DisplayIndex:outputIndex
                     RecordWidth:recordWidth RecordHeight:recordHeight
-                    RecordFramerate:_recordParams.framerate RecordFormat:_recordParams.recordFormat
+                    RecordFramerate: MIN(_recordParams.framerate, _recordParams.monitorInfo[i].refresh_rate)
+                    RecordFormat:_recordParams.recordFormat
                     RecordDataCallback:recordDataCb RecordDataCallbackUserData:this
                     RecordCmdCallback:HandleRecordCommand RecordCmdCallbackUserData:this];
 
@@ -241,6 +242,8 @@ bool ScreenRecorderManager::ResolveDisplayForRecorder() {
                                        (int)rect.size.width, (int)rect.size.height,
                                        _recordParams.monitorInfo[0].displayId);
         
+        _recordParams.monitorInfo[0].refresh_rate = 60;
+        
         VirtualMonitor::WakeupDisplay();
         
         return true;
@@ -270,6 +273,7 @@ bool ScreenRecorderManager::ResolveDisplayForRecorder() {
         _virtualMonitor.Create(monitorWidth, monitorHeight, _recordParams.monitorInfo[i].left, _recordParams.monitorInfo[i].top, _recordParams.monitorInfo[i].outputIndex, _recordParams.monitorInfo[i].is_primary != 0);
 
         _recordParams.monitorInfo[i].displayId = _virtualMonitor.GetDisplayId(i);
+        _recordParams.monitorInfo[i].refresh_rate = _virtualMonitor.GetDisplayRefreshRate(i);
 
         bool isRetina = _virtualMonitor.IsRetina(i);
         int displayWidth = GetDisplayPointSize(monitorWidth, isRetina);

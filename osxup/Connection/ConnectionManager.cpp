@@ -439,8 +439,12 @@ int ConnectionManager::_OnReceivedAgentManagerMessage(xipc_t* t, xipc_t* client,
         case OSXRDP_CMDTYPE_MSGFROMAGENT: {
             int packetType = xstream_readInt32(stream);
             if (packetType == OSXRDP_PACKETTYPE_TERMINATE) {
-                // log
-                _this->_statusManager.SetStopping();
+                if (_this->_statusManager.CheckReconnection()) {
+                    xipc_end_loop(t);
+                }
+                else {
+                    _this->_statusManager.SetStopping();
+                }
             }
             break;
         }
