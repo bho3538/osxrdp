@@ -16,18 +16,11 @@ bool StatusManager::CheckInitStatus() {
 }
 
 bool StatusManager::CheckCanPaint() {
-    // 명시적으로 출력 제한 요청이 온 경우 그리지 않음
-    if (_suppress == true) {
-        return false;
-    }
-    
-    // 잠금화면 혹은 메인 에이전트가 녹화를 시작한 경우 그리기
-    if (_status == OSXUPStatus::AGENT_RECORD || _status == OSXUPStatus::AGENT_RECORD_LOCKSCREEN) {
-        return true;
-    }
-    
-    // 나머지 상태에서는 아직 그리지 않음
-    return false;
+    return _suppress == false && CheckCanAcceptInput();
+}
+
+bool StatusManager::CheckCanAcceptInput() {
+    return _status == OSXUPStatus::AGENT_RECORD || _status == OSXUPStatus::AGENT_RECORD_LOCKSCREEN;
 }
 
 bool StatusManager::CheckNeedTerminate() {

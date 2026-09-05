@@ -23,6 +23,8 @@ public:
     
     // 화면 출력이 가능한 상태인지 확인
     bool CheckCanPaint();
+
+    bool CheckCanAcceptInput();
     
     // 연결을 종료해야 하는 상태인지 확인
     bool CheckNeedTerminate();

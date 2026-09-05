@@ -14,8 +14,9 @@ public:
     void SendRecordStartMsg(xipc_t* agentIpc, int width, int height, int recordFormat, int useVirtualmon, int monitorCount, struct monitor_info* monitorInfo);
     void SendRecordStopMsg(xipc_t* agentIpc);
     
-    void SendMouseInputMsg(xipc_t* agentIpc, int inputType, short x, short y);
+    void SendMouseInputMsg(xipc_t* agentIpc, int inputType, short x, short y, int delta);
     void SendKeyboardInputMsg(xipc_t* agentIpc, int inputType, int keycode, int flags);
+    void SendInputSyncMsg(xipc_t* agentIpc, int toggleFlags);
     
     void SendSessionRequestMsg(xipc_t* sessionIpc, const char* username, int usernameLen);
     void SendSessionReleaseMsg(xipc_t* sessionIpc, int sessionId);

@@ -60,19 +60,21 @@ void Command::SendRecordStopMsg(xipc_t* agentIpc) {
     xstream_free(stream);
 }
 
-void Command::SendMouseInputMsg(xipc_t* agentIpc, int inputType, short x, short y) {
+void Command::SendMouseInputMsg(xipc_t* agentIpc, int inputType, short x, short y, int delta) {
     struct {
         int cmdType;
         int packetType;
         int inputType;
         int x;
         int y;
+        int delta;
     } __attribute__((packed)) msg = {
         OSXRDP_CMDTYPE_SCREEN,
         OSXRDP_PACKETTYPE_MOUSEEVT,
         inputType,
         x,
-        y
+        y,
+        delta
     };
     
     xipc_send_data(agentIpc, (void*)&msg, sizeof(msg));
@@ -93,6 +95,20 @@ void Command::SendKeyboardInputMsg(xipc_t* agentIpc, int inputType, int keycode,
         flags
     };
     
+    xipc_send_data(agentIpc, (void*)&msg, sizeof(msg));
+}
+
+void Command::SendInputSyncMsg(xipc_t* agentIpc, int toggleFlags) {
+    struct {
+        int cmdType;
+        int packetType;
+        int toggleFlags;
+    } __attribute__((packed)) msg = {
+        OSXRDP_CMDTYPE_SCREEN,
+        OSXRDP_PACKETTYPE_INPUTSYNC,
+        toggleFlags
+    };
+
     xipc_send_data(agentIpc, (void*)&msg, sizeof(msg));
 }
 

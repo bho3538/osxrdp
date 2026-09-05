@@ -113,9 +113,13 @@ lib_mod_event(struct mod *mod, int msg, long param1, long param2,
         }
         case XRDP_KEYBOARD_UP:
         case XRDP_KEYBOARD_DOWN: {
-            if (mod->connectionManager->CanPaint() == false) return 0;
+            if (mod->connectionManager->CanAcceptInput() == false) return 0;
             mod->connectionManager->SendKeyboardInput(msg, (int)param3, (int)param4);
             
+            break;
+        }
+        case WM_KEYBRD_SYNC: {
+            mod->connectionManager->SendInputSync((int)param1);
             break;
         }
             
@@ -131,12 +135,15 @@ lib_mod_event(struct mod *mod, int msg, long param1, long param2,
         case XRDP_MOUSE_BBTNUP:
         case XRDP_MOUSE_BBTNDOWN:
         case XRDP_MOUSE_FBTNUP:
-        case XRDP_MOUSE_FBTNDOWN:{
-            if (mod->connectionManager->CanPaint() == false) return 0;
+        case XRDP_MOUSE_FBTNDOWN:
+        case WM_TOUCH_VSCROLL:
+        case WM_TOUCH_HSCROLL: {
+            if (mod->connectionManager->CanAcceptInput() == false) return 0;
             short x = (short)param1;
             short y = (short)param2;
-            
-            mod->connectionManager->SendMouseInput(msg, x, y);
+            int delta = (msg == WM_TOUCH_VSCROLL || msg == WM_TOUCH_HSCROLL) ? (int)param3 : 0;
+
+            mod->connectionManager->SendMouseInput(msg, x, y, delta);
             
             break;
         }
