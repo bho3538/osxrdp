@@ -22,6 +22,8 @@ static const CGEventFlags kDeviceRightOptionFlag = 0x00000040;
 static const CGEventFlags kDeviceRightControlFlag = 0x00002000;
 
 static const int kTS_SYNC_CAPS_LOCK = 0x0004;
+static const int kScrollGestureTimeoutMs = 160;
+static const int kMouseScrollPixels = 20;
 
 static const CGKeyCode keymap[] = {
     /* 0x00 */ kVK_ANSI_A,                      // Placeholder (No key)
@@ -139,12 +141,8 @@ InputHandler::InputHandler() :
     _forwardMouseEventNumber(0),
     _lastMouseButton(-1),
     _lastMouseClickTime(0),
-    _lastWheelEventTime(0),
-    _wheelEventBurstCount(0),
-    _fastWheelEventCount(0),
-    _lastWheelDirection(0),
-    _wheelSmoothedAmount(0.0f),
-    _lastWheelIsTrackpad(false)
+    _lastScrollEventTime(0),
+    _scrollIsContinuous(false)
 {
     memset(_displayLayouts, 0x00, sizeof(_displayLayouts));
     memset(_keyboardKeyStatus, 0x00, sizeof(_keyboardKeyStatus));
@@ -210,6 +208,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
     int key = xstream_readInt32(cmd);
     int clientX = xstream_readInt32(cmd);
     int clientY = xstream_readInt32(cmd);
+    int delta = xstream_readInt32(cmd);
     
     MapClientPointToDisplayPoint(clientX, clientY, &clientX, &clientY);
     
@@ -309,21 +308,34 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
             break;
         }
         case XRDP_MOUSE_WHEELUP : {
-            int amount = GetMouseWheelMoveAmount(1);
-            if (_lastWheelIsTrackpad) {
-                PostTrackpadScrollEvent(amount);
-                return;
-            }
-            PostScrollEvent(amount, false);
+            PostScrollEvent(kMouseScrollPixels, 0, false);
             return;
         }
         case XRDP_MOUSE_WHEELDOWN : {
-            int amount = GetMouseWheelMoveAmount(-1) * -1;
-            if (_lastWheelIsTrackpad) {
-                PostTrackpadScrollEvent(amount);
+            PostScrollEvent(-kMouseScrollPixels, 0, false);
+            return;
+        }
+        case WM_TOUCH_VSCROLL:
+        case WM_TOUCH_HSCROLL: {
+            if (delta == 0) {
                 return;
             }
-            PostScrollEvent(amount, false);
+
+            long long currentTime = GetCurrentEventTime();
+            if (_lastScrollEventTime == 0 ||
+                currentTime - _lastScrollEventTime > kScrollGestureTimeoutMs) {
+                _scrollIsContinuous = abs(delta) % 120 != 0;
+            }
+            _lastScrollEventTime = currentTime;
+
+            int amount = _scrollIsContinuous
+                ? delta : delta / 120 * kMouseScrollPixels;
+            if (key == WM_TOUCH_VSCROLL) {
+                PostScrollEvent(amount, 0, _scrollIsContinuous);
+            }
+            else {
+                PostScrollEvent(0, -amount, _scrollIsContinuous);
+            }
             return;
         }
         case XRDP_MOUSE_BBTNUP: {
@@ -604,191 +616,23 @@ long long InputHandler::GetCurrentEventTime() {
     return te.tv_sec * 1000LL + te.tv_usec / 1000;
 }
 
-int InputHandler::GetMouseWheelMoveAmount(int direction) {
-    const int kIdleGapMs = 180;
-    const int kFastWheelGapMs = 18;
-    const int kTrackpadGapMs = 45;
-    const int kMouseConfirmGapMs = 80;
-    const int kTrackpadMinAmount = 6;
-    const int kTrackpadMaxAmount = 32;
-    const int kMouseMinAmount = 1;
-    const int kMouseMaxAmount = 7;
-
-    if (direction > 0) {
-        direction = 1;
-    }
-    else if (direction < 0) {
-        direction = -1;
-    }
-    else {
-        direction = 0;
-    }
-    
-    long long currentTime = GetCurrentEventTime();
-    long long gap = 0;
-    bool newGesture = false;
-    
-    if (_lastWheelEventTime == 0) {
-        newGesture = true;
-    }
-    else {
-        gap = currentTime - _lastWheelEventTime;
-        if (gap > kIdleGapMs) {
-            newGesture = true;
-        }
-    }
-    
-    if (direction != 0 && _lastWheelDirection != 0 && direction != _lastWheelDirection) {
-        newGesture = true;
-    }
-    
-    if (newGesture) {
-        _wheelEventBurstCount = 0;
-        _fastWheelEventCount = 0;
-    }
-    else {
-        _wheelEventBurstCount++;
-    }
-    
-    // 아주 짧은 간격이 연속으로 들어올 때만 트랙패드로 본다.
-    if (!newGesture && gap <= kFastWheelGapMs) {
-        _fastWheelEventCount++;
-    }
-    else if (newGesture || gap >= kMouseConfirmGapMs) {
-        _fastWheelEventCount = 0;
+void InputHandler::PostScrollEvent(int vertical, int horizontal, bool continuous) {
+    if (vertical == 0 && horizontal == 0) {
+        return;
     }
 
-    if (_lastWheelEventTime != 0) {
-        if (_lastWheelIsTrackpad) {
-            if (gap >= kMouseConfirmGapMs) {
-                _lastWheelIsTrackpad = false;
-            }
-        }
-        else if (!newGesture && gap <= kTrackpadGapMs && _fastWheelEventCount >= 2) {
-            _lastWheelIsTrackpad = true;
-        }
-        else if (gap >= kMouseConfirmGapMs) {
-            _lastWheelIsTrackpad = false;
-        }
-    }
-    
-    int target = 0;
-    if (_lastWheelIsTrackpad) {
-        if (gap <= 14) {
-            target = 32;
-        }
-        else if (gap <= 24) {
-            target = 24;
-        }
-        else if (gap <= kTrackpadGapMs) {
-            target = 18;
-        }
-        else {
-            target = 14;
-        }
-        
-        if (newGesture) {
-            target = 12;
-        }
-        
-        if (_wheelEventBurstCount > 18 && target > 16) {
-            target -= 4;
-        }
-    }
-    else {
-        if (newGesture) {
-            target = 2;
-        }
-        else if (gap <= 40) {
-            target = 12;
-        }
-        else if (gap <= 60) {
-            target = 8;
-        }
-        else if (gap <= 90) {
-            target = 6;
-        }
-        else if (gap <= 130) {
-            target = 5;
-        }
-        else {
-            target = 3;
-        }
-    }
-    
-    if (newGesture) {
-        _wheelSmoothedAmount = (float)target;
-    }
-    else {
-        float alpha = _lastWheelIsTrackpad ? 0.35f : 0.65f;
-        _wheelSmoothedAmount = (_wheelSmoothedAmount * (1.0f - alpha)) + (((float)target) * alpha);
-    }
-    
-    int amount = (int)(_wheelSmoothedAmount + 0.5f);
-    if (_lastWheelIsTrackpad) {
-        if (amount < kTrackpadMinAmount) {
-            amount = kTrackpadMinAmount;
-        }
-        else if (amount > kTrackpadMaxAmount) {
-            amount = kTrackpadMaxAmount;
-        }
-    }
-    else {
-        if (amount < kMouseMinAmount) {
-            amount = kMouseMinAmount;
-        }
-        else if (amount > kMouseMaxAmount) {
-            amount = kMouseMaxAmount;
-        }
-    }
-    
-    _lastWheelEventTime = currentTime;
-    _lastWheelDirection = direction;
-    return amount;
-}
-
-void InputHandler::PostScrollEvent(int amount, bool continuous) {
-    CGScrollEventUnit unit = continuous ? kCGScrollEventUnitPixel : kCGScrollEventUnitLine;
-    CGEventRef ev = CGEventCreateScrollWheelEvent(_eventRef, unit, 1, amount, 0);
+    CGEventRef ev = CGEventCreateScrollWheelEvent(_eventRef, kCGScrollEventUnitPixel,
+                                                   2, vertical, horizontal);
     if (ev == NULL) {
         return;
     }
 
-    // 트랙패드 스타일의 스크롤 설정 (연속되는 이벤트의 경우)
-    if (continuous) {
-        CGEventSetIntegerValueField(ev, kCGScrollWheelEventIsContinuous, 1);
-    }
+    CGEventSetIntegerValueField(ev, kCGScrollWheelEventIsContinuous,
+                                continuous ? 1 : 0);
 
     CGEventSetFlags(ev, _keyboardModifierFlags);
     CGEventPost(kCGSessionEventTap, ev);
     CFRelease(ev);
-}
-
-void InputHandler::PostTrackpadScrollEvent(int amount) {
-    int absAmount = abs(amount);
-    if (absAmount <= 0) {
-        return;
-    }
-
-    int steps = 1;
-    if (absAmount > 14) {
-        steps = 3;
-    }
-    else if (absAmount > 8) {
-        steps = 2;
-    }
-
-    int base = absAmount / steps;
-    int remain = absAmount % steps;
-    int sign = (amount < 0) ? -1 : 1;
-
-    for (int i = 0; i < steps; i++) {
-        int part = base + ((i < remain) ? 1 : 0);
-        if (part <= 0) {
-            continue;
-        }
-        PostScrollEvent(part * sign, true);
-    }
 }
 
 CGKeyCode InputHandler::MapExtendedKey(int scancode) {

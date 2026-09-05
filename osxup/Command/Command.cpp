@@ -60,19 +60,21 @@ void Command::SendRecordStopMsg(xipc_t* agentIpc) {
     xstream_free(stream);
 }
 
-void Command::SendMouseInputMsg(xipc_t* agentIpc, int inputType, short x, short y) {
+void Command::SendMouseInputMsg(xipc_t* agentIpc, int inputType, short x, short y, int delta) {
     struct {
         int cmdType;
         int packetType;
         int inputType;
         int x;
         int y;
+        int delta;
     } __attribute__((packed)) msg = {
         OSXRDP_CMDTYPE_SCREEN,
         OSXRDP_PACKETTYPE_MOUSEEVT,
         inputType,
         x,
-        y
+        y,
+        delta
     };
     
     xipc_send_data(agentIpc, (void*)&msg, sizeof(msg));

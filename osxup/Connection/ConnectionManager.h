@@ -27,7 +27,7 @@ public:
     void GetWaitObjects(void* read_objs, int* rcount);
     
     // 마우스 입력 전달
-    void SendMouseInput(int inputType, short x, short y);
+    void SendMouseInput(int inputType, short x, short y, int delta);
     
     // 키보드 입력 전달
     void SendKeyboardInput(int inputType, int keycode, int flags);

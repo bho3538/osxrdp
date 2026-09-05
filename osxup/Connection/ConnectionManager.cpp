@@ -171,10 +171,10 @@ void ConnectionManager::GetWaitObjects(void* read_objs, int* rcount) {
     }
 }
 
-void ConnectionManager::SendMouseInput(int inputType, short x, short y) {
+void ConnectionManager::SendMouseInput(int inputType, short x, short y, int delta) {
     assert(_agentIpc != NULL);
     
-    _command.SendMouseInputMsg(_agentIpc, inputType, x, y);
+    _command.SendMouseInputMsg(_agentIpc, inputType, x, y, delta);
 }
 
 void ConnectionManager::SendKeyboardInput(int inputType, int keycode, int flags) {

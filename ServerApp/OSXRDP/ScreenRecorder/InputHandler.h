@@ -70,12 +70,8 @@ private:
     int _forwardMouseEventNumber;
     int _lastMouseButton;
     long long _lastMouseClickTime;
-    long long _lastWheelEventTime;
-    int _wheelEventBurstCount;
-    int _fastWheelEventCount;
-    int _lastWheelDirection;
-    float _wheelSmoothedAmount;
-    bool _lastWheelIsTrackpad;
+    long long _lastScrollEventTime;
+    bool _scrollIsContinuous;
     
     CGEventFlags _keyboardModifierFlags;
     bool _keyboardKeyStatus[128];
@@ -84,9 +80,7 @@ private:
     
     void HandleMouseDoubleClick(CGEventRef ev, bool mouseDown, int mouseX, int mouseY, int mouseButton);
     bool MapClientPointToDisplayPoint(int clientX, int clientY, int* outX, int* outY);
-    int GetMouseWheelMoveAmount(int direction);
-    void PostScrollEvent(int amount, bool continuous);
-    void PostTrackpadScrollEvent(int amount);
+    void PostScrollEvent(int vertical, int horizontal, bool continuous);
     
     void RestorePreviousMouseKeydownEvent();
     

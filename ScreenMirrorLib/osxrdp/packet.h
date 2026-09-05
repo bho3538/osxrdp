@@ -56,6 +56,11 @@
 #define XRDP_MOUSE_FBTNUP       117 // 마우스 앞으로가기키 (측면)
 #define XRDP_MOUSE_FBTNDOWN     118
 
+#ifndef WM_TOUCH_VSCROLL
+#define WM_TOUCH_VSCROLL        140
+#define WM_TOUCH_HSCROLL        141
+#endif
+
 #endif
 
 
