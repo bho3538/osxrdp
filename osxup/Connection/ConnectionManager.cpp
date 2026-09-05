@@ -26,7 +26,9 @@ ConnectionManager::ConnectionManager() :
     _sessionIpc(NULL),
     _agentIpc(NULL),
     _sessionId(0),
-    _mod(NULL)
+    _mod(NULL),
+    _pendingInputSync(false),
+    _pendingToggleFlags(0)
 {}
 
 ConnectionManager::~ConnectionManager() {}
@@ -181,8 +183,22 @@ void ConnectionManager::SendKeyboardInput(int inputType, int keycode, int flags)
     _command.SendKeyboardInputMsg(_agentIpc, inputType, keycode, flags);
 }
 
+void ConnectionManager::SendInputSync(int toggleFlags) {
+    _pendingInputSync = true;
+    _pendingToggleFlags = toggleFlags;
+
+    if (_agentIpc != NULL && CanAcceptInput()) {
+        _command.SendInputSyncMsg(_agentIpc, _pendingToggleFlags);
+        _pendingInputSync = false;
+    }
+}
+
 bool ConnectionManager::CanPaint() {
     return _statusManager.CheckCanPaint();
+}
+
+bool ConnectionManager::CanAcceptInput() {
+    return _statusManager.CheckCanAcceptInput();
 }
 
 bool ConnectionManager::NeedTerminate() {
@@ -328,6 +344,11 @@ bool ConnectionManager::_PreparePaint() {
     }
     
     _statusManager.SetAgentRecordStart(inLockscreen);
+
+    if (_pendingInputSync) {
+        _command.SendInputSyncMsg(_agentIpc, _pendingToggleFlags);
+        _pendingInputSync = false;
+    }
     
     return true;
 }

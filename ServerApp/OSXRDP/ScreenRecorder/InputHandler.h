@@ -15,6 +15,8 @@ public:
     
     void HandleMousseInputEvent(xstream_t* cmd);
     void HandleKeyboardInputEvent(xstream_t* cmd);
+    void HandleInputSyncEvent(xstream_t* cmd);
+    void ReleaseAllInputs();
     
 private:
     struct DISPLAY_LAYOUT {
@@ -68,7 +70,6 @@ private:
     int _forwardMouseEventNumber;
     int _lastMouseButton;
     long long _lastMouseClickTime;
-    long long _lastMouseInputEventTime;
     long long _lastWheelEventTime;
     int _wheelEventBurstCount;
     int _fastWheelEventCount;
@@ -77,6 +78,7 @@ private:
     bool _lastWheelIsTrackpad;
     
     CGEventFlags _keyboardModifierFlags;
+    bool _keyboardKeyStatus[128];
     
     CGEventSourceRef _eventRef;
     
@@ -100,6 +102,7 @@ private:
 
     CGKeyCode MapExtendedKey(int scancode);
     ModifierStateChange UpdateKeyboardModifierState(CGKeyCode key, bool isDown);
+    bool IsModifierKey(CGKeyCode key);
     
     void SwitchIME(bool keyDown);
 };

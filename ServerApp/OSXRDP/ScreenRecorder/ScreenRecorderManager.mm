@@ -419,6 +419,8 @@ void ScreenRecorderManager::DestroyCursorShm() {
 }
 
 void ScreenRecorderManager::Stop() {
+    _inputHandler.ReleaseAllInputs();
+
     // 화면 녹화를 먼저 정지
     for (int i = 0; i < _recorderCnt; i++) {
         id<IScreenRecorder> impl = (__bridge id<IScreenRecorder>)_recorder[i];
@@ -493,6 +495,10 @@ void ScreenRecorderManager::HandleCommand(xipc_t* client, xstream_t* cmd) {
         }
         case OSXRDP_PACKETTYPE_KEYBOARDEVT: {
             _inputHandler.HandleKeyboardInputEvent(cmd);
+            break;
+        }
+        case OSXRDP_PACKETTYPE_INPUTSYNC: {
+            _inputHandler.HandleInputSyncEvent(cmd);
             break;
         }
     }

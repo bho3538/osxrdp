@@ -31,9 +31,11 @@ public:
     
     // 키보드 입력 전달
     void SendKeyboardInput(int inputType, int keycode, int flags);
+    void SendInputSync(int toggleFlags);
     
     // 상태 조회
     bool CanPaint();
+    bool CanAcceptInput();
     bool NeedTerminate();
     void SetSuppress(bool suppress);
     
@@ -57,6 +59,8 @@ private:
     xipc_t* _agentIpc;
     int _sessionId;
     const mod* _mod;
+    bool _pendingInputSync;
+    int _pendingToggleFlags;
     
     bool _ConnectToSessionManager();
     bool _ConnectToAgent(int sessionId, bool isLockScreen);

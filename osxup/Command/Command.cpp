@@ -96,6 +96,20 @@ void Command::SendKeyboardInputMsg(xipc_t* agentIpc, int inputType, int keycode,
     xipc_send_data(agentIpc, (void*)&msg, sizeof(msg));
 }
 
+void Command::SendInputSyncMsg(xipc_t* agentIpc, int toggleFlags) {
+    struct {
+        int cmdType;
+        int packetType;
+        int toggleFlags;
+    } __attribute__((packed)) msg = {
+        OSXRDP_CMDTYPE_SCREEN,
+        OSXRDP_PACKETTYPE_INPUTSYNC,
+        toggleFlags
+    };
+
+    xipc_send_data(agentIpc, (void*)&msg, sizeof(msg));
+}
+
 void Command::SendSessionRequestMsg(xipc_t* sessionIpc, const char* username, int usernameLen) {
     assert(sessionIpc != NULL);
     assert(username != NULL);

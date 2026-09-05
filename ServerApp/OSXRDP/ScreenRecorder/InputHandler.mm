@@ -21,6 +21,8 @@ static const CGEventFlags kDeviceLeftOptionFlag = 0x00000020;
 static const CGEventFlags kDeviceRightOptionFlag = 0x00000040;
 static const CGEventFlags kDeviceRightControlFlag = 0x00002000;
 
+static const int kTS_SYNC_CAPS_LOCK = 0x0004;
+
 static const CGKeyCode keymap[] = {
     /* 0x00 */ kVK_ANSI_A,                      // Placeholder (No key)
     /* 0x01 */ kVK_Escape,                      // ESC
@@ -137,7 +139,6 @@ InputHandler::InputHandler() :
     _forwardMouseEventNumber(0),
     _lastMouseButton(-1),
     _lastMouseClickTime(0),
-    _lastMouseInputEventTime(0),
     _lastWheelEventTime(0),
     _wheelEventBurstCount(0),
     _fastWheelEventCount(0),
@@ -146,12 +147,15 @@ InputHandler::InputHandler() :
     _lastWheelIsTrackpad(false)
 {
     memset(_displayLayouts, 0x00, sizeof(_displayLayouts));
-    _eventRef = CGEventSourceCreate(kCGEventSourceStateCombinedSessionState);
+    memset(_keyboardKeyStatus, 0x00, sizeof(_keyboardKeyStatus));
+    _eventRef = CGEventSourceCreate(kCGEventSourceStatePrivate);
     
     _mouseKeyStatus.status = 0;
 }
 
 InputHandler::~InputHandler() {
+    ReleaseAllInputs();
+
     if (_eventRef != 0) {
         CFRelease(_eventRef);
         _eventRef = 0;
@@ -201,22 +205,11 @@ bool InputHandler::AddDisplayLayout(int clientLeft, int clientTop, int clientWid
 }
 
 void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
-    if (cmd == NULL) return;
+    if (cmd == NULL || _eventRef == 0) return;
         
     int key = xstream_readInt32(cmd);
     int clientX = xstream_readInt32(cmd);
     int clientY = xstream_readInt32(cmd);
-    long long currentTime = GetCurrentEventTime();
-    
-    // 최소화/복원 등으로 입력 간격이 크게 벌어지면 이전 클릭 상태를 버린다.
-    if (_lastMouseInputEventTime != 0 && currentTime - _lastMouseInputEventTime > 1500) {
-        RestorePreviousMouseKeydownEvent();
-        
-        _mouseClickCnt = 0;
-        _lastMouseButton = -1;
-        _lastMouseClickTime = 0;
-    }
-    _lastMouseInputEventTime = currentTime;
     
     MapClientPointToDisplayPoint(clientX, clientY, &clientX, &clientY);
     
@@ -373,13 +366,18 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
             return;
     }
     
+    if (ev == NULL) {
+        return;
+    }
+
+    CGEventSetFlags(ev, _keyboardModifierFlags);
     CGEventSetIntegerValueField(ev, kCGMouseEventNumber, mouseEventNumber);
     CGEventPost(kCGSessionEventTap, ev);
     CFRelease(ev);
 }
 
 void InputHandler::HandleKeyboardInputEvent(xstream_t* cmd) {
-    if (cmd == NULL) return;
+    if (cmd == NULL || _eventRef == 0) return;
     
     int inputType = xstream_readInt32(cmd);
     int keyCode = xstream_readInt32(cmd);
@@ -392,12 +390,16 @@ void InputHandler::HandleKeyboardInputEvent(xstream_t* cmd) {
     }
     else {
         // invalid keycode
-        if (keyCode > 89) {
+        if (keyCode < 0 || keyCode > 89) {
             return;
         }
         
         // convert xrdp key code to macOS keycode
         keyCode = keymap[keyCode];
+    }
+
+    if (keyCode >= 128) {
+        return;
     }
     
     
@@ -419,7 +421,12 @@ void InputHandler::HandleKeyboardInputEvent(xstream_t* cmd) {
     }
     
     CGEventRef ev = CGEventCreateKeyboardEvent(_eventRef, keyCode, keyDown);
+    if (ev == NULL) {
+        return;
+    }
+
     ModifierStateChange modifierState = UpdateKeyboardModifierState(keyCode, keyDown);
+    _keyboardKeyStatus[keyCode] = keyDown;
     if (modifierState == ModifierStateChanged) {
         CGEventSetType(ev, kCGEventFlagsChanged);
     }
@@ -439,6 +446,90 @@ void InputHandler::HandleKeyboardInputEvent(xstream_t* cmd) {
     
     CGEventPost(kCGSessionEventTap, ev);
     CFRelease(ev);
+}
+
+void InputHandler::HandleInputSyncEvent(xstream_t* cmd) {
+    if (cmd == NULL || _eventRef == 0) {
+        return;
+    }
+
+    int toggleFlags = xstream_readInt32(cmd);
+    ReleaseAllInputs();
+
+    if ((toggleFlags & kTS_SYNC_CAPS_LOCK) != 0) {
+        _keyboardModifierFlags |= kCGEventFlagMaskAlphaShift;
+        CGEventRef ev = CGEventCreateKeyboardEvent(_eventRef, kVK_CapsLock, true);
+        if (ev != NULL) {
+            CGEventSetType(ev, kCGEventFlagsChanged);
+            CGEventSetFlags(ev, _keyboardModifierFlags);
+            CGEventPost(kCGSessionEventTap, ev);
+            CFRelease(ev);
+        }
+    }
+}
+
+void InputHandler::ReleaseAllInputs() {
+    if (_eventRef == 0) {
+        memset(_keyboardKeyStatus, 0x00, sizeof(_keyboardKeyStatus));
+        _keyboardModifierFlags = 0;
+        _mouseKeyStatus.status = 0;
+        return;
+    }
+
+    RestorePreviousMouseKeydownEvent();
+
+    for (int key = 0; key < 128; key++) {
+        if (_keyboardKeyStatus[key] == false || IsModifierKey(key)) {
+            continue;
+        }
+
+        CGEventRef ev = CGEventCreateKeyboardEvent(_eventRef, key, false);
+        if (ev != NULL) {
+            CGEventSetFlags(ev, _keyboardModifierFlags);
+            CGEventPost(kCGSessionEventTap, ev);
+            CFRelease(ev);
+        }
+    }
+
+    const CGKeyCode modifierKeys[] = {
+        kVK_Shift, kVK_RightShift,
+        kVK_Control, kVK_RightControl,
+        kVK_Option, kVK_RightOption,
+        kVK_Command, kVK_RightCommand
+    };
+
+    for (CGKeyCode key : modifierKeys) {
+        if (_keyboardKeyStatus[key] == false) {
+            continue;
+        }
+
+        UpdateKeyboardModifierState(key, false);
+        CGEventRef ev = CGEventCreateKeyboardEvent(_eventRef, key, false);
+        if (ev != NULL) {
+            CGEventSetType(ev, kCGEventFlagsChanged);
+            CGEventSetFlags(ev, _keyboardModifierFlags);
+            CGEventPost(kCGSessionEventTap, ev);
+            CFRelease(ev);
+        }
+    }
+
+    // caps-lock key
+    if ((_keyboardModifierFlags & kCGEventFlagMaskAlphaShift) != 0) {
+        _keyboardModifierFlags &= ~kCGEventFlagMaskAlphaShift;
+        CGEventRef ev = CGEventCreateKeyboardEvent(_eventRef, kVK_CapsLock, false);
+        if (ev != NULL) {
+            CGEventSetType(ev, kCGEventFlagsChanged);
+            CGEventSetFlags(ev, _keyboardModifierFlags);
+            CGEventPost(kCGSessionEventTap, ev);
+            CFRelease(ev);
+        }
+    }
+
+    memset(_keyboardKeyStatus, 0x00, sizeof(_keyboardKeyStatus));
+    _keyboardModifierFlags = 0;
+    _mouseClickCnt = 0;
+    _lastMouseButton = -1;
+    _lastMouseClickTime = 0;
 }
 
 void InputHandler::HandleMouseDoubleClick(CGEventRef ev, bool mouseDown, int mouseX, int mouseY, int mouseButton) {
@@ -658,7 +749,7 @@ int InputHandler::GetMouseWheelMoveAmount(int direction) {
 
 void InputHandler::PostScrollEvent(int amount, bool continuous) {
     CGScrollEventUnit unit = continuous ? kCGScrollEventUnitPixel : kCGScrollEventUnitLine;
-    CGEventRef ev = CGEventCreateScrollWheelEvent(NULL, unit, 1, amount, 0);
+    CGEventRef ev = CGEventCreateScrollWheelEvent(_eventRef, unit, 1, amount, 0);
     if (ev == NULL) {
         return;
     }
@@ -668,6 +759,7 @@ void InputHandler::PostScrollEvent(int amount, bool continuous) {
         CGEventSetIntegerValueField(ev, kCGScrollWheelEventIsContinuous, 1);
     }
 
+    CGEventSetFlags(ev, _keyboardModifierFlags);
     CGEventPost(kCGSessionEventTap, ev);
     CFRelease(ev);
 }
@@ -816,6 +908,8 @@ void InputHandler::RestorePreviousMouseKeydownEvent() {
     if (_mouseKeyStatus.downStatus.leftKeyDown) {
         ev = CGEventCreateMouseEvent(_eventRef, kCGEventLeftMouseUp, point, kCGMouseButtonLeft);
         if (ev != NULL) {
+            CGEventSetFlags(ev, _keyboardModifierFlags);
+            CGEventSetIntegerValueField(ev, kCGMouseEventNumber, _leftMouseEventNumber);
             CGEventPost(kCGSessionEventTap, ev);
             CFRelease(ev);
         }
@@ -824,6 +918,8 @@ void InputHandler::RestorePreviousMouseKeydownEvent() {
     if (_mouseKeyStatus.downStatus.rightKeyDown) {
         ev = CGEventCreateMouseEvent(_eventRef, kCGEventRightMouseUp, point, kCGMouseButtonRight);
         if (ev != NULL) {
+            CGEventSetFlags(ev, _keyboardModifierFlags);
+            CGEventSetIntegerValueField(ev, kCGMouseEventNumber, _rightMouseEventNumber);
             CGEventPost(kCGSessionEventTap, ev);
             CFRelease(ev);
         }
@@ -832,6 +928,8 @@ void InputHandler::RestorePreviousMouseKeydownEvent() {
     if (_mouseKeyStatus.downStatus.wheelKeyDown) {
         ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseUp, point, (CGMouseButton)2);
         if (ev != NULL) {
+            CGEventSetFlags(ev, _keyboardModifierFlags);
+            CGEventSetIntegerValueField(ev, kCGMouseEventNumber, _wheelMouseEventNumber);
             CGEventPost(kCGSessionEventTap, ev);
             CFRelease(ev);
         }
@@ -840,6 +938,8 @@ void InputHandler::RestorePreviousMouseKeydownEvent() {
     if (_mouseKeyStatus.downStatus.backKeyDown) {
         ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseUp, point, (CGMouseButton)3);
         if (ev != NULL) {
+            CGEventSetFlags(ev, _keyboardModifierFlags);
+            CGEventSetIntegerValueField(ev, kCGMouseEventNumber, _backMouseEventNumber);
             CGEventPost(kCGSessionEventTap, ev);
             CFRelease(ev);
         }
@@ -848,10 +948,30 @@ void InputHandler::RestorePreviousMouseKeydownEvent() {
     if (_mouseKeyStatus.downStatus.forwardKeyDown) {
         ev = CGEventCreateMouseEvent(_eventRef, kCGEventOtherMouseUp, point, (CGMouseButton)4);
         if (ev != NULL) {
+            CGEventSetFlags(ev, _keyboardModifierFlags);
+            CGEventSetIntegerValueField(ev, kCGMouseEventNumber, _forwardMouseEventNumber);
             CGEventPost(kCGSessionEventTap, ev);
             CFRelease(ev);
         }
     }
 
     _mouseKeyStatus.status = 0;
+}
+
+
+bool InputHandler::IsModifierKey(CGKeyCode key) {
+    switch (key) {
+        case kVK_Shift:
+        case kVK_RightShift:
+        case kVK_Control:
+        case kVK_RightControl:
+        case kVK_Option:
+        case kVK_RightOption:
+        case kVK_Command:
+        case kVK_RightCommand:
+        case kVK_CapsLock:
+            return true;
+        default:
+            return false;
+    }
 }

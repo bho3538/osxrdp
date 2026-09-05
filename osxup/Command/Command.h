@@ -16,6 +16,7 @@ public:
     
     void SendMouseInputMsg(xipc_t* agentIpc, int inputType, short x, short y);
     void SendKeyboardInputMsg(xipc_t* agentIpc, int inputType, int keycode, int flags);
+    void SendInputSyncMsg(xipc_t* agentIpc, int toggleFlags);
     
     void SendSessionRequestMsg(xipc_t* sessionIpc, const char* username, int usernameLen);
     void SendSessionReleaseMsg(xipc_t* sessionIpc, int sessionId);
