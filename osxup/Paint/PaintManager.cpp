@@ -6,6 +6,7 @@
 #include "PaintH264.h"
 #include "PaintRFX.h"
 #include "utils.h"
+#include <limits.h>
 
 static const char* OSXRDP_SCREENSHM_NAME = "/osxrdpshm";
 static const char* OSXRDP_CURSORSHM_NAME = "/osxrdpcursorshm";
@@ -17,7 +18,7 @@ PaintManager::PaintManager() :
     _cursorShm(NULL),
     _inPainting(false),
     _releasePending(false),
-    _nextFrameGeneration(1),
+    _nextFrameId(1),
     _freeInFlightCount(0),
     _inFlightHead(0),
     _inFlightCount(0),
@@ -27,6 +28,7 @@ PaintManager::PaintManager() :
         _recordShm[i] = NULL;
         _needPaintDisplay[i] = 0;
         _inFlightCountByDisplay[i] = 0;
+        _nextSubmitPos[i] = 0;
     }
 }
 
@@ -255,7 +257,7 @@ bool PaintManager::GetPaintData(screenrecord_frame_t** outFrameInfo, char** outI
 
     int forceRedrawAll = 0;
     int displayInFlightCount = _inFlightCountByDisplay[displayIdx];
-    unsigned int targetPos = read_pos + (unsigned int)displayInFlightCount;
+    unsigned int targetPos = _nextSubmitPos[displayIdx];
     if (targetPos >= write_pos) {
         return false;
     }
@@ -268,6 +270,7 @@ bool PaintManager::GetPaintData(screenrecord_frame_t** outFrameInfo, char** outI
     //   - partial-frame 포맷 (RFX)            : 중간 dirty tile 을 재구성할 수 없으므로 backlog 전체를 drop 하고 producer 에게 full redraw 를 요청. 이번 paint 는 무시.
     if (selfContained == false) {
         if (trueBacklog == true) {
+            _nextSubmitPos[displayIdx] = write_pos;
             atomic_store_explicit(&shm->consumer_request_full, 1, memory_order_release);
             atomic_store_explicit(&shm->read_pos, write_pos, memory_order_release);
             return false;
@@ -282,7 +285,7 @@ bool PaintManager::GetPaintData(screenrecord_frame_t** outFrameInfo, char** outI
     
     unsigned int idx = targetPos % FRAME_SLOTS;
     screenrecord_frame_t* frame = &(shm->frames[idx]);
-    char* imgData = *(&shm->screenrecord_datas + (size_t)shm->screenrecord_data_size * idx);
+    char* imgData = shm->screenrecord_datas + (size_t)shm->screenrecord_data_size * idx;
 
     size_t imgDataSize = 0;
     memcpy(&imgDataSize, imgData, sizeof(size_t));
@@ -302,8 +305,6 @@ bool PaintManager::GetPaintData(screenrecord_frame_t** outFrameInfo, char** outI
     *outHeight = shm->height;
 
     *frame_id = targetPos;
-
-    //atomic_store_explicit(&shm->read_pos, read_pos + 1, memory_order_release);
 
     return true;
 }
@@ -325,16 +326,15 @@ bool PaintManager::PushInFlight(int displayIdx, unsigned int shmReadPos, unsigne
         return false;
     }
 
-    if (_nextFrameGeneration >= 0x7FFFFFFFU / IN_FLIGHT_SLOT_COUNT) {
-        if (_inFlightCount > 0) {
-            return false;
+    if (_nextFrameId >= INT_MAX) {
+        if (_inFlightCount == 0) {
+            _mod->connectionManager->Terminate();
         }
-        _nextFrameGeneration = 1;
+        return false;
     }
 
     int slot = _freeInFlightSlots[--_freeInFlightCount];
-    unsigned int frameId = (_nextFrameGeneration * IN_FLIGHT_SLOT_COUNT) + (unsigned int)slot;
-    _nextFrameGeneration++;
+    unsigned int frameId = _nextFrameId++;
 
     _inFlightFrames[slot].frameId = frameId;
     _inFlightFrames[slot].displayIdx = displayIdx;
@@ -346,6 +346,7 @@ bool PaintManager::PushInFlight(int displayIdx, unsigned int shmReadPos, unsigne
 
     _inFlightCount++;
     _inFlightCountByDisplay[displayIdx]++;
+    _nextSubmitPos[displayIdx] = shmReadPos + 1;
     *outFrameId = frameId;
     return true;
 }
@@ -397,7 +398,9 @@ void PaintManager::ResetInFlight() {
         _freeInFlightSlots[i] = i;
     }
     for (int i = 0; i < 16; i++) {
+        screenrecord_shm_t* shm = _recordShm[i] == NULL ? NULL : (screenrecord_shm_t*)_recordShm[i]->mem;
         _inFlightCountByDisplay[i] = 0;
+        _nextSubmitPos[i] = shm == NULL ? 0 : atomic_load_explicit(&shm->read_pos, memory_order_acquire);
     }
 }
 
@@ -425,7 +428,6 @@ void PaintManager::PaintEnd(int ackFrameId) {
         if (hasReadPosByDisplay[i] == false) {
             continue;
         }
-
         
         screenrecord_shm_t* shm = (screenrecord_shm_t*)_recordShm[i]->mem;
         unsigned int read_pos = atomic_load_explicit(&shm->read_pos, memory_order_relaxed);

@@ -48,7 +48,8 @@ private:
     const struct mod* _mod;
     volatile bool _inPainting;
     volatile bool _releasePending;
-    unsigned int _nextFrameGeneration;
+    unsigned int _nextFrameId;
+    unsigned int _nextSubmitPos[16];
 
     InFlightFrame _inFlightFrames[IN_FLIGHT_SLOT_COUNT];
     int _inFlightSlotQueue[IN_FLIGHT_SLOT_COUNT];
