@@ -80,15 +80,25 @@ bool ConnectionManager::Connect(const mod* mod) {
 
 void ConnectionManager::Release() {
     if (_inited == false) return;
+
+    // lockscreen (non-user) -> user agent 접속 중 원격 접속이 끊겨도
+    // 이후 작업이 수행되지 않도록 콜백을 먼저 제거 (메모리 누수 방지)
+    if (_agentIpc != NULL)
+        _agentIpc->on_data = NULL;
+
+    if (_sessionIpc != NULL)
+        _sessionIpc->on_data = NULL;
     
     // close all ipc
     if (_agentIpc != NULL) {
+        // 보내야할 ipc 메시지가 있다면 마지막으로 처리
         xipc_loop_once(_agentIpc);
         xipc_destroy(_agentIpc);
         _agentIpc = NULL;
     }
     
     if (_sessionIpc != NULL) {
+        // 보내야할 ipc 메시지가 있다면 마지막으로 처리
         xipc_loop_once(_sessionIpc);
         xipc_destroy(_sessionIpc);
         _sessionIpc = NULL;
@@ -172,13 +182,13 @@ void ConnectionManager::GetWaitObjects(void* read_objs, int* rcount) {
 }
 
 void ConnectionManager::SendMouseInput(int inputType, short x, short y, int delta) {
-    assert(_agentIpc != NULL);
+    if (CanAcceptInput() == false) return;
     
     _command.SendMouseInputMsg(_agentIpc, inputType, x, y, delta);
 }
 
 void ConnectionManager::SendKeyboardInput(int inputType, int keycode, int flags) {
-    assert(_agentIpc != NULL);
+    if (CanAcceptInput() == false) return;
 
     _command.SendKeyboardInputMsg(_agentIpc, inputType, keycode, flags);
 }
@@ -198,7 +208,7 @@ bool ConnectionManager::CanPaint() {
 }
 
 bool ConnectionManager::CanAcceptInput() {
-    return _statusManager.CheckCanAcceptInput();
+    return _agentIpc != NULL  && _statusManager.CheckCanAcceptInput();
 }
 
 bool ConnectionManager::NeedTerminate() {

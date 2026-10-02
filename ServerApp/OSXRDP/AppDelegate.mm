@@ -1,16 +1,16 @@
 #import "AppDelegate.h"
 
+#include <dispatch/dispatch.h>
 #include <signal.h>
 #include "RemoteConnection/RemoteConnectionService.h"
 
 #import "UI/Main/MainWindowController.h"
 
-void _handle_sigterm(int signal);
-
 @interface AppDelegate ()
 {
     NSStatusItem* _trayMenu;
     NSMenuItem* _saveCopiedFilesMenuItem;
+    dispatch_source_t _sigtermSource;
 }
 
 @property (strong) IBOutlet MainWindowController* mainWindowController;
@@ -22,7 +22,15 @@ void _handle_sigterm(int signal);
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
     [NSApp setActivationPolicy:NSApplicationActivationPolicyAccessory];
 
-    signal(SIGTERM, _handle_sigterm);
+    signal(SIGTERM, SIG_IGN);
+    
+    // sigterm 을 메인 스레드에서 실행하도록 변경 (재진입으로 인한 크래시?)
+    _sigtermSource = dispatch_source_create(DISPATCH_SOURCE_TYPE_SIGNAL, SIGTERM, 0, dispatch_get_main_queue());
+    dispatch_source_set_event_handler(_sigtermSource, ^{
+        NSLog(@"[OSXRDP] on sigterm");
+        StopRemoteConnectionServerService();
+    });
+    dispatch_resume(_sigtermSource);
 
     extern int g_Lockscreen;
     if (g_Lockscreen == 1) {
@@ -108,11 +116,6 @@ void _handle_sigterm(int signal);
 
 - (void)onSaveCopiedFilesMenuClicked {
     StartRemoteClipboardFileCopy();
-}
-
-void _handle_sigterm(int signal) {
-    NSLog(@"[OSXRDP] on sigterm");
-    StopRemoteConnectionServerService();
 }
 
 @end
