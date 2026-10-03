@@ -20,7 +20,12 @@
 2. Click **Yes** to proceed with uninstallation. \
    <img width="593" height="274" alt="" src="https://github.com/user-attachments/assets/a385fdee-a133-4a96-bff6-77266ed4e670" />
 
+## Update
+1. Uninstall previous version. (Required)
+2. Install new 'pkg' files.
+
 ## Using a Virtual Monitor
+### Info : On Entry level M3 cpu (Not M3 Pro / M3 Max), Virtual Monitor function can be malfunction.
 
 Starting from **osxrdp 1.3**, osxrdp supports the **Virtual Monitor** feature.\
 This feature sets the remote-control resolution to match the client window size, regardless of the host computer’s physical monitor resolution.\
