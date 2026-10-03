@@ -72,3 +72,6 @@ Starting from **osxrdp 2.0.0**, osxrdp supports file and folder copy between the
 * When attempting to connect, the following message appears:\
   (“OSXRDP agent does not running. Please check main agent is running.”)\
   Start OSXRDP app on specific macOS account and enable 'Start on logon' options.
+
+* On Macs with FileVault enabled, you must sign in locally after the initial startup to unlock the system. \
+  On macOS 26 or later, this step can also be performed remotely over SSH. (https://support.apple.com/ko-kr/guide/security/sec8447f5049/web)
