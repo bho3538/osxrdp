@@ -67,3 +67,6 @@ osxrdp 2.0.0 이후 버전부터 클라이언트 <---> 서버간 파일/폴더 �
 
 * 접속 시도 시 다음과 같은 메시지가 뜹니다 ('OSXRDP agent does not running. Please check main agent is running.')\
   접속하려는 계정에서 OSXRDP 앱을 실행한 후 'Start on logon' 옵션을 활성화 해야 합니다.
+
+* FileVault 가 활성화된 mac에서는 최초 부팅시 직접 로그인을 수행해야합니다. (시스템 잠금 해제) \
+  단, macOS 26 이상에서는 원격 ssh 접속으로 이 단계를 수행할 수 있습니다. (https://support.apple.com/ko-kr/guide/security/sec8447f5049/web)
