@@ -20,7 +20,12 @@
 2. Click **Yes** to proceed with uninstallation. \
    <img width="593" height="274" alt="" src="https://github.com/user-attachments/assets/a385fdee-a133-4a96-bff6-77266ed4e670" />
 
+## Update
+1. Uninstall previous version. (Required)
+2. Install new 'pkg' files.
+
 ## Using a Virtual Monitor
+### Info : On Entry level M3 cpu (Not M3 Pro / M3 Max), Virtual Monitor function can be malfunction.
 
 Starting from **osxrdp 1.3**, osxrdp supports the **Virtual Monitor** feature.\
 This feature sets the remote-control resolution to match the client window size, regardless of the host computer’s physical monitor resolution.\
@@ -67,3 +72,6 @@ Starting from **osxrdp 2.0.0**, osxrdp supports file and folder copy between the
 * When attempting to connect, the following message appears:\
   (“OSXRDP agent does not running. Please check main agent is running.”)\
   Start OSXRDP app on specific macOS account and enable 'Start on logon' options.
+
+* On Macs with FileVault enabled, you must sign in locally after the initial startup to unlock the system. \
+  On macOS 26 or later, this step can also be performed remotely over SSH. (https://support.apple.com/ko-kr/guide/security/sec8447f5049/web)
