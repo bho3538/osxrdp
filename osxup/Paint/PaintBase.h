@@ -24,6 +24,9 @@ public:
     //   - true  : PaintManager 가 slot 을 mmap 하고 소유권을 xrdp로 넘긴다 (xrdp가 mumap)
     //   - false : xrdp 가 shm을 읽기만 함
     virtual bool NeedsOwnedPayload() const { return false; }
+
+    // 제출할 수 있는 최대 프레임 수 (디스플레이 당, ACK 대기 포함)
+    virtual int MaxInFlightFrames() const { return FRAME_SLOTS; }
 };
 
 #endif
