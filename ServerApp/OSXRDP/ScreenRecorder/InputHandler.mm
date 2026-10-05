@@ -234,7 +234,7 @@ void InputHandler::HandleMousseInputEvent(xstream_t* cmd) {
             ev = CGEventCreateMouseEvent(_eventRef, mouseMoveFlags, point, btn);
             
             // xcode minimap 과 같은 일부 컨트롤을 움직이려면 아래와 같은 값들을 설정해야 함.
-            int ㄱdx = clientX - _lastMousePosX;
+            int dx = clientX - _lastMousePosX;
             int dy = clientY - _lastMousePosY;
             
             CGEventSetIntegerValueField(ev, kCGMouseEventDeltaX, dx);

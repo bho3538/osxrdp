@@ -15,7 +15,7 @@ public:
     bool CanMergePendingFrames() const { return true; }
 
     // 인코더·네트워크가 못 따라갈 때 지연이 늘지 않도록 설정
-    int MaxInFlightFrames() const { return 3; }
+    int MaxInFlightFrames() const { return 2; }
 
 private:
 
