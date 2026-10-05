@@ -20,6 +20,7 @@ PaintManager::PaintManager() :
     _inPainting(false),
     _releasePending(false),
     _nextFrameId(1),
+    _maxInFlightFrames(FRAME_SLOTS),
     _freeInFlightCount(0),
     _inFlightHead(0),
     _inFlightCount(0),
@@ -128,7 +129,8 @@ int PaintManager::Initialize(const struct mod* mod, int recordFormat, int sessio
     
     // painter initialize
     _paint->Initialize(mod);
-    
+    _maxInFlightFrames = _paint->MaxInFlightFrames();
+
     _mod = mod;
     _releasePending = false;
     ResetInFlight();
@@ -207,7 +209,7 @@ void PaintManager::Paint() {
     // 마우스 커서 그리기
     PaintMouseCursor();
     
-    if (_inFlightCount >= FRAME_SLOTS * _recordShmCnt) {
+    if (_inFlightCount >= _maxInFlightFrames * _recordShmCnt) {
         return;
     }
     
@@ -220,7 +222,7 @@ void PaintManager::Paint() {
 
         // in-flight 여유가 있는 동안 최대 3회 paint
         int cnt = 0;
-        while (_inFlightCountByDisplay[i] < FRAME_SLOTS && cnt < 3) {
+        while (_inFlightCountByDisplay[i] < _maxInFlightFrames && cnt < 3) {
             screenrecord_frame_t frameInfo;
             char* imgData = NULL;
             size_t imgDataSize = 0;
@@ -292,6 +294,10 @@ bool PaintManager::GetPaintData(screenrecord_frame_t* outFrameInfo, char** outIm
     if (mergePending) {
         // 최신 프레임과 이미 온 프레임들의 dirty 정보를 merge할 수 있도록
         targetPos = write_pos - 1;
+
+        // 첫 프레임은 full redraw
+        if (displayInFlightCount == 0 && read_pos == 0)
+            forceRedrawAll = 1;
     }
     else if (trueBacklog || (displayInFlightCount == 0 && read_pos == 0)) {
         // 최신 프레임으로 jump
@@ -319,10 +325,11 @@ bool PaintManager::GetPaintData(screenrecord_frame_t* outFrameInfo, char** outIm
     }
     else {
         *outFrameInfo = *frame;
-        if (forceRedrawAll != 0)
-            outFrameInfo->dirtyCount = 0; // 강제 full redraw
     }
-    
+
+    if (forceRedrawAll != 0)
+        outFrameInfo->dirtyCount = 0; // 강제 full redraw
+
     *outImgData = imgData + OSXRDP_SLOT_DATA_OFFSET;
     *outImgDataSize = imgDataSize;
     *outWidth = shm->width;
@@ -394,7 +401,7 @@ bool PaintManager::PushInFlight(int displayIdx, unsigned int shmReadPos, unsigne
         return false;
     }
 
-    if (_inFlightCountByDisplay[displayIdx] >= FRAME_SLOTS) {
+    if (_inFlightCountByDisplay[displayIdx] >= _maxInFlightFrames) {
         return false;
     }
 
