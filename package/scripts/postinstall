@@ -1,5 +1,8 @@
 #!/bin/bash
 
+/Applications/osxrdp/OSXRDPUninstaller.app/Contents/MacOS/OSXRDPUninstaller --install-service-account
+[[ $? -eq 0 ]] || exit 1
+
 # generate key (classic rdp)
 /Applications/osxrdp/OSXRDP.app/Contents/MacOS/xrdp-keygen xrdp auto
 

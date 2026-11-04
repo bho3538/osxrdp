@@ -262,6 +262,15 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
 				MARKETING_VERSION = 2.3;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					Cocoa,
+					"-framework",
+					Security,
+					"-framework",
+					OpenDirectory,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.byungho.osxrdp.OSXRDPUninstaller;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
@@ -291,6 +300,15 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.4;
 				MARKETING_VERSION = 2.3;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework",
+					Cocoa,
+					"-framework",
+					Security,
+					"-framework",
+					OpenDirectory,
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.byungho.osxrdp.OSXRDPUninstaller;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;

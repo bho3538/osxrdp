@@ -42,8 +42,16 @@
         return;
     }
     
-    manager.DoUninstall();
+    bool success = manager.DoUninstall();
     manager.DeElevate();
+    if(success == false) {
+        NSAlert *alert = [[NSAlert alloc] init];
+        [alert setMessageText:@"OSXRDP Uninstaller"];
+        [alert setInformativeText:[NSString stringWithUTF8String:manager.GetError()]];
+        [alert addButtonWithTitle:@"OK"];
+        [alert runModal];
+        return;
+    }
     
     [[NSApplication sharedApplication] terminate:nil];
 }

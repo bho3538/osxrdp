@@ -1,4 +1,8 @@
 #include "UninstallManager.h"
+#include <stdio.h>
+#include <vector>
+#include <mach-o/dyld.h>
+#include <limits.h>
 
 UninstallManager::UninstallManager() :
     _authRef(NULL),
@@ -46,11 +50,11 @@ void UninstallManager::DeElevate() {
     _authRef = NULL;
 }
 
-void UninstallManager::DoUninstall() {
+bool UninstallManager::DoUninstall() {
     if (_authRef == NULL) {
         _errmsg = "Elevated privileges required";
         
-        return;
+        return false;
     }
     
     UnregisterDaemon("/Library/LaunchDaemons/com.byungho.osxrdp.plist");
@@ -61,6 +65,16 @@ void UninstallManager::DoUninstall() {
     RemoveFile("/Library/LaunchAgents/com.byungho.osxrdp.lockscreen.plist");
     TerminateProcess("/Applications/osxrdp/OSXRDP.app/Contents/MacOS/OSXRDP");
     TerminateProcess("/Applications/osxrdp/OSXRDP.app/Contents/MacOS/xrdp");
+    
+    // xrdp 전용 계정 삭제
+    char executable[PATH_MAX];
+    uint32_t size = sizeof(executable);
+    char* args[] = { (char*)"--remove-service-account", NULL };
+    if(_NSGetExecutablePath(executable, &size) != 0 || Execute(executable, args) != 0) {
+        _errmsg = "Failed to remove the service account or its installation records.";
+        return false;
+    }
+
     RemoveDirectory("/Library/Logs/osxrdp");
     RemoveDirectory("/etc/xrdp");
     RemoveDirectory("/etc/osxrdp");
@@ -72,8 +86,42 @@ void UninstallManager::DoUninstall() {
     // 설치 흔적(receipt) 및 시스템 리포트 > 설치 목록 정리
     ForgetReceipt("com.byungho.osxrdp.setup");
     CleanInstallHistory("com.byungho.osxrdp");
+    return true;
 }
 
+
+int UninstallManager::Execute(const char* path, char* args[]) {
+    char script[] = "\"$@\"; printf '\\nOSXRDP_STATUS:%d\\n' \"$?\"";
+    std::vector<char*> command;
+    command.push_back((char*)"-p");
+    command.push_back((char*)"-c");
+    command.push_back(script);
+    command.push_back((char*)"osxrdp");
+    command.push_back((char*)path);
+    for(int i = 0; args[i] != NULL; i++)
+        command.push_back(args[i]);
+    command.push_back(NULL);
+
+    FILE* pipe = NULL;
+    if(AuthorizationExecuteWithPrivileges(_authRef, "/bin/bash", kAuthorizationFlagDefaults, &command[0], &pipe) != errAuthorizationSuccess || pipe == NULL) {
+        return -1;
+    }
+
+    int result = -1;
+    char line[256];
+    while(fgets(line, sizeof(line), pipe) != NULL) {
+        int status;
+        if(sscanf(line, "OSXRDP_STATUS:%d", &status) == 1) {
+            result = status;
+        }
+    }
+
+    if(ferror(pipe))
+        result = -1;
+    
+    fclose(pipe);
+    return result;
+}
 
 bool UninstallManager::TerminateProcess(const char* path) {
     char* args[] = { "-9" , "-f", (char*)path, NULL};
