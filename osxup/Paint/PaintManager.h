@@ -13,7 +13,8 @@ public:
     PaintManager();
     ~PaintManager();
     
-    int Initialize(const struct mod* mod, int recordFormat, int sessionId, bool isLockScreen);
+    // shmFds 의 소유권은 PaintManager 로 넘어옴
+    int Initialize(const struct mod* mod, int recordFormat, const int* shmFds, const int* shmTags, int shmCount);
     void Release();
     bool TryReleaseForReconnect();
     

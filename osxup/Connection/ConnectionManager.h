@@ -57,6 +57,7 @@ private:
     
     xipc_t* _sessionIpc;
     xipc_t* _agentIpc;
+    xipc_t* _shmFdServer;   // agent 에게 공유 메모리 fd 를 받기 위한 소켓
     int _sessionId;
     const mod* _mod;
     bool _pendingInputSync;

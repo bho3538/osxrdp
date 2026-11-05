@@ -8,9 +8,7 @@
 #include "utils.h"
 #include <limits.h>
 #include <sys/mman.h>
-
-static const char* OSXRDP_SCREENSHM_NAME = "/osxrdpshm";
-static const char* OSXRDP_CURSORSHM_NAME = "/osxrdpcursorshm";
+#include <unistd.h>
 
 PaintManager::PaintManager() :
     _inited(false),
@@ -60,7 +58,7 @@ int PaintManager::CheckRecordFormat(const struct mod* mod) {
     }
 }
 
-int PaintManager::Initialize(const struct mod* mod, int recordFormat, int sessionId, bool isLockScreen) {
+int PaintManager::Initialize(const struct mod* mod, int recordFormat, const int* shmFds, const int* shmTags, int shmCount) {
     assert(mod != NULL);
     assert(recordFormat >= 0);
     assert(_recordShmCnt == 0);
@@ -75,7 +73,6 @@ int PaintManager::Initialize(const struct mod* mod, int recordFormat, int sessio
         return false;
     }
     
-    char shm_name[512] = {0,};
     int monitorCount = mod->client_info.display_sizes.monitorCount;
     if (monitorCount == 0) {
         monitorCount = 1;
@@ -85,33 +82,30 @@ int PaintManager::Initialize(const struct mod* mod, int recordFormat, int sessio
         monitorCount = 16;
     }
 
-    if (get_object_name(sessionId, OSXRDP_SCREENSHM_NAME, shm_name, sizeof(shm_name), isLockScreen) == 0) {
-        // log
-        return false;
-    }
-
-    for (int i = 0; i < monitorCount; i++) {
-        char shm_name_with_idx[512];
-        snprintf(shm_name_with_idx, sizeof(shm_name_with_idx), "%s_%d", shm_name, i);
-
-        // lockscreen 처럼 일부 output monitor 에만 SHM 이 존재할 수 있다.
-        _recordShm[i] = xshm_open(shm_name_with_idx);
-
-        if (mod->client_info.display_sizes.monitorCount == 0 && _recordShm[i] == NULL) {
-            // log
-            return false;
+    // agent 에게 받은 fd 로 공유 메모리를 연다. (tag 는 output index, 커서는 -1)
+    // lockscreen 처럼 일부 output monitor 에만 SHM 이 존재할 수 있다.
+    for (int i = 0; i < shmCount; i++) {
+        int tag = shmTags[i];
+        
+        if (tag == -1 && _cursorShm == NULL) {
+            _cursorShm = xshm_open_fd(shmFds[i]);
         }
-
-        _recordShmCnt++;
+        else if (tag >= 0 && tag < monitorCount && _recordShm[tag] == NULL) {
+            _recordShm[tag] = xshm_open_fd(shmFds[i]);
+        }
+        else {
+            close(shmFds[i]);
+        }
     }
     
-    if (get_object_name(sessionId, OSXRDP_CURSORSHM_NAME, shm_name, sizeof(shm_name), isLockScreen) == 0) {
+    if (mod->client_info.display_sizes.monitorCount == 0 && _recordShm[0] == NULL) {
         // log
         return false;
     }
     
-    // 마우스 커서 데이터가 담긴 공유 메모리를 열기
-    _cursorShm = xshm_open(shm_name);
+    _recordShmCnt = monitorCount;
+    
+    // 마우스 커서 데이터가 담긴 공유 메모리
     if (_cursorShm == NULL) {
         // log
         return false;

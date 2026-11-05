@@ -81,6 +81,9 @@ private:
     bool CreateCursorShm();
     void DestroyCursorShm();
     
+    // osxup 에게 공유 메모리 fd 전달
+    bool SendShmFds(xipc_t* client);
+    
     bool StartRecord(xstream_t* cmd);
     bool InitRFXConversion();
     

@@ -3,10 +3,12 @@
 #include "ConnectionManager.h"
 #include "osxrdp/packet.h"
 #include "utils.h"
+#include <sys/socket.h>
 
 // session manager 서버 이름
 static const char* OSXRDP_SESSIONMANAGER_NAME = "/tmp/osxrdpsessionmanager";
 static const char* OSXRDP_AGENT_NAME = "/tmp/osxrdp";
+static const char* OSXRDP_SHMFD_NAME = "/tmp/osxrdpshmfd";
 
 static const int OSXRDP_RECONNECT_WAITCNT = 30;
 
@@ -25,6 +27,7 @@ ConnectionManager::ConnectionManager() :
     _inited(false),
     _sessionIpc(NULL),
     _agentIpc(NULL),
+    _shmFdServer(NULL),
     _sessionId(0),
     _mod(NULL),
     _pendingInputSync(false),
@@ -103,6 +106,9 @@ void ConnectionManager::Release() {
         xipc_destroy(_sessionIpc);
         _sessionIpc = NULL;
     }
+    
+    xipc_destroy(_shmFdServer);
+    _shmFdServer = NULL;
     
     _paintManager.Release();
     _channelManager.Release();
@@ -324,6 +330,35 @@ bool ConnectionManager::_ConnectToAgent(int sessionId, bool isLockScreen) {
         return false;
     }
     
+    if (_shmFdServer != NULL) {
+        xipc_destroy(_shmFdServer);
+    }
+    
+    _shmFdServer = xipc_ctx_create(NULL, NULL);
+    if (_shmFdServer == NULL) {
+        xipc_destroy(ipc);
+
+        return false;
+    }
+    
+    // get shmfd server name
+    if (get_object_name(sessionId, OSXRDP_SHMFD_NAME, server_name, sizeof(server_name), isLockScreen) == 0) {
+        xipc_destroy(ipc);
+        xipc_destroy(_shmFdServer);
+        _shmFdServer = NULL;
+
+        return false;
+    }
+    
+    // shm fd 를 전달받을 서버 생성
+    if (xipc_create_server(_shmFdServer, server_name, 0, 0, 0, 0) != 0) {
+        xipc_destroy(ipc);
+        xipc_destroy(_shmFdServer);
+        _shmFdServer = NULL;
+
+        return false;
+    }
+    
     // 접속 완료 상태 갱신
     _statusManager.SetAgentConnected(isLockScreen);
     
@@ -346,8 +381,36 @@ bool ConnectionManager::_ConnectToAgent(int sessionId, bool isLockScreen) {
 
 bool ConnectionManager::_PreparePaint() {
     
+    // agent 가 먼저 fd를 보냈기 때문에 접속 시 fd가 수신
+    int shmFds[XSHM_MAX_FDS];
+    int shmTags[XSHM_MAX_FDS];
+    int shmCount = -1;
+    
+    if (_shmFdServer == NULL) {
+        return false;
+    }
+    
+    int sock = accept(_shmFdServer->fd, NULL, NULL);
+    if (sock >= 0) {
+        // agent ipc와 동일한 프로세스에서 전달된 fd 인지 검증
+        if (xipc_is_same_process_fd(_agentIpc, sock) == 0) {
+            shmCount = xshm_recv_fds(sock, shmFds, shmTags, XSHM_MAX_FDS);
+        }
+        
+        close(sock);
+    }
+    
+    xipc_destroy(_shmFdServer);
+    _shmFdServer = NULL;
+    
+    if (shmCount <= 0) {
+        // log
+        
+        return false;
+    }
+    
     bool inLockscreen = _statusManager.CheckInLockscreen();
-    if (_paintManager.Initialize(_mod, PaintManager::CheckRecordFormat(_mod), _sessionId, inLockscreen) == false) {
+    if (_paintManager.Initialize(_mod, PaintManager::CheckRecordFormat(_mod), shmFds, shmTags, shmCount) == false) {
         // log
         
         return false;

@@ -66,6 +66,9 @@ void xipc_loop(xipc_t* ipc);
 void xipc_end_loop(xipc_t* ipc);
 void xipc_loop_once(xipc_t* ipc);
 
+int xipc_is_same_process(xipc_t* ipc1, xipc_t* ipc2);
+int xipc_is_same_process_fd(xipc_t* ipc1, int fd);
+
 #ifdef __cplusplus
 }
 #endif

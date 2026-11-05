@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/stat.h>
 #include <poll.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -217,6 +218,9 @@ int xipc_create_server(xipc_t* ipc, const char* path, xipc_client_onconnected on
         
         return errno;
     }
+
+    // 접근 제어는 접속 후 코드서명 검사를 수행
+    chmod(path, 0666);
     
     if (listen(fd, 10) < 0)
     {
@@ -745,6 +749,12 @@ int recv_data_from_client(xipc_t* ipc, xipc_t* client, int* needClose)
             return 0;
         }
         
+        // 헤더가 모두 도착할 때까지 현재 수신 상태를 유지한다.
+        if (client->in_len < sizeof(int))
+        {
+            return 0;
+        }
+
         if (client->in_len >= sizeof(int))
         {
             int expected_len = *(int*)&client->in_buf;
@@ -904,4 +914,29 @@ int accept_new_client(xipc_t* ipc)
     }
     
     return 0;
+}
+
+int xipc_is_same_process(xipc_t* ipc1, xipc_t* ipc2) {
+    if (!ipc1 || !ipc2) return 1;
+    
+    pid_t pid1 = -1;
+    pid_t pid2 = -1;
+    
+    if (xipc_get_peer_pid(ipc1, &pid1) != 0) {
+        return 1;
+    }
+    
+    if (xipc_get_peer_pid(ipc2, &pid2) != 0) {
+        return 1;
+    }
+
+    if (pid1 == pid2) return 0;
+    return 1;
+}
+
+int xipc_is_same_process_fd(xipc_t* ipc1, int fd) {
+    xipc_t tmp;
+    tmp.fd = fd;
+    
+    return xipc_is_same_process(ipc1, &tmp);
 }

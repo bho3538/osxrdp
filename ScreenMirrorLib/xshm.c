@@ -7,6 +7,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <sys/socket.h>
 
 xshm_t* xshm_create(const char* name, int size) {
     if (name == NULL || strlen(name) == 0 || size <= 0) {
@@ -65,9 +66,19 @@ xshm_t* xshm_open(const char* name) {
         return NULL;
     }
     
+    xshm_t* shm = xshm_open_fd(fd);
+    if (shm != NULL) {
+        strcpy(shm->name, name);
+    }
+    
+    return shm;
+}
+
+xshm_t* xshm_open_fd(int fd) {
+    if (fd < 0) return NULL;
+    
     struct stat st = {0,};
     if (fstat(fd, &st) != 0 || st.st_size == 0) {
-        
         close(fd);
         
         return NULL;
@@ -82,7 +93,6 @@ xshm_t* xshm_open(const char* name) {
     
     xshm_t* shm = (xshm_t*)malloc(sizeof(xshm_t));
     if (shm == NULL) {
-        
         munmap(addr, st.st_size);
         close(fd);
         
@@ -93,9 +103,65 @@ xshm_t* xshm_open(const char* name) {
     shm->size = (int)st.st_size;
     shm->owner = 0;
     shm->mem = addr;
-    strcpy(shm->name, name);
+    shm->name[0] = '\0';
     
     return shm;
+}
+
+int xshm_send_fds(int sock, const int* fds, const int* tags, int count) {
+    if (sock < 0 || fds == NULL || tags == NULL || count <= 0 || count > XSHM_MAX_FDS)
+        return 1;
+    
+    char control[CMSG_SPACE(sizeof(int) * XSHM_MAX_FDS)] = { 0, };
+    
+    struct iovec iov = { (void*)tags, sizeof(int) * count };
+    struct msghdr msg = {0,};
+    
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = control;
+    msg.msg_controllen = (unsigned int)CMSG_SPACE(sizeof(int) * count);
+    
+    struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
+    cmsg->cmsg_level = SOL_SOCKET;
+    cmsg->cmsg_type = SCM_RIGHTS;
+    cmsg->cmsg_len = CMSG_LEN(sizeof(int) * count);
+    memcpy(CMSG_DATA(cmsg), fds, sizeof(int) * count);
+    
+    return sendmsg(sock, &msg, 0) == iov.iov_len ? 0 : 1;
+}
+
+int xshm_recv_fds(int sock, int* fds, int* tags, int maxCount) {
+    if (sock < 0 || fds == NULL || tags == NULL || maxCount <= 0 || maxCount > XSHM_MAX_FDS)
+        return -1;
+    
+    char control[CMSG_SPACE(sizeof(int) * XSHM_MAX_FDS)] = {0,};
+    
+    struct iovec iov = { tags, sizeof(int) * maxCount };
+    struct msghdr msg = {0,};
+    
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
+    msg.msg_control = control;
+    msg.msg_controllen = sizeof(control);
+    
+    ssize_t numRead = recvmsg(sock, &msg, 0);
+    
+    int fdCount = 0;
+    struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
+    
+    if (cmsg == NULL) {
+        return -1;
+    }
+    
+    if (cmsg->cmsg_level != SOL_SOCKET || cmsg->cmsg_type != SCM_RIGHTS) {
+        return -1;
+    }
+    
+    fdCount = (int)((cmsg->cmsg_len - CMSG_LEN(0)) / sizeof(int));
+    memcpy(fds, CMSG_DATA(cmsg), sizeof(int) * fdCount);
+    
+    return fdCount;
 }
 
 int xshm_write(xshm_t* shm, const void* data, int len) {

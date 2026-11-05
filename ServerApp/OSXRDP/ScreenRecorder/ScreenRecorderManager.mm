@@ -399,6 +399,55 @@ bool ScreenRecorderManager::CreateCursorShm() {
     return true;
 }
 
+bool ScreenRecorderManager::SendShmFds(xipc_t* client) {
+    char path[512];
+    if (get_object_name_by_sessionid("/tmp/osxrdpshmfd", path, 512, is_root_process()) == 0) {
+        return false;
+    }
+
+    int fds[XSHM_MAX_FDS];
+    int tags[XSHM_MAX_FDS];
+    
+    // 커서
+    fds[0] = _cursorShm->fd;
+    tags[0] = -1;
+    
+    int cnt = 1;
+    // 디스플레이
+    for (int i = 0; i < 16; i++) {
+        if (_recordShm[i] != NULL) {
+            fds[cnt] = _recordShm[i]->fd;
+            tags[cnt] = i;
+            cnt++;
+        }
+    }
+    
+    xipc_t* ipc = xipc_ctx_create(NULL, NULL);
+    if (ipc == NULL) {
+        return false;
+    }
+    
+    bool sent = false;
+    
+    // 소켓을 연 프로세스가 서명 검증을 통과한 프로세스 인지 확인 (ipc 와 동일한 프로세스인지)
+    if (xipc_connect_server(ipc, path) == 0 && xipc_is_same_process(ipc, client) == 0) {
+        if (xshm_send_fds(ipc->fd, fds, tags, cnt) == 0) {
+            sent = true;
+        }
+    }
+    else {
+        NSLog(@"[ScreenRecorderManager::SendShmFds] validation failed. ");
+    }
+    
+    if (sent == false) {
+        NSLog(@"[ScreenRecorderManager::SendShmFds] could not send shm fds. path %s", path);
+    }
+    
+    xipc_destroy(ipc);
+    
+    return sent;
+}
+
 void ScreenRecorderManager::DestroyCursorShm() {
     if (_cursorShm == NULL) {
         return;
@@ -450,6 +499,11 @@ void ScreenRecorderManager::HandleCommand(xipc_t* client, xstream_t* cmd) {
         case OSXRDP_PACKETTYPE_REQ_SCREEN: {
             _client = client;
             bool re = StartRecord(cmd);
+            
+            // osxup 은 이 ipc 응답을 받은 시점에 fd 를 꺼내므로 응답보다 먼저 fd를 보낸다.
+            if (re == true) {
+                re = SendShmFds(client);
+            }
             
             NSLog(@"[ScreenRecorderManager::HandleCommand] start record. result %d", re);
 
