@@ -58,7 +58,11 @@ private:
     
     // 마우스 커서 이미지가 저장되는 공유 메모리
     xshm_t* _cursorShm;
-    
+
+    // osxup 에게 shm fd 를 보낸 소켓
+    // osxup 이 accept 시 LOCAL_PEERPID 로 송신자를 검증하므로, 녹화 종료 전까지 닫지 않는다.
+    xipc_t* _shmFdIpc;
+
     // osxup 로 명령을 보내기 위한 파이프
     xipc_t* _client;
     

@@ -146,19 +146,25 @@ int xshm_recv_fds(int sock, int* fds, int* tags, int maxCount) {
     msg.msg_controllen = sizeof(control);
     
     ssize_t numRead = recvmsg(sock, &msg, 0);
-    
-    int fdCount = 0;
     struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg);
     
-    if (cmsg == NULL) {
+    // 제어 메시지가 잘렸으면 받은 fd 를 신뢰할 수 없으므로 실패 처리
+    if (numRead < 0 || (msg.msg_flags & MSG_CTRUNC) || cmsg == NULL ||
+        cmsg->cmsg_level != SOL_SOCKET || cmsg->cmsg_type != SCM_RIGHTS) {
         return -1;
     }
     
-    if (cmsg->cmsg_level != SOL_SOCKET || cmsg->cmsg_type != SCM_RIGHTS) {
+    int fdCount = (int)((cmsg->cmsg_len - CMSG_LEN(0)) / sizeof(int));
+    
+    // 개수가 넘치거나 tag 가 fd 마다 하나씩 오지 않았으면 받은 fd 를 닫고 실패 처리
+    if (fdCount > maxCount || numRead != (ssize_t)(sizeof(int) * fdCount)) {
+        const int* received = (const int*)CMSG_DATA(cmsg);
+        for (int i = 0; i < fdCount; i++) {
+            close(received[i]);
+        }
         return -1;
     }
     
-    fdCount = (int)((cmsg->cmsg_len - CMSG_LEN(0)) / sizeof(int));
     memcpy(fds, CMSG_DATA(cmsg), sizeof(int) * fdCount);
     
     return fdCount;

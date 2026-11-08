@@ -70,6 +70,8 @@ private:
     void ReleaseResources();
     
     void PaintMouseCursor();
+    
+    void CloseShmFds(const int* shmFds, int shmCount);
 };
 
 #endif

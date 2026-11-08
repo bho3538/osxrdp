@@ -65,11 +65,13 @@ int PaintManager::Initialize(const struct mod* mod, int recordFormat, const int*
     assert(_inited == false);
     
     if (_inited == true) {
+        CloseShmFds(shmFds, shmCount);
         return false;
     }
-    
+
     if (mod == NULL || recordFormat < 0) {
         // log
+        CloseShmFds(shmFds, shmCount);
         return false;
     }
     
@@ -522,5 +524,15 @@ void PaintManager::PaintMouseCursor() {
         _mod->server_set_pointer_large((struct mod*)_mod, cursorData->hotspotX, cursorData->hotspotY, cursorData->cursorImgData, cursorData->cursorMaskData, 32, cursorData->width, cursorData->height);
         
         atomic_store_explicit(&cursorData->updated, 0, memory_order_release);
+    }
+}
+
+void PaintManager::CloseShmFds(const int* shmFds, int shmCount) {
+    if (shmFds == NULL) {
+        return;
+    }
+
+    for (int i = 0; i < shmCount; i++) {
+        close(shmFds[i]);
     }
 }

@@ -36,6 +36,7 @@ inline int GetDisplayPointSize(int pixelSize, bool isRetina) {
 
 ScreenRecorderManager::ScreenRecorderManager(bool useLegacyRecorder) :
     _cursorShm(NULL),
+    _shmFdIpc(NULL),
     _client(NULL),
     _recorderCnt(0),
     _useLegacyRecorder(useLegacyRecorder),
@@ -441,11 +442,16 @@ bool ScreenRecorderManager::SendShmFds(xipc_t* client) {
     
     if (sent == false) {
         NSLog(@"[ScreenRecorderManager::SendShmFds] could not send shm fds. path %s", path);
+        xipc_destroy(ipc);
+
+        return false;
     }
-    
-    xipc_destroy(ipc);
-    
-    return sent;
+
+    // 바로 닫으면 osxup 이 접속하지 못하므로 녹화 종료까지 유지
+    xipc_destroy(_shmFdIpc);
+    _shmFdIpc = ipc;
+
+    return true;
 }
 
 void ScreenRecorderManager::DestroyCursorShm() {
@@ -488,6 +494,9 @@ void ScreenRecorderManager::Stop() {
     DestroyRecordShm();
     DestroyCursorShm();
 
+    xipc_destroy(_shmFdIpc);
+    _shmFdIpc = NULL;
+
     ResetPendingDirty();
 }
 
@@ -503,6 +512,10 @@ void ScreenRecorderManager::HandleCommand(xipc_t* client, xstream_t* cmd) {
             // osxup 은 이 ipc 응답을 받은 시점에 fd 를 꺼내므로 응답보다 먼저 fd를 보낸다.
             if (re == true) {
                 re = SendShmFds(client);
+
+                if (re == false) {
+                    Stop();
+                }
             }
             
             NSLog(@"[ScreenRecorderManager::HandleCommand] start record. result %d", re);

@@ -305,27 +305,35 @@ int xipc_is_client_signed_by(xipc_t* client, const char* expectedTeamId, const c
     {
         return EINVAL;
     }
+    
+    if (client->fd < 0)
+    {
+        return EINVAL;
+    }
 
-    pid_t peerPid = 0;
-    if (xipc_get_peer_pid(client, &peerPid) != 0)
+    // audit token 검사
+    audit_token_t peerToken;
+    socklen_t peerTokenLen = sizeof(peerToken);
+    if (getsockopt(client->fd, SOL_LOCAL, LOCAL_PEERTOKEN, &peerToken, &peerTokenLen) != 0 ||
+        peerTokenLen != sizeof(peerToken))
     {
         return -1;
     }
 
     int result = -1;
-    CFNumberRef pidNumber = NULL;
+    CFDataRef tokenData = NULL;
     CFDictionaryRef attributes = NULL;
     SecCodeRef peerCode = NULL;
     CFDictionaryRef signingInfo = NULL;
 
-    pidNumber = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &peerPid);
-    if (pidNumber == NULL)
+    tokenData = CFDataCreate(kCFAllocatorDefault, (const UInt8*)&peerToken, sizeof(peerToken));
+    if (tokenData == NULL)
     {
         goto cleanup;
     }
 
-    const void* keys[] = { kSecGuestAttributePid };
-    const void* values[] = { pidNumber };
+    const void* keys[] = { kSecGuestAttributeAudit };
+    const void* values[] = { tokenData };
     attributes = CFDictionaryCreate(kCFAllocatorDefault, keys, values, 1, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     if (attributes == NULL)
     {
@@ -387,9 +395,9 @@ cleanup:
         CFRelease(attributes);
     }
 
-    if (pidNumber != NULL)
+    if (tokenData != NULL)
     {
-        CFRelease(pidNumber);
+        CFRelease(tokenData);
     }
 
     return result;
