@@ -7,8 +7,12 @@
     <key>ProgramArguments</key>
     <array>
         <string>/Applications/osxrdp/OSXRDP.app/Contents/MacOS/xrdp</string>
-        <string>--nodaemon</string> 
+        <string>--nodaemon</string>
     </array>
+    <key>UserName</key>
+    <string>_osxrdp</string>
+    <key>GroupName</key>
+    <string>_osxrdp</string>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>

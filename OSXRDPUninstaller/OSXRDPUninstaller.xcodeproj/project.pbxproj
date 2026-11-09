@@ -268,8 +268,6 @@
 					Cocoa,
 					"-framework",
 					Security,
-					"-framework",
-					OpenDirectory,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.byungho.osxrdp.OSXRDPUninstaller;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -306,8 +304,6 @@
 					Cocoa,
 					"-framework",
 					Security,
-					"-framework",
-					OpenDirectory,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.byungho.osxrdp.OSXRDPUninstaller;
 				PRODUCT_NAME = "$(TARGET_NAME)";

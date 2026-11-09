@@ -1,7 +1,59 @@
 #!/bin/bash
 
-/Applications/osxrdp/OSXRDPUninstaller.app/Contents/MacOS/OSXRDPUninstaller --install-service-account
-[[ $? -eq 0 ]] || exit 1
+# xrdp 전용 계정
+SVC_NAME=_osxrdp
+SVC_MARKER="OSXRDP Service"
+SVC_USER=/Users/$SVC_NAME
+SVC_GROUP=/Groups/$SVC_NAME
+
+svc_exists() {
+    dscl . -read "$1" RecordName >/dev/null 2>&1
+}
+
+svc_has_marker() {
+    [[ "$(dscl -plist . -read "$1" RealName 2>/dev/null | plutil -extract dsAttrTypeStandard:RealName.0 raw -o - - 2>/dev/null)" == "$SVC_MARKER" ]]
+}
+
+create_service_account() {
+    # 이미 동일한 계정이 있는지 확인
+    for rec in "$SVC_USER" "$SVC_GROUP"; do
+        if svc_exists "$rec" && ! svc_has_marker "$rec"; then
+            echo "osxrdp: $rec already exists and was not created by OSXRDP." >&2
+            return 1
+        fi
+    done
+
+    # 이전 설치가 중간에 중단되어 한쪽만 남은 경우 지우고 새로 만든다.
+    if ! svc_exists "$SVC_USER" || ! svc_exists "$SVC_GROUP"; then
+        if svc_exists "$SVC_USER"; then dscl . -delete "$SVC_USER" || return 1; fi
+        if svc_exists "$SVC_GROUP"; then dscl . -delete "$SVC_GROUP" || return 1; fi
+
+        # 사용자 UID 와 그룹 GID 가 모두 비어 있는 번호를 고른다. (501 이상)
+        local used id=501
+        used=$(dscl . -list /Users UniqueID | awk '{print $2}'; dscl . -list /Groups PrimaryGroupID | awk '{print $2}')
+        while grep -qx "$id" <<< "$used"; do
+            id=$((id + 1))
+        done
+
+        # 중단돼도 다음 설치에서 정리할 수 있도록 기록
+        dscl . -create "$SVC_GROUP" &&
+        dscl . -create "$SVC_GROUP" RealName "$SVC_MARKER" &&
+        dscl . -create "$SVC_GROUP" PrimaryGroupID "$id" &&
+        dscl . -create "$SVC_USER" &&
+        dscl . -create "$SVC_USER" RealName "$SVC_MARKER" &&
+        dscl . -create "$SVC_USER" UniqueID "$id" &&
+        dscl . -create "$SVC_USER" PrimaryGroupID "$id" || return 1
+    fi
+
+    # 로그인 차단 속성
+    dscl . -create "$SVC_USER" Password '*' &&
+    dscl . -create "$SVC_USER" AuthenticationAuthority ';DisabledUser;' &&
+    dscl . -create "$SVC_USER" UserShell /usr/bin/false &&
+    dscl . -create "$SVC_USER" NFSHomeDirectory /var/empty &&
+    dscl . -create "$SVC_USER" IsHidden 1
+}
+
+create_service_account || exit 1
 
 # generate key (classic rdp)
 /Applications/osxrdp/OSXRDP.app/Contents/MacOS/xrdp-keygen xrdp auto
@@ -12,12 +64,18 @@
     -out  /etc/xrdp/cert.pem \
     -days 3650 -subj "/CN=osxrdp"
 
-# create log file (xrdp)
-touch /var/log/xrdp.log
-
 # create log folder (osxrdp)
 mkdir -p /Library/Logs/osxrdp
 chmod 755 /Library/Logs/osxrdp
+
+# create log file (xrdp)
+# 로그 폴더는 root 만 쓸 수 있으므로 서비스 계정이 기록할 파일을 미리 생성
+touch /Library/Logs/osxrdp/xrdp.log
+chown $SVC_NAME:$SVC_NAME /Library/Logs/osxrdp/xrdp.log
+
+# xrdp 는 전용 계정으로 실행되므로 키 파일 권한 설정
+chown root:$SVC_NAME /etc/xrdp/rsakeys.ini /etc/xrdp/key.pem
+chmod 640 /etc/xrdp/rsakeys.ini /etc/xrdp/key.pem
 
 # macOS 27 db3? 부터launchd 는 quarantine 된 plist 의 job 실행을 거부하므로 격리 속성 제거
 xattr -d com.apple.quarantine /Library/LaunchDaemons/com.byungho.osxrdp.plist 2>/dev/null
@@ -25,6 +83,8 @@ xattr -d com.apple.quarantine /Library/LaunchDaemons/com.byungho.osxrdp.sessionm
 xattr -d com.apple.quarantine /Library/LaunchAgents/com.byungho.osxrdp.lockscreen.plist 2>/dev/null
 
 # start service
+# 업그레이드 시 이전 버전의 job 정의(root 실행)가 남아 있으면 새 plist 가 적용되지 않으므로 먼저 내린다.
+launchctl bootout system/com.byungho.osxrdp 2>/dev/null
 launchctl bootstrap system /Library/LaunchDaemons/com.byungho.osxrdp.plist
 launchctl enable system/com.byungho.osxrdp
 launchctl kickstart -k system/com.byungho.osxrdp

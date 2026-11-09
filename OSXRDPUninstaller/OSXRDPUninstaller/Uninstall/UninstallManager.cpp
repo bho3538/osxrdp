@@ -1,8 +1,6 @@
 #include "UninstallManager.h"
 #include <stdio.h>
 #include <vector>
-#include <mach-o/dyld.h>
-#include <limits.h>
 
 UninstallManager::UninstallManager() :
     _authRef(NULL),
@@ -57,21 +55,39 @@ bool UninstallManager::DoUninstall() {
         return false;
     }
     
-    UnregisterDaemon("/Library/LaunchDaemons/com.byungho.osxrdp.plist");
-    UnregisterDaemon("/Library/LaunchDaemons/com.byungho.osxrdp.sessionmanager.plist");
-    UnregisterDaemon("/Library/LaunchAgents/com.byungho.osxrdp.lockscreen.plist");
+    UnregisterDaemon("system/com.byungho.osxrdp");
+    UnregisterDaemon("system/com.byungho.osxrdp.sessionmanager");
+
+    // 잠금 화면 에이전트는 로그인 창 세션에 로드되므로, 실행 중인 에이전트 프로세스의 도메인을 대상으로 내린다.
+    char lockscreenScript[] =
+        "for pid in $(/usr/bin/pgrep -f '/Applications/osxrdp/OSXRDP.app/Contents/MacOS/[O]SXRDP --lockscreen'); do "
+        "/bin/launchctl bootout \"pid/$pid/com.byungho.osxrdp.lockscreen\"; "
+        "done; exit 0";
+    char* lockscreenArgs[] = { (char*)"-p", (char*)"-c", lockscreenScript, NULL };
+    Execute("/bin/bash", lockscreenArgs);
+
     RemoveFile("/Library/LaunchDaemons/com.byungho.osxrdp.plist");
     RemoveFile("/Library/LaunchDaemons/com.byungho.osxrdp.sessionmanager.plist");
     RemoveFile("/Library/LaunchAgents/com.byungho.osxrdp.lockscreen.plist");
     TerminateProcess("/Applications/osxrdp/OSXRDP.app/Contents/MacOS/OSXRDP");
     TerminateProcess("/Applications/osxrdp/OSXRDP.app/Contents/MacOS/xrdp");
+
+    // 컴퓨터 권한 관리 권한 초기화 (거부 를 눌렀으면 동의 대화상자가 다시 뜨지 않음)
+    char* resetArgs[] = { (char*)"reset", (char*)"SystemPolicySysAdminFiles",
+                          (char*)"com.byungho.osxrdp.OSXRDPUninstaller", NULL };
+    Execute("/usr/bin/tccutil", resetArgs);
+
+    // osxrdp 전용 계정 삭제
+    char script[] =
+        "for rec in /Users/_osxrdp /Groups/_osxrdp; do "
+        "/usr/bin/dscl . -read \"$rec\" RecordName >/dev/null 2>&1 || continue; "
+        "[ \"$(/usr/bin/dscl -plist . -read \"$rec\" RealName 2>/dev/null | /usr/bin/plutil -extract dsAttrTypeStandard:RealName.0 raw -o - - 2>/dev/null)\" = 'OSXRDP Service' ] || continue; "
+        "/usr/bin/dscl . -delete \"$rec\" || exit 1; "
+        "done";
     
-    // xrdp 전용 계정 삭제
-    char executable[PATH_MAX];
-    uint32_t size = sizeof(executable);
-    char* args[] = { (char*)"--remove-service-account", NULL };
-    if(_NSGetExecutablePath(executable, &size) != 0 || Execute(executable, args) != 0) {
-        _errmsg = "Failed to remove the service account or its installation records.";
+    char* args[] = { (char*)"-p", (char*)"-c", script, NULL };
+    if(Execute("/bin/bash", args) != 0) {
+        _errmsg = "Failed to remove the service account.";
         return false;
     }
 
@@ -147,12 +163,10 @@ bool UninstallManager::RemoveFile(const char* path) {
     return true;
 }
 
-bool UninstallManager::UnregisterDaemon(const char* path) {
-    char* args[] = { "bootout" , (char*)path, NULL};
+bool UninstallManager::UnregisterDaemon(const char* target) {
+    char* args[] = { (char*)"bootout", (char*)target, NULL };
 
-    AuthorizationExecuteWithPrivileges(_authRef, "/bin/launchctl", kAuthorizationFlagDefaults, args, NULL);
-
-    return true;
+    return Execute("/bin/launchctl", args) == 0;
 }
 
 bool UninstallManager::ForgetReceipt(const char* pkgid) {

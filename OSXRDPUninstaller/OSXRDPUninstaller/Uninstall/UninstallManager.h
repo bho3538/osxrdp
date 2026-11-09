@@ -24,7 +24,7 @@ private:
     bool TerminateProcess(const char* path);
     bool RemoveDirectory(const char* path);
     bool RemoveFile(const char* path);
-    bool UnregisterDaemon(const char* path);
+    bool UnregisterDaemon(const char* target);
     bool ForgetReceipt(const char* pkgid);
     bool CleanInstallHistory(const char* pkgidPrefix);
 };
