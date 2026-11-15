@@ -90,14 +90,21 @@ sudo chown -R root:wheel "$PAYLOAD_DIR"
 sudo chmod 755 "$PAYLOAD_DIR/Applications/$INSTALL_FOLDER_NAME"
 sudo chmod 755 "$PAYLOAD_DIR/usr/local/lib/xrdp"
 sudo chmod 755 "$PAYLOAD_DIR/usr/local/share/xrdp"
-sudo chmod 755 "$SCRIPTS_DIR/postinstall"
+sudo chmod 755 "$SCRIPTS_DIR/preinstall" "$SCRIPTS_DIR/postinstall"
 
 # ==========================================
 # 2. 컴포넌트 패키지 빌드 (pkgbuild)
 # ==========================================
 echo "=== [4/6] Building Component Package ==="
 
+# 같은 bundle id 의 앱이 다른 위치에 있어도 그쪽으로 재배치되지 않도록 설정
+COMPONENT_PLIST="$ROOT_DIR/components.plist"
+pkgbuild --analyze --root "$PAYLOAD_DIR" "$COMPONENT_PLIST" || exit 1
+i=0
+while plutil -replace "$i.BundleIsRelocatable" -bool NO "$COMPONENT_PLIST" 2>/dev/null; do i=$((i + 1)); done
+
 pkgbuild --root "$PAYLOAD_DIR" \
+         --component-plist "$COMPONENT_PLIST" \
          --install-location "/" \
          --scripts "$SCRIPTS_DIR" \
          --identifier "$PKG_ID" \

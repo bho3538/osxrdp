@@ -83,8 +83,6 @@ xattr -d com.apple.quarantine /Library/LaunchDaemons/com.byungho.osxrdp.sessionm
 xattr -d com.apple.quarantine /Library/LaunchAgents/com.byungho.osxrdp.lockscreen.plist 2>/dev/null
 
 # start service
-# 업그레이드 시 이전 버전의 job 정의(root 실행)가 남아 있으면 새 plist 가 적용되지 않으므로 먼저 내린다.
-launchctl bootout system/com.byungho.osxrdp 2>/dev/null
 launchctl bootstrap system /Library/LaunchDaemons/com.byungho.osxrdp.plist
 launchctl enable system/com.byungho.osxrdp
 launchctl kickstart -k system/com.byungho.osxrdp

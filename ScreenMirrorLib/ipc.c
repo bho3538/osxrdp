@@ -763,18 +763,15 @@ int recv_data_from_client(xipc_t* ipc, xipc_t* client, int* needClose)
             return 0;
         }
 
-        if (client->in_len >= sizeof(int))
+        int expected_len = *(int*)&client->in_buf;
+        if (expected_len <= 0 || expected_len >= MAX_BUFFER)
         {
-            int expected_len = *(int*)&client->in_buf;
-            if (expected_len <= 0 || expected_len >= MAX_BUFFER)
-            {
-                *needClose = 1;
-                return 0;
-            }
-            
-            client->expected_len = expected_len;
-            client->in_len = 0;
+            *needClose = 1;
+            return 0;
         }
+        
+        client->expected_len = expected_len;
+        client->in_len = 0;
     }
     
     // read body

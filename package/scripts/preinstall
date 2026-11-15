@@ -1,0 +1,17 @@
+#!/bin/bash
+
+# 업데이트 시 이전 버전 내리기
+
+APP_BIN=/Applications/osxrdp/OSXRDP.app/Contents/MacOS
+
+launchctl bootout system/com.byungho.osxrdp 2>/dev/null
+launchctl bootout system/com.byungho.osxrdp.sessionmanager 2>/dev/null
+for pid in $(pgrep -f "$APP_BIN/[O]SXRDP --lockscreen"); do
+    launchctl bootout "pid/$pid/com.byungho.osxrdp.lockscreen" 2>/dev/null
+done
+
+pkill -f "$APP_BIN/(OSXRDP|xrdp)"
+sleep 1
+pkill -9 -f "$APP_BIN/(OSXRDP|xrdp)"
+
+exit 0
